@@ -44,6 +44,7 @@
           <option value="0.5">0,5×</option>
           <option value="1">1× tempo reale</option>
         </select>
+        <button id="btn-diagram" data-act="sim-diagram" aria-pressed="false" title="Mostra il diagramma delle fasi: corsa dei cilindri e stato delle bobine nel tempo">📈 Diagramma</button>
         <span id="sim-time" class="sim-time">t = 0,00 s</span>
       </span>
     </div>
@@ -78,6 +79,17 @@
       </g>
     </svg>
     <div id="legend" aria-label="Legenda"></div>
+    <section id="diagram" aria-label="Diagramma delle fasi" hidden>
+      <header>
+        <h2>Diagramma delle fasi</h2>
+        <span class="dg-modes" role="group" aria-label="Asse orizzontale">
+          <button data-dmode="time" aria-pressed="true" title="Spostamento-tempo">Tempo</button>
+          <button data-dmode="step" aria-pressed="false" title="Spostamento-passo: un passo ogni volta che un cilindro arriva a fine corsa">Passi</button>
+        </span>
+        <button data-dmode="close" class="icon" aria-label="Chiudi il diagramma">✕</button>
+      </header>
+      <div id="diagram-body"></div>
+    </section>
   </main>
 
   <aside id="side">

@@ -636,6 +636,19 @@ await page.mouse.down();
 await waitLive("load:Y1", "v === '1'");
 await page.mouse.up();
 await waitLive("load:Y1", "v === '0'");
+// diagramma delle fasi: corsie di C1 e Y1, in tempo e per passi
+await page.click('[data-act="sim-diagram"]');
+await page.waitForSelector('#diagram:not([hidden]) .diagram-svg');
+for (const id of ["C1", "Y1"]) {
+  assert.equal(await page.locator(`#diagram [data-channel="${id}"] .dg-trace`).count(), 1, `il diagramma traccia ${id}`);
+}
+await page.click('#diagram [data-dmode="step"]');
+await page.waitForSelector('#diagram .diagram-svg[data-mode="step"]');
+assert.ok(Number(await page.getAttribute("#diagram .diagram-svg", "data-steps")) >= 3, "uscita e rientro di C1 sono passi");
+if (shots) await page.screenshot({ path: `${shots}/diagramma.png` });
+await page.click('[data-act="sim-reset"]');
+await page.click('#diagram [data-dmode="close"]');
+assert.ok(await page.locator("#diagram").isHidden(), "il diagramma si chiude");
 await page.click('[data-act="sim"]');
 await page.waitForFunction(() => document.body.dataset.sim !== "on");
 

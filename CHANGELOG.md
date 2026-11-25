@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.16.0 · 2026-11-25
+
+- Diagramma delle fasi in simulazione: il pulsante «Diagramma» mostra la corsa dei cilindri e lo stato di bobine, lampade e contatti dei relè, nel tempo o per passi del ciclo.
+
 ## 0.15.0 · 2026-11-25
 
 - Quattro esempi elettropneumatici nel menu Esempi: marcia e arresto con autoritenuta, ciclo automatico A+ A− con finecorsa elettrici, sequenza A+ B+ B− A− con relè di memoria, sosta a fine corsa con temporizzatore e pressostato.

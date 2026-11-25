@@ -34,6 +34,11 @@ da solo vengono segnalati.
 Il circuito elettrico è simulato in modo logico: conta solo se c'è un percorso di contatti chiusi dal +
 al 0V attraverso il carico, non le correnti.
 
+Il pulsante «📈 Diagramma» mostra il diagramma delle fasi: corsa dei cilindri e stato di bobine, lampade e
+contatti dei relè, nel tempo o per passi. Con l'esempio della sequenza a relè si leggono i quattro passi
+A+ B+ B− A− e quale bobina li comanda; con il temporizzatore si vede la sosta tra l'eccitazione di KT1 e la
+commutazione dei suoi contatti.
+
 ## Esempi
 
 ### Marcia e arresto con autoritenuta
