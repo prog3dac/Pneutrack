@@ -46,7 +46,7 @@ const PREFIX: Record<string, string> = {
 /** unità aggiunta quando si scrive solo un numero */
 const PREF_UNIT: Record<Dimension, string> = {
   pressure: "bar", length: "mm", area: "cm2", volume: "cm3", force: "N", flow: "Nl/min",
-  conductance: "dm3/(s·bar)", mass: "kg", time: "s", angle: "deg", dimensionless: "",
+  conductance: "dm3/(s·bar)", mass: "kg", time: "s", angle: "deg", voltage: "V", dimensionless: "",
 };
 const EXAMPLE_VALUE: Partial<Record<Dimension, string>> = {
   pressure: "6 bar", length: "32 mm", flow: "500 Nl/min", angle: "90 deg", force: "10 N",
@@ -474,7 +474,7 @@ function renderBlocks() {
 /** Voce della palette: un tipo con le opzioni di una sua configurazione. */
 interface PaletteItem { type: TypeDef; preset: number; label: string; data: ComponentData }
 function paletteItems(): PaletteItem[] {
-  return catalog.flatMap((t) => (t.presets ?? [{ label: t.label }]).map((preset, i) => ({
+  return catalog.filter((t) => !t.hidden).flatMap((t) => (t.presets ?? [{ label: t.label }]).map((preset, i) => ({
     type: t, preset: t.presets ? i : -1, label: preset.label,
     data: { id: "", type: t.type, params: { ...t.defaults, ...preset.params },
             ...Object.fromEntries((t.options ?? []).map((o) => [o.name, preset.options?.[o.name] ?? o.default])) },

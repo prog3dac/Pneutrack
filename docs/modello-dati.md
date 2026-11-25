@@ -138,10 +138,45 @@ La chiave facoltativa `blocks` elenca i gruppi di componenti (`src/model/blocks.
 Ogni componente appartiene al massimo a un blocco; gli id inesistenti vengono scartati alla
 lettura. Come `layout`, i blocchi non contano per il modello.
 
+## Circuito elettrico di comando
+
+Il circuito elettrico (24 V in corrente continua, simboli CEI EN 60617) sta nello stesso schema, accanto alla
+parte pneumatica. I componenti elettrici hanno morsetti di tipo `electric`: le linee tra morsetti sono fili e
+formano reti proprie, separate da quelle pneumatiche. Un filo non si collega a una porta pneumatica e non ha
+`tube`. La parte elettrica e quella pneumatica si collegano **per sigla**, come negli schemi didattici: la bobina
+`Y1` indica il solenoide che eccita (`"drives": "V1.14"`), il contatto `K1a` il relè che lo aziona
+(`"relay": "K1"`), il finecorsa `S2` il cilindro (`"cam": "C1+"`).
+
+I componenti elettrici non sono ancora nella palette dell'editor (mancano i simboli); si possono già scrivere nel file.
+
+| Tipo (`type`) | Nome | Sigla | Morsetti | Opzioni, parametri e riferimenti |
+|---|---|---|---|---|
+| `electric_supply` | Alimentazione elettrica | G | +, 0V | `voltage` (`"24 V"`) |
+| `pushbutton` | Pulsante, interruttore | S | secondo `contact` | `contact`, `operation`: `momentary` (a impulso) o `latching` (con ritenuta) |
+| `relay_coil` | Bobina di relè | K | A1, A2 | `pickup_time` (tempo di attrazione, 10 ms) |
+| `timer_relay` | Relè temporizzato | KT | A1, A2 | `delay`, `timer_mode`: `on_delay` (ritardato all'eccitazione) o `off_delay` |
+| `relay_contact` | Contatto di relè | K | secondo `contact` | `contact`, `relay`: relè, temporizzatore o pressostato |
+| `valve_solenoid` | Bobina di elettrovalvola | Y | A1, A2 | `drives`: valvola e lato, `"V1.14"` |
+| `limit_switch` | Finecorsa elettrico | S | secondo `contact` | `contact`, `cam` (`"C1+"`), `switch_actuation`: `roller` o `roller_oneway` |
+| `proximity_sensor` | Sensore di prossimità (PNP, 3 fili) | B | BN (+), BU (0V), BK (uscita) | `cam`, `position` (dal fondello, al posto del fine corsa), `hysteresis`, `sensor_kind` |
+| `pressure_switch` | Pressostato | B | porta pneumatica 1 | `setpoint`, `hysteresis`; i suoi contatti sono `relay_contact` con `"relay": "B1"` |
+| `signal_lamp` | Lampada di segnalazione | H | X1, X2 | `lamp_color` |
+
+I morsetti dei contatti (`contact`) seguono la numerazione CEI EN 60947: `no` (NA) 13-14, `nc` (NC) 11-12,
+`co` (in scambio) 11 comune, 12 NC, 14 NA; di un contatto in scambio basta collegare uno dei due.
+
+```json
+{"components": [
+  {"id": "G", "type": "electric_supply", "params": {"voltage": "24 V"}},
+  {"id": "S1", "type": "pushbutton", "contact": "no"},
+  {"id": "Y1", "type": "valve_solenoid", "drives": "V1.14"}],
+ "connections": [{"from": "G.+", "to": "S1.13"}, {"from": "S1.14", "to": "Y1.A1"}, {"from": "Y1.A2", "to": "G.0V"}]}
+```
+
 ## Unità da catalogo
 
 I parametri si scrivono come nei cataloghi: `"6 bar"`, `"32 mm"`, `"500 Nl/min"`, `"0,6 MPa"`,
-`"90 psi"`, `"90 deg"`. `Quantity` conserva l'unità originale per la visualizzazione e il valore
+`"90 psi"`, `"90 deg"`, `"24 V"`. `Quantity` conserva l'unità originale per la visualizzazione e il valore
 SI per i calcoli; il confronto tra unità diverse è automatico. Le pressioni sono relative.
 
 ## Validazione
@@ -165,8 +200,18 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 | `UNDERPRESSURE` | warning | pressione di comando sotto `min_pressure` |
 | `UNSUPPLIED_ACTUATOR` | warning | attuatore che nessuna sorgente alimenta |
 | `UNSUPPLIED_PILOT` | warning | pilotaggio collegato ma mai in pressione |
-| `INVALID_CAM` | error | finecorsa che indica un cilindro inesistente o su un lato non meccanico |
-| `SETPOINT_UNREACHABLE` | warning | valvola di sequenza tarata sopra la pressione che può ricevere |
+| `INVALID_CAM` | error | finecorsa o sensore che indica un cilindro inesistente, un lato non meccanico o una posizione oltre la corsa |
+| `SETPOINT_UNREACHABLE` | warning | valvola di sequenza o pressostato tarati sopra la pressione che possono ricevere |
+| `MIXED_CONNECTION` | error | linea tra un morsetto elettrico e una porta pneumatica |
+| `UNCONNECTED_TERMINAL` | warning | morsetto elettrico scollegato (di un contatto in scambio basta uno tra 12 e 14) |
+| `NO_ELECTRIC_SUPPLY` | warning | componenti elettrici senza alimentazione elettrica |
+| `SHORT_CIRCUIT` | error | + e 0V uniti direttamente da un filo |
+| `INVALID_REFERENCE` | error | bobina verso una valvola che non c'è, contatto verso qualcosa che non è un relè, un temporizzatore o un pressostato |
+| `NOT_A_SOLENOID` | error | bobina su un lato della valvola senza solenoide |
+| `DUPLICATE_COIL` | error | due bobine sullo stesso solenoide |
+| `UNLINKED_REFERENCE` | warning | bobina, contatto, finecorsa o sensore che non indica cosa comanda o cosa lo aziona |
+| `UNDRIVEN_SOLENOID` | warning | in uno schema con circuito elettrico, solenoide senza bobina (si comanda solo a mano) |
+| `UNUSED_RELAY` | warning | relè, temporizzatore o pressostato senza contatti |
 
 ## Formato file
 
