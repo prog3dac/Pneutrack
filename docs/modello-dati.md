@@ -35,6 +35,27 @@ Nuovi tipi: una voce in `DEFS` (`src/model/components.ts`) con porte, parametri 
 `paths` (percorsi interni della pressione) e `sources`; poi il simbolo in `src/ui/symbols.ts` e,
 se va simulato, il comportamento in `src/sim/network.ts`.
 
+## Tubi
+
+Un collegamento può avere le dimensioni del tubo:
+
+```json
+{"from": "V1.4", "to": "C1.A",
+ "tube": {"outer_diameter": "6 mm", "inner_diameter": "4 mm", "length": "1.5 m"}}
+```
+
+Diametro interno e lunghezza sono obbligatori, l'esterno è facoltativo (serve a riconoscere la
+misura commerciale e allo spessore del disegno). Senza `tube` la linea è ideale: le porte unite
+sono un solo nodo, con volume trascurabile.
+
+In simulazione un tubo è un orifizio ISO 6358 tra le due porte, con `b = 0,4` e conduttanza stimata
+dalla sezione e dalle perdite per attrito (`C ≈ 0,2 · A_eff`, con `A_eff = A / √(1 + 0,03 · L/d)`,
+C in dm³/(s·bar) e A in mm²); il suo volume interno va metà a ciascun capo. È una stima: per un
+tubo 6×4 lungo 1 m dà circa 0,9 dm³/(s·bar).
+
+Il campo `points` di un collegamento (`[[x, y], ...]`) contiene i punti di piega disegnati
+nell'editor e, come `layout`, non conta per il modello.
+
 ## Unità da catalogo
 
 I parametri si scrivono come nei cataloghi: `"6 bar"`, `"32 mm"`, `"500 Nl/min"`, `"0,6 MPa"`,
@@ -53,6 +74,7 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 |---|---|---|
 | `INVALID_COMPONENT` | error | tipo sconosciuto o parametri non validi |
 | `INVALID_CONNECTION` | error | collegamento verso una porta inesistente, su se stessa o duplicato |
+| `INVALID_TUBE` | error | tubo senza diametro interno o lunghezza, unità sbagliate, interno ≥ esterno |
 | `NO_SOURCE` | warning | nessuna sorgente nello schema |
 | `UNCONNECTED_PORT` | error | porta scollegata che non può restare aperta (chiuderla con un tappo, `plug`) |
 | `SOURCE_CONFLICT` | error | due sorgenti a pressione diversa sulla stessa rete |

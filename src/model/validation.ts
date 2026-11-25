@@ -9,6 +9,7 @@
  * |-----------------------|---------|------------------------------------------------------|
  * | INVALID_COMPONENT     | error   | tipo sconosciuto o parametri non validi              |
  * | INVALID_CONNECTION    | error   | collegamento verso porta inesistente o duplicato     |
+ * | INVALID_TUBE          | error   | dimensioni del tubo mancanti o non valide            |
  * | NO_SOURCE             | warning | nessuna sorgente di pressione                        |
  * | UNCONNECTED_PORT      | error   | porta scollegata che non può restare aperta          |
  * | SOURCE_CONFLICT       | error   | sorgenti a pressioni diverse sulla stessa rete       |
@@ -23,6 +24,7 @@ import {
   buildComponent, internalPaths, isActuator, ParameterError, sourcePressures,
   type Component, type PortSpec,
 } from "./components";
+import { parseTube, type Tube } from "./tubes";
 import { barFromPa, UnitError, type Quantity } from "./units";
 
 export type Severity = "error" | "warning";
@@ -56,6 +58,8 @@ export interface Analysis {
 export interface Built {
   components: Map<string, Component>;
   connections: [string, string][];
+  /** tubo di ogni collegamento accettato (null: collegamento ideale o tubo non valido) */
+  tubes: (Tube | null)[];
   issues: Issue[];
 }
 
@@ -80,6 +84,7 @@ export function build(data: Pick<CircuitDoc, "components" | "connections">): Bui
   }
 
   const connections: [string, string][] = [];
+  const tubes: (Tube | null)[] = [];
   const seen = new Set<string>();
   for (const raw of data.connections ?? []) {
     let a, b;
@@ -106,8 +111,16 @@ export function build(data: Pick<CircuitDoc, "components" | "connections">): Bui
     if (seen.has(key)) { fail(`collegamento già presente: ${refStr(x)} — ${refStr(y)}`); continue; }
     seen.add(key);
     connections.push([refStr(x), refStr(y)]);
+    let tube: Tube | null = null;
+    try {
+      tube = parseTube(raw.tube, `linea ${refStr(x)} — ${refStr(y)}`);
+    } catch (e) {
+      if (!(e instanceof ParameterError)) throw e;
+      issues.push(issue("error", "INVALID_TUBE", e.message, null, [refStr(x), refStr(y)]));
+    }
+    tubes.push(tube);
   }
-  return { components, connections, issues };
+  return { components, connections, tubes, issues };
 }
 
 export const allPorts = (components: Map<string, Component>): string[] =>

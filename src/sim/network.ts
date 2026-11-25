@@ -2,13 +2,15 @@
  * Dallo schema dell'editor alla rete fisica da simulare.
  *
  * Modello a parametri concentrati (lo stesso di src/solver): ogni rete di porte
- * collegate è un nodo con un volume e una pressione; valvole e strozzatori sono
- * orifizi ISO 6358 (conduttanza C, rapporto critico b) tra due nodi; i cilindri
+ * unite da collegamenti ideali è un nodo con un volume e una pressione; valvole,
+ * strozzatori e tubi dimensionati sono orifizi ISO 6358 (conduttanza C, rapporto
+ * critico b) tra due nodi, e il volume di un tubo va metà a ciascun capo; i cilindri
  * sono masse con attrito che cambiano il volume delle loro camere.
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
 import { simParam, type Actuation, type Component, type ValveFunction } from "../model/components";
+import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { allPorts, analyze, build } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
 
@@ -103,7 +105,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   const warnings: string[] = [];
   const comps = [...built.components.values()];
 
-  const groups = nets(allPorts(built.components), built.connections);
+  // i collegamenti ideali uniscono le porte in un solo nodo, i tubi restano tra due nodi
+  const ideal = built.connections.filter((_, i) => !built.tubes[i]);
+  const groups = nets(allPorts(built.components), ideal);
   const portNode: Record<string, number> = {};
   groups.forEach((g, i) => g.forEach((r) => (portNode[r] = i)));
   let nodeCount = groups.length;
@@ -119,6 +123,15 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     fixed.set(n, P_ATM);
     return n;
   };
+
+  const tubeVolumes: [number, number][] = [];
+  built.connections.forEach(([ra, rb], i) => {
+    const t = built.tubes[i];
+    if (!t) return;
+    const a = portNode[ra]!, b = portNode[rb]!;
+    orifices.push({ a, b, C: tubeConductance(t), bcrit: TUBE_CRITICAL_RATIO });
+    tubeVolumes.push([a, tubeVolume(t) / 2], [b, tubeVolume(t) / 2]);
+  });
 
   for (const c of comps) {
     switch (c.type) {
@@ -194,11 +207,13 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     }
   }
 
+  const baseVolume = Array.from({ length: nodeCount }, () => options.nodeVolume ?? NODE_VOLUME);
+  for (const [n, v] of tubeVolumes) baseVolume[n]! += v;
   return {
     ok: true,
     warnings,
     network: {
-      nodeCount, fixed, baseVolume: Array.from({ length: nodeCount }, () => options.nodeVolume ?? NODE_VOLUME),
+      nodeCount, fixed, baseVolume,
       orifices, valves, cylinders, portNode, temperature: 293.15,
     },
   };
