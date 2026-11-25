@@ -1,0 +1,225 @@
+{
+ "format": "pneutrack/circuit",
+ "version": 1,
+ "name": "Elettropneumatica: ciclo automatico A+ A- con finecorsa elettrici",
+ "components": [
+  {
+   "id": "C1",
+   "type": "double_acting_cylinder",
+   "params": {
+    "bore": "32 mm",
+    "rod": "12 mm",
+    "stroke": "100 mm",
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "V1",
+   "type": "directional_valve",
+   "function": "5/2",
+   "actuation_14": "solenoid",
+   "actuation_12": "solenoid",
+   "params": {
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "P",
+   "type": "pressure_source",
+   "params": {
+    "pressure": "6 bar"
+   }
+  },
+  {
+   "id": "G",
+   "type": "electric_supply",
+   "params": {
+    "voltage": "24 V"
+   }
+  },
+  {
+   "id": "N1",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N2",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S1",
+   "type": "pushbutton",
+   "contact": "no",
+   "operation": "latching",
+   "label": "Ciclo continuo"
+  },
+  {
+   "id": "S2",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C1-",
+   "label": "a0"
+  },
+  {
+   "id": "Y1",
+   "type": "valve_solenoid",
+   "drives": "V1.14"
+  },
+  {
+   "id": "N3",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N4",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S3",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C1+",
+   "label": "a1"
+  },
+  {
+   "id": "Y2",
+   "type": "valve_solenoid",
+   "drives": "V1.12"
+  }
+ ],
+ "connections": [
+  {
+   "from": "C1.A",
+   "to": "V1.4"
+  },
+  {
+   "from": "C1.B",
+   "to": "V1.2"
+  },
+  {
+   "from": "P.1",
+   "to": "V1.1"
+  },
+  {
+   "from": "N1.1",
+   "to": "S1.13"
+  },
+  {
+   "from": "S1.14",
+   "to": "S2.13"
+  },
+  {
+   "from": "S2.14",
+   "to": "Y1.A1"
+  },
+  {
+   "from": "Y1.A2",
+   "to": "N2.1"
+  },
+  {
+   "from": "N3.1",
+   "to": "S3.13"
+  },
+  {
+   "from": "S3.14",
+   "to": "Y2.A1"
+  },
+  {
+   "from": "Y2.A2",
+   "to": "N4.1"
+  },
+  {
+   "from": "G.+",
+   "to": "N1.1",
+   "points": [
+    [
+     460,
+     -260
+    ]
+   ]
+  },
+  {
+   "from": "G.0V",
+   "to": "N2.1",
+   "points": [
+    [
+     460,
+     280
+    ]
+   ]
+  },
+  {
+   "from": "N1.1",
+   "to": "N3.1"
+  },
+  {
+   "from": "N2.1",
+   "to": "N4.1"
+  }
+ ],
+ "layout": {
+  "C1": {
+   "x": 160,
+   "y": -60,
+   "rot": 0
+  },
+  "V1": {
+   "x": 160,
+   "y": 100,
+   "rot": 0
+  },
+  "P": {
+   "x": 180,
+   "y": 260,
+   "rot": 0
+  },
+  "G": {
+   "x": 460,
+   "y": 10,
+   "rot": 0
+  },
+  "N1": {
+   "x": 560,
+   "y": -260,
+   "rot": 0
+  },
+  "N2": {
+   "x": 560,
+   "y": 280,
+   "rot": 0
+  },
+  "S1": {
+   "x": 560,
+   "y": -120,
+   "rot": 0
+  },
+  "S2": {
+   "x": 560,
+   "y": 10,
+   "rot": 0
+  },
+  "Y1": {
+   "x": 560,
+   "y": 140,
+   "rot": 0
+  },
+  "N3": {
+   "x": 670,
+   "y": -260,
+   "rot": 0
+  },
+  "N4": {
+   "x": 670,
+   "y": 280,
+   "rot": 0
+  },
+  "S3": {
+   "x": 670,
+   "y": -80,
+   "rot": 0
+  },
+  "Y2": {
+   "x": 670,
+   "y": 100,
+   "rot": 0
+  }
+ }
+}

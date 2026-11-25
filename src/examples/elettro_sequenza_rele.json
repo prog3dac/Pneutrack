@@ -1,0 +1,556 @@
+{
+ "format": "pneutrack/circuit",
+ "version": 1,
+ "name": "Elettropneumatica: sequenza A+ B+ B- A- con relè",
+ "components": [
+  {
+   "id": "C1",
+   "type": "double_acting_cylinder",
+   "params": {
+    "bore": "32 mm",
+    "rod": "12 mm",
+    "stroke": "100 mm",
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "V1",
+   "type": "directional_valve",
+   "function": "5/2",
+   "actuation_14": "solenoid",
+   "actuation_12": "solenoid",
+   "params": {
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "C2",
+   "type": "double_acting_cylinder",
+   "params": {
+    "bore": "32 mm",
+    "rod": "12 mm",
+    "stroke": "100 mm",
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "V2",
+   "type": "directional_valve",
+   "function": "5/2",
+   "actuation_14": "solenoid",
+   "actuation_12": "solenoid",
+   "params": {
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "P",
+   "type": "pressure_source",
+   "params": {
+    "pressure": "6 bar"
+   }
+  },
+  {
+   "id": "G",
+   "type": "electric_supply",
+   "params": {
+    "voltage": "24 V"
+   }
+  },
+  {
+   "id": "N1",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N2",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S1",
+   "type": "pushbutton",
+   "contact": "no",
+   "operation": "latching",
+   "label": "Ciclo continuo"
+  },
+  {
+   "id": "S2",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C1-",
+   "label": "a0"
+  },
+  {
+   "id": "K1e",
+   "type": "relay_contact",
+   "contact": "nc",
+   "relay": "K1"
+  },
+  {
+   "id": "Y1",
+   "type": "valve_solenoid",
+   "drives": "V1.14",
+   "label": "A+"
+  },
+  {
+   "id": "N3",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N4",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S4",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C1+",
+   "label": "a1"
+  },
+  {
+   "id": "K1b",
+   "type": "relay_contact",
+   "contact": "nc",
+   "relay": "K1"
+  },
+  {
+   "id": "Y3",
+   "type": "valve_solenoid",
+   "drives": "V2.14",
+   "label": "B+"
+  },
+  {
+   "id": "N5",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N6",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N7",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N8",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S6",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C2+",
+   "label": "b1"
+  },
+  {
+   "id": "K1a",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "S3",
+   "type": "limit_switch",
+   "contact": "nc",
+   "cam": "C1-",
+   "label": "a0"
+  },
+  {
+   "id": "K1",
+   "type": "relay_coil",
+   "label": "Memoria B fatto"
+  },
+  {
+   "id": "N9",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N10",
+   "type": "wire_junction"
+  },
+  {
+   "id": "K1c",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "Y4",
+   "type": "valve_solenoid",
+   "drives": "V2.12",
+   "label": "B-"
+  },
+  {
+   "id": "N11",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N12",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S5",
+   "type": "limit_switch",
+   "contact": "no",
+   "cam": "C2-",
+   "label": "b0"
+  },
+  {
+   "id": "K1d",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "Y2",
+   "type": "valve_solenoid",
+   "drives": "V1.12",
+   "label": "A-"
+  }
+ ],
+ "connections": [
+  {
+   "from": "C1.A",
+   "to": "V1.4"
+  },
+  {
+   "from": "C1.B",
+   "to": "V1.2"
+  },
+  {
+   "from": "C2.A",
+   "to": "V2.4"
+  },
+  {
+   "from": "C2.B",
+   "to": "V2.2"
+  },
+  {
+   "from": "P.1",
+   "to": "V1.1"
+  },
+  {
+   "from": "P.1",
+   "to": "V2.1"
+  },
+  {
+   "from": "N1.1",
+   "to": "S1.13"
+  },
+  {
+   "from": "S1.14",
+   "to": "S2.13"
+  },
+  {
+   "from": "S2.14",
+   "to": "K1e.11"
+  },
+  {
+   "from": "K1e.12",
+   "to": "Y1.A1"
+  },
+  {
+   "from": "Y1.A2",
+   "to": "N2.1"
+  },
+  {
+   "from": "N3.1",
+   "to": "S4.13"
+  },
+  {
+   "from": "S4.14",
+   "to": "K1b.11"
+  },
+  {
+   "from": "K1b.12",
+   "to": "Y3.A1"
+  },
+  {
+   "from": "Y3.A2",
+   "to": "N4.1"
+  },
+  {
+   "from": "N5.1",
+   "to": "N7.1"
+  },
+  {
+   "from": "N7.1",
+   "to": "S6.13"
+  },
+  {
+   "from": "S6.14",
+   "to": "N8.1"
+  },
+  {
+   "from": "N7.1",
+   "to": "K1a.13"
+  },
+  {
+   "from": "K1a.14",
+   "to": "N8.1"
+  },
+  {
+   "from": "N8.1",
+   "to": "S3.11"
+  },
+  {
+   "from": "S3.12",
+   "to": "K1.A1"
+  },
+  {
+   "from": "K1.A2",
+   "to": "N6.1"
+  },
+  {
+   "from": "N9.1",
+   "to": "K1c.13"
+  },
+  {
+   "from": "K1c.14",
+   "to": "Y4.A1"
+  },
+  {
+   "from": "Y4.A2",
+   "to": "N10.1"
+  },
+  {
+   "from": "N11.1",
+   "to": "S5.13"
+  },
+  {
+   "from": "S5.14",
+   "to": "K1d.13"
+  },
+  {
+   "from": "K1d.14",
+   "to": "Y2.A1"
+  },
+  {
+   "from": "Y2.A2",
+   "to": "N12.1"
+  },
+  {
+   "from": "G.+",
+   "to": "N1.1",
+   "points": [
+    [
+     620,
+     -260
+    ]
+   ]
+  },
+  {
+   "from": "G.0V",
+   "to": "N2.1",
+   "points": [
+    [
+     620,
+     280
+    ]
+   ]
+  },
+  {
+   "from": "N1.1",
+   "to": "N3.1"
+  },
+  {
+   "from": "N3.1",
+   "to": "N5.1"
+  },
+  {
+   "from": "N5.1",
+   "to": "N9.1"
+  },
+  {
+   "from": "N9.1",
+   "to": "N11.1"
+  },
+  {
+   "from": "N2.1",
+   "to": "N4.1"
+  },
+  {
+   "from": "N4.1",
+   "to": "N6.1"
+  },
+  {
+   "from": "N6.1",
+   "to": "N10.1"
+  },
+  {
+   "from": "N10.1",
+   "to": "N12.1"
+  }
+ ],
+ "layout": {
+  "C1": {
+   "x": 120,
+   "y": -60,
+   "rot": 0
+  },
+  "V1": {
+   "x": 120,
+   "y": 100,
+   "rot": 0
+  },
+  "C2": {
+   "x": 380,
+   "y": -60,
+   "rot": 0
+  },
+  "V2": {
+   "x": 380,
+   "y": 100,
+   "rot": 0
+  },
+  "P": {
+   "x": 260,
+   "y": 260,
+   "rot": 0
+  },
+  "G": {
+   "x": 620,
+   "y": 10,
+   "rot": 0
+  },
+  "N1": {
+   "x": 720,
+   "y": -260,
+   "rot": 0
+  },
+  "N2": {
+   "x": 720,
+   "y": 280,
+   "rot": 0
+  },
+  "S1": {
+   "x": 720,
+   "y": -150,
+   "rot": 0
+  },
+  "S2": {
+   "x": 720,
+   "y": -40,
+   "rot": 0
+  },
+  "K1e": {
+   "x": 720,
+   "y": 60,
+   "rot": 0
+  },
+  "Y1": {
+   "x": 720,
+   "y": 170,
+   "rot": 0
+  },
+  "N3": {
+   "x": 830,
+   "y": -260,
+   "rot": 0
+  },
+  "N4": {
+   "x": 830,
+   "y": 280,
+   "rot": 0
+  },
+  "S4": {
+   "x": 830,
+   "y": -120,
+   "rot": 0
+  },
+  "K1b": {
+   "x": 830,
+   "y": 10,
+   "rot": 0
+  },
+  "Y3": {
+   "x": 830,
+   "y": 140,
+   "rot": 0
+  },
+  "N5": {
+   "x": 940,
+   "y": -260,
+   "rot": 0
+  },
+  "N6": {
+   "x": 940,
+   "y": 280,
+   "rot": 0
+  },
+  "N7": {
+   "x": 940,
+   "y": -170,
+   "rot": 0
+  },
+  "N8": {
+   "x": 940,
+   "y": -70,
+   "rot": 0
+  },
+  "S6": {
+   "x": 940,
+   "y": -120,
+   "rot": 0
+  },
+  "K1a": {
+   "x": 1020,
+   "y": -120,
+   "rot": 0
+  },
+  "S3": {
+   "x": 940,
+   "y": 10,
+   "rot": 0
+  },
+  "K1": {
+   "x": 940,
+   "y": 140,
+   "rot": 0
+  },
+  "N9": {
+   "x": 1130,
+   "y": -260,
+   "rot": 0
+  },
+  "N10": {
+   "x": 1130,
+   "y": 280,
+   "rot": 0
+  },
+  "K1c": {
+   "x": 1130,
+   "y": -80,
+   "rot": 0
+  },
+  "Y4": {
+   "x": 1130,
+   "y": 100,
+   "rot": 0
+  },
+  "N11": {
+   "x": 1240,
+   "y": -260,
+   "rot": 0
+  },
+  "N12": {
+   "x": 1240,
+   "y": 280,
+   "rot": 0
+  },
+  "S5": {
+   "x": 1240,
+   "y": -120,
+   "rot": 0
+  },
+  "K1d": {
+   "x": 1240,
+   "y": 10,
+   "rot": 0
+  },
+  "Y2": {
+   "x": 1240,
+   "y": 140,
+   "rot": 0
+  }
+ }
+}
