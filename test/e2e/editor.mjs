@@ -41,6 +41,11 @@ async function wire(a, b) {
   await page.mouse.move(q.x, q.y, { steps: 4 });
   await page.mouse.up();
 }
+// comandi del menu File e Modifica: si apre il menu e si sceglie la voce
+async function menuAct(act, menu = "#file-menu") {
+  await page.click(`${menu} summary`);
+  await page.click(`${menu} [data-act="${act}"]`);
+}
 async function dropFromPalette(type, x, y) {
   const canvas = await page.locator("#canvas").boundingBox();
   await page.locator(`.palette-item[data-type="${type}"]`).first().dragTo(page.locator("#canvas"), {
@@ -177,7 +182,7 @@ await settled();
 s = await state();
 assert.equal(s.doc.components[2].params.max_pressure, "4 bar", "unità aggiunta in automatico");
 assert.deepEqual(s.analysis.issues.map((i) => i.code), ["OVERPRESSURE"]);
-await page.waitForSelector("#issues li.error");
+await page.waitForSelector("#issues li.error", { state: "attached" });
 assert.match(await page.textContent("#status"), /1 errore/);
 if (shots) await page.screenshot({ path: `${shots}/sovrapressione.png` });
 
@@ -211,6 +216,7 @@ s = await state();
 assert.deepEqual(s.analysis.issues.map((i) => i.code), ["OVERPRESSURE"]);
 
 // 6. clic sul problema seleziona il componente; Canc lo elimina con le sue linee
+await page.click("#status"); // il bollino apre l'elenco dei problemi
 await page.click("#issues li.error");
 assert.equal(await page.inputValue('#properties input[name="id"]'), "C1");
 await page.keyboard.press("Delete");
@@ -250,7 +256,7 @@ await page.click("#view-filter summary");
 assert.ok((await labelTexts()).some((t) => t.startsWith("V1")));
 
 // 9. esportazione: scarica un file che il modello sa rileggere
-const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="export"]')]);
+const [download] = await Promise.all([page.waitForEvent("download"), menuAct("export")]);
 assert.match(download.suggestedFilename(), /\.pneu\.json$/);
 const saved = JSON.parse(await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c).toString()));
 assert.equal(saved.format, "pneutrack/circuit");
@@ -282,7 +288,7 @@ const projects = () => page.evaluate(async () => {
 });
 const saveText = () => page.textContent("#save-state");
 assert.equal(await saveText(), "Bozza non salvata");
-await page.click('[data-act="save"]');
+await menuAct("save");
 await page.waitForFunction(() => document.querySelector("#save-state").textContent.startsWith("Salvato"));
 const firstId = await page.evaluate(() => window.pneutrack.project.id);
 
@@ -300,10 +306,10 @@ assert.equal(s.doc.layout.C1.rot, 1, "modifica autosalvata");
 assert.equal(s.doc.components.length, 8);
 
 // 11. finestra Progetti: salva copia, rinomina, duplica, elimina, apri
-await page.click('[data-act="save-as"]');
+await menuAct("save-as");
 await page.waitForFunction(() => document.querySelector("#save-state").textContent.startsWith("Salvato"));
 assert.notEqual(await page.evaluate(() => window.pneutrack.project.id), firstId);
-await page.click('[data-act="projects"]');
+await menuAct("projects");
 await page.waitForSelector("#projects-list li[data-id]");
 let names = await projects();
 assert.deepEqual(names.sort(), ["Comando indiretto cilindro doppio effetto",
@@ -328,11 +334,11 @@ assert.equal(await page.evaluate(() => window.pneutrack.project.id), firstId);
 assert.equal(await page.textContent("#doc-name"), "Pressa banco 1");
 
 // 12. nuovo schema: bozza separata, il progetto resta in archivio
-await page.click('[data-act="new"]');
+await menuAct("new");
 s = await state();
 assert.equal(s.doc.components.length, 0);
 assert.equal(await page.evaluate(() => window.pneutrack.project), null);
-await page.click('[data-act="projects"]');
+await menuAct("projects");
 await page.waitForFunction(() => document.querySelectorAll("#projects-list li[data-id]").length === 2);
 await page.keyboard.press("Escape");
 
@@ -384,7 +390,7 @@ await waitLive("valve:V1", "v === '12'");
 await page.mouse.up();
 await waitLive("cyl:C1", "Number(v) < 0.01");
 
-await page.click('[data-act="sim"]');
+await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim === undefined);
 
 // 14. blocchi: Maiusc+clic, Unisci, nome e descrizione, sposta, duplica, libreria, Dividi
@@ -465,7 +471,7 @@ async function linePoint(from) {
 await page.click("#canvas", { position: { x: 40, y: 40 } });
 s = await state();
 const nConn = s.doc.connections.length, nComp = s.doc.components.length;
-await dropFromPalette("pressure_gauge", 900, 120);
+await dropFromPalette("pressure_gauge", 700, 120);
 await settled();
 s = await state();
 const gauge = s.doc.components.at(-1).id;
@@ -529,7 +535,7 @@ await settled();
 s = await state();
 assert.equal(s.doc.components.length, nAll - 1);
 assert.ok(!s.doc.components.some((c) => c.id === gauge));
-await page.click("#btn-paste");
+await menuAct("paste", "#edit-menu");
 await settled();
 s = await state();
 assert.equal(s.doc.components.length, nAll);
@@ -554,7 +560,7 @@ assert.ok(schemaFields.every((t) => t.length > 30), "campi dello schema e del fo
 
 // 18. specchia: le porte passano dall'altra parte, il simbolo resta al suo posto
 await page.click("#canvas", { position: { x: 40, y: 40 } });
-await dropFromPalette("double_acting_cylinder", 200, 640);
+await dropFromPalette("double_acting_cylinder", 420, 640);
 await settled();
 s = await state();
 const cyl = s.doc.components.at(-1).id;
@@ -567,7 +573,7 @@ await settled();
 s = await state();
 assert.equal(s.doc.layout[cyl].mirror, true);
 assert.ok((await portX("A")) > (await portX("B")), "A passa a destra");
-await page.click('#properties [data-act="mirror-v"]');
+await page.click('#selbar [data-act="mirror-v"]');
 await settled();
 assert.ok((await portY("A")) < yA, "le porte passano sopra");
 await page.keyboard.press("v");
@@ -636,20 +642,19 @@ await page.mouse.down();
 await waitLive("load:Y1", "v === '1'");
 await page.mouse.up();
 await waitLive("load:Y1", "v === '0'");
-// diagramma delle fasi: corsie di C1 e Y1, in tempo e per passi
-await page.click('[data-act="sim-diagram"]');
+// diagramma delle fasi: aperto nella fascia in basso, corsie di C1 e Y1, in tempo e per passi
 await page.waitForSelector('#diagram:not([hidden]) .diagram-svg');
 for (const id of ["C1", "Y1"]) {
   assert.equal(await page.locator(`#diagram [data-channel="${id}"] .dg-trace`).count(), 1, `il diagramma traccia ${id}`);
 }
-await page.click('#diagram [data-dmode="step"]');
+await page.click('#sim-bar [data-dmode="step"]');
 await page.waitForSelector('#diagram .diagram-svg[data-mode="step"]');
 assert.ok(Number(await page.getAttribute("#diagram .diagram-svg", "data-steps")) >= 3, "uscita e rientro di C1 sono passi");
 if (shots) await page.screenshot({ path: `${shots}/diagramma.png` });
 await page.click('[data-act="sim-reset"]');
-await page.click('#diagram [data-dmode="close"]');
+await page.click('[data-act="sim-diagram"]');
 assert.ok(await page.locator("#diagram").isHidden(), "il diagramma si chiude");
-await page.click('[data-act="sim"]');
+await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim !== "on");
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
