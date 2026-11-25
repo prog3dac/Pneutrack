@@ -14,8 +14,15 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
+[project.scripts]
+pneutrack-gui = "pneutrack.gui.server:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"pneutrack.gui" = ["static/*", "static/**/*"]
+"pneutrack.examples" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

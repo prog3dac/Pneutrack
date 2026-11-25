@@ -73,6 +73,8 @@ class CircuitError(ValueError):
 class Circuit:
     def __init__(self, name: str = "") -> None:
         self.name = name
+        # Posizione grafica dei componenti (id -> {"x":..,"y":..,"rot":..}); ignorata dal modello.
+        self.layout: dict[str, dict[str, Any]] = {}
         self._components: dict[str, Component] = {}
         self._connections: dict[tuple[PortRef, PortRef], Connection] = {}
 
@@ -93,6 +95,7 @@ class Circuit:
         self._connections = {k: c for k, c in self._connections.items()
                              if component_id not in (c.a.component, c.b.component)}
         del self._components[component_id]
+        self.layout.pop(component_id, None)
 
     def component(self, component_id: str) -> Component:
         try:
@@ -210,6 +213,8 @@ class Circuit:
                 {"from": str(c.a), "to": str(c.b), **({"id": c.id} if c.id else {})}
                 for c in self._connections.values()
             ],
+            **({"layout": {k: v for k, v in self.layout.items() if k in self._components}}
+               if self.layout else {}),
         }
 
     @classmethod
@@ -223,6 +228,7 @@ class Circuit:
             circuit.add(component_from_dict(cd))
         for conn in data.get("connections", []):
             circuit.connect(conn["from"], conn["to"], conn.get("id", ""))
+        circuit.layout = {k: dict(v) for k, v in data.get("layout", {}).items() if k in circuit}
         return circuit
 
     def to_json(self, **kwargs: Any) -> str:
