@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.18.1 · 2026-11-25
+
+- Valvole a 5 vie (5/2 e posizioni esterne delle 5/3): nelle caselle compare il simbolo della bocca chiusa sullo scarico che non lavora (5 col comando 14, 3 col comando 12), come vuole la ISO 1219-1.
+- I numeri delle bocche stanno accanto al tratto tra simbolo e porta (a destra per le porte in alto e in basso, sopra per quelle laterali), dove le linee collegate non li coprono.
+
 ## 0.18.0 · 2026-11-25
 
 - Simboli pneumatici ricontrollati sulla ISO 1219-1 e sugli esempi di schema delle ISO 1219-2 e 1219-3: pilotaggi, elettropiloti e motore pneumatico con il triangolo vuoto dell'aria (quello pieno indica l'olio); triangoli del motore rivolti verso l'interno.
