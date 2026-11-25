@@ -3,6 +3,15 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.17.0 · 2026-11-25
+
+- Interfaccia riorganizzata in due modalità, Disegno e Simula, scelte con l'interruttore al centro della barra in alto.
+- Barra in alto più leggera: i comandi dei progetti sono nel menu File, taglia/copia/incolla nel menu Modifica.
+- Palette a icone su due colonne, con una barra laterale che porta a componenti pneumatici, elettrici, blocchi salvati e foglio.
+- Ruota, Specchia, Duplica ed Elimina compaiono in una barra sopra la selezione; zoom, Adatta e Mostra sono in basso a destra del foglio.
+- Il bollino di validazione apre l'elenco dei problemi, così il pannello delle proprietà usa tutta l'altezza.
+- In Simula il diagramma delle fasi ha una fascia fissa in basso, insieme a Pausa, Ricomincia, velocità e tempo.
+
 ## 0.16.0 · 2026-11-25
 
 - Diagramma delle fasi in simulazione: il pulsante «Diagramma» mostra la corsa dei cilindri e lo stato di bobine, lampade e contatti dei relè, nel tempo o per passi del ciclo.
