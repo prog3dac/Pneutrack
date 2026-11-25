@@ -92,8 +92,12 @@ const PARAMS: Record<string, string> = {
     "Tempo che passa tra l'arrivo della tensione sulla bobina e la commutazione dei contatti del relè. " +
     "Serve solo alla simulazione.",
   position:
-    "Posizione del sensore lungo la corsa del cilindro, misurata dal fondello (lato porta A). Il sensore " +
-    "si attiva quando il pistone la raggiunge.",
+    "Posizione del sensore lungo la corsa del cilindro, misurata dal fondello (lato porta A), cioè dallo " +
+    "stelo tutto dentro. Il sensore dà il segnale quando il pistone è a questa distanza, entro il campo di " +
+    "rilevamento. In alternativa lo si lega a un fine corsa del cilindro (C1+ o C1−).",
+  range:
+    "Campo di rilevamento: il sensore resta attivo finché il pistone è entro più o meno questo tratto dalla " +
+    "posizione impostata. Serve solo alla simulazione.",
   hysteresis: "Isteresi: differenza tra il punto in cui il componente si attiva e quello in cui si disattiva.",
 };
 
@@ -116,9 +120,6 @@ const TYPE_PARAMS: Record<string, string> = {
   "pressure_switch.hysteresis":
     "Isteresi del pressostato: il contatto torna a riposo quando la pressione scende di questo valore " +
     "sotto la pressione di intervento. Serve solo alla simulazione.",
-  "proximity_sensor.hysteresis":
-    "Isteresi del sensore: il segnale si spegne quando il pistone si allontana di questo tratto dalla " +
-    "posizione di attivazione. Serve solo alla simulazione.",
   "time_delay_valve.delay":
     "Tempo per cui il pilotaggio 12 deve restare in pressione prima che il temporizzatore commuti.",
   "time_delay_valve.pilot_pressure":
