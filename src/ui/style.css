@@ -159,6 +159,7 @@ button.link:hover { text-decoration: underline; }
 .symbol .rod { fill: var(--sheet); }
 .symbol .thick { stroke-width: 3; }
 .symbol .dash { stroke-dasharray: 4 3; }
+.symbol .dashdot { stroke-dasharray: 9 3 2 3; }
 .symbol .hatch { fill: var(--grid); }
 .symbol text { fill: var(--ink); font-size: 14px; text-anchor: middle; }
 

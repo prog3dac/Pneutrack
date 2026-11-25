@@ -43,7 +43,6 @@ const circle = (cx: number, cy: number, r: number, cls = "") =>
 const esc = (t: string) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 const text = (x: number, y: number, t: string, cls: string) =>
   `<text x="${x}" y="${y}" class="${cls}" text-anchor="middle">${esc(t)}</text>`;
-const fillPath = (d: string) => path(d, "fill");
 
 function arrowHead(x1: number, y1: number, x2: number, y2: number, size = 6) {
   const a = Math.atan2(y2 - y1, x2 - x1);
@@ -51,6 +50,15 @@ function arrowHead(x1: number, y1: number, x2: number, y2: number, size = 6) {
   const p2 = [x2 - size * Math.cos(a + 0.4), y2 - size * Math.sin(a + 0.4)];
   return path(`M${x2},${y2} L${p1[0]},${p1[1]} L${p2[0]},${p2[1]} Z`, "fill");
 }
+/** Triangolo vuoto (ISO 1219: mezzo pneumatico), punta in (x2, y2) nella direzione x1,y1 → x2,y2. */
+function hollowHead(x1: number, y1: number, x2: number, y2: number, size = 7) {
+  const a = Math.atan2(y2 - y1, x2 - x1);
+  const p1 = [x2 - size * Math.cos(a - 0.45), y2 - size * Math.sin(a - 0.45)];
+  const p2 = [x2 - size * Math.cos(a + 0.45), y2 - size * Math.sin(a + 0.45)];
+  return path(`M${x2},${y2} L${p1[0]},${p1[1]} L${p2[0]},${p2[1]} Z`, "body");
+}
+/** Molla regolabile: freccia obliqua che attraversa la molla (ISO 1219). */
+const adjustArrow = (x1: number, y1: number, x2: number, y2: number) => line(x1, y1, x2, y2) + arrowHead(x1, y1, x2, y2, 5);
 const arrow = (x1: number, y1: number, x2: number, y2: number) => line(x1, y1, x2, y2) + arrowHead(x1, y1, x2, y2);
 
 function zigzag(x1: number, y1: number, x2: number, y2: number, n = 6, amp = 5) {
@@ -111,7 +119,7 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
       body = line(o(0), 0, o(4), 0) + rect(Math.min(o(4), o(14)), -8, 10, 16) + line(o(4), 8, o(14), -8);
       break;
     case "pilot":
-      body = line(o(0), 0, o(20), 0, "dash") + arrowHead(o(10), 0, o(2), 0, 7);
+      body = line(o(9), 0, o(20), 0, "dash") + hollowHead(o(10), 0, o(1), 0, 9);
       break;
     case "manual":
       body = line(o(0), 0, o(14), 0) + line(o(14), -8, o(14), 8) +
@@ -142,7 +150,7 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
     case "solenoid_pilot_ext": {
       // valvola pilota (triangolo) comandata dal solenoide
       const xa = Math.min(o(0), o(10));
-      body = rect(xa, -8, 10, 16) + fillPath(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`) +
+      body = rect(xa, -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body") +
         rect(Math.min(o(10), o(20)), -8, 10, 16) + line(o(10), 8, o(20), -8);
       if (kind === "solenoid_pilot_ext") body += line(o(5), 8, o(5), 32, "dash");
       break;
@@ -150,7 +158,7 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
     case "air_return":
     case "air_return_ext":
       // ritorno pneumatico: pilotaggio sul lato di ritorno (triangolo pieno); interno: linea verso la porta 1
-      body = line(o(0), 0, o(16), 0, "dash") + fillPath(`M${o(2)},0 L${o(9)},-4 L${o(9)},4 Z`);
+      body = line(o(9), 0, o(16), 0, "dash") + path(`M${o(2)},0 L${o(9)},-4 L${o(9)},4 Z`, "body");
       if (kind === "air_return") body += line(o(14), 0, o(14), 18, "dash") + line(o(14), 18, o(6), 18, "dash");
       else body += line(o(5), 0, o(5), 32, "dash");
       break;
@@ -262,9 +270,9 @@ const lubricatorGeometry = (): Geometry => ({
 });
 
 function frlGeometry(): Geometry {
-  const box = `<rect x="-46" y="-20" width="92" height="40" rx="4" class="nofill dash"/>`;
+  const box = `<rect x="-46" y="-20" width="92" height="40" class="nofill dashdot"/>`;
   const filter = diamond(-28, 2, 10) + line(-28, -8, -28, 12, "dash");
-  const reg = rect(-9, -8, 18, 20, "box") + arrow(-3, 9, -3, -5) + zigzag(9, 6, 15, 6, 4, 3);
+  const reg = rect(-9, -8, 18, 20, "box") + arrow(0, 10, 0, -6) + zigzag(9, 6, 16, 6, 4, 3) + adjustArrow(9, 12, 16, 0);
   const gauge = circle(0, -15, 5, "body") + line(0, -15, 3, -18);
   const lub = diamond(28, 2, 10) + line(22, 2, 34, 2);
   const flow = line(-56, 2, -38, 2) + line(-18, 2, -9, 2) + line(9, 2, 18, 2) + line(38, 2, 56, 2);
@@ -281,27 +289,31 @@ const gaugeGeometry = (): Geometry => ({
 
 // --- valvole di blocco e logiche -------------------------------------------------
 
-/** sfera e sede di un non ritorno: passa dal basso verso l'alto */
-const checkElement = (x: number, y: number) =>
-  circle(x, y + 5, 5, "body") + path(`M${x - 8},${y - 7} L${x},${y} L${x + 8},${y - 7}`, "nofill");
+/**
+ * Sfera e sede di un non ritorno (ISO 1219): la sfera è appoggiata dentro la sede a V.
+ * dir = 1: passa dal basso verso l'alto (vertice della sede in basso); dir = -1: dall'alto verso il basso.
+ * (x, y) è il centro della sfera; il vertice della sede è a y + 8·dir.
+ */
+const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
+  path(`M${x - 10},${y - 5 * dir} L${x},${y + 8 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
 
 const checkGeometry = (): Geometry => ({
   w: 30, h: 50,
   ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
-  svg: line(0, 24, 0, 10) + checkElement(0, -1) + line(0, -1, 0, -24),
+  svg: line(0, 24, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -24),
 });
 
 const pilotCheckGeometry = (): Geometry => ({
   w: 56, h: 50,
   ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up }, 21: { x: 26, y: 4, dir: right } },
-  svg: rect(-14, -14, 28, 30, "box") + line(0, 24, 0, 16) + line(0, 16, 0, 10) + checkElement(0, -1) +
-    line(0, -1, 0, -24) + line(26, 4, 6, 4, "dash"),
+  svg: rect(-14, -14, 28, 30, "box") + line(0, 24, 0, 6) + checkElement(0, -2) +
+    line(0, -7, 0, -24) + line(26, 4, 6, 4, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {
   let inner: string;
   if (kind === "or") {
-    inner = path("M-18,-7 L-12,0 L-18,7", "nofill") + path("M18,-7 L12,0 L18,7", "nofill") + circle(-6, 0, 5, "body");
+    inner = path("M-11,-7 L-18,0 L-11,7", "nofill") + path("M11,-7 L18,0 L11,7", "nofill") + circle(-12.5, 0, 4, "body");
   } else {
     inner = line(-16, -7, -16, 7) + line(16, -7, 16, 7) + rect(-12, -4, 24, 8, "body") +
       line(-16, 0, -12, 0) + line(12, 0, 16, 0);
@@ -317,15 +329,15 @@ const quickExhaustGeometry = (): Geometry => ({
   w: 64, h: 52,
   ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -24, dir: up }, 3: { x: 0, y: 24, dir: down } },
   svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -24) + line(0, 12, 0, 24) +
-    circle(-6, 0, 5, "body") + path("M2,-8 L-1,0 L2,8", "nofill") + path("M-5,18 L5,18 L0,12 Z", "nofill"),
+    path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-5,18 L5,18 L0,12 Z", "nofill"),
 });
 
 // --- regolazione -------------------------------------------------------------------
 
 function oneWayFlowGeometry(): Geometry {
   const throttle = path("M-8,-10 Q-1,0 -8,10", "nofill") + path("M8,-10 Q1,0 8,10", "nofill") + arrow(-12, 12, 12, -12);
-  const bypass = line(0, -18, 22, -18) + line(22, -18, 22, -9) + line(22, 9, 22, 18) + line(22, 18, 0, 18) +
-    circle(22, 4, 5, "body") + path("M15,-8 L22,-1 L29,-8", "nofill");
+  const bypass = line(0, -18, 22, -18) + line(22, -18, 22, -6) + line(22, 7, 22, 18) + line(22, 18, 0, 18) +
+    checkElement(22, 2, -1);
   return {
     w: 60, h: 50,
     ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
@@ -337,7 +349,7 @@ function pressureBoxGeometry(kind: "relief"): Geometry {
   void kind;
   const svg = rect(-18, -18, 36, 36, "box") + line(0, 18, 0, 28) + line(18, 0, 28, 0) +
     arrow(6, 12, 6, -12) + zigzag(0, -18, 0, -34, 5, 5) + arrow(-9, -22, 9, -30) +
-    line(0, 23, -14, 23, "dash") + line(-14, 23, -14, 8, "dash") + line(-14, 8, -18, 8, "dash");
+    line(0, 23, -11, 23, "dash") + line(-11, 23, -11, 18, "dash");
   return {
     w: 60, h: 66,
     ports: { 1: { x: 0, y: 28, dir: down }, 3: { x: 28, y: 0, dir: right } },
@@ -355,7 +367,8 @@ function pilotedValveGeometry(comp: ComponentData, state: SymbolState | undefine
   const x = p14.x + 8;
   const extra = kind === "sequence"
     // elemento di misura tarabile sopra il pilotaggio
-    ? rect(x - 6, -30, 12, 14, "box") + zigzag(x, -30, x, -38, 4, 3) + line(x, -16, x, -2, "dash")
+    ? rect(x - 6, -30, 12, 14, "box") + zigzag(x, -30, x, -40, 4, 3) + adjustArrow(x - 6, -32, x + 6, -40) +
+      line(x, -16, x, -2, "dash")
     // strozzatore e piccolo serbatoio sul pilotaggio
     : `<rect x="${x - 8}" y="-34" width="16" height="10" rx="4" class="body"/>` +
       path(`M${x - 4},-20 Q${x},-16 ${x - 4},-12`, "nofill") + path(`M${x + 4},-20 Q${x},-16 ${x + 4},-12`, "nofill") +
@@ -366,7 +379,7 @@ function pilotedValveGeometry(comp: ComponentData, state: SymbolState | undefine
 const motorGeometry = (): Geometry => ({
   w: 56, h: 64,
   ports: { 1: { x: -10, y: 30, dir: down }, 2: { x: 10, y: 30, dir: down } },
-  svg: circle(0, 0, 18, "body") + fillPath("M0,-17 L-5,-9 L5,-9 Z") + fillPath("M0,17 L-5,9 L5,9 Z") +
+  svg: circle(0, 0, 18, "body") + path("M0,-9 L-5,-17.3 L5,-17.3 Z", "body") + path("M0,9 L-5,17.3 L5,17.3 Z", "body") +
     line(18, -2, 26, -2) + line(18, 2, 26, 2) + line(-10, 15, -10, 30) + line(10, 15, 10, 30),
 });
 
@@ -403,8 +416,8 @@ function regulatorGeometry(): Geometry {
   const h = S / 2;
   const svg = rect(-h, -h, S, S, "box") +
     line(0, h, 0, h + STUB) + line(0, -h, 0, -h - STUB) +
-    arrow(-6, h - 4, -6, -h + 4) +
-    zigzag(h, 6, h + 16, 6, 5, 5) +
+    arrow(0, h - 2, 0, -h + 2) +
+    zigzag(h, 6, h + 16, 6, 5, 5) + adjustArrow(h + 2, 16, h + 14, -4) +
     line(-h, -h + 8, -h - 8, -h + 8, "dash") + line(-h - 8, -h + 8, -h - 8, -h - STUB + 2, "dash") +
     line(-h - 8, -h - STUB + 2, 0, -h - STUB + 2, "dash");
   return {
@@ -444,8 +457,8 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false,
     svg += line(50, 15, 50, 25);
     ports.B = { x: 50, y: 25, dir: down };
   } else {
+    // camera stelo in comunicazione con l'atmosfera: nessuna porta disegnata (ISO 1219)
     svg += zigzag(pistonX + 4, -9, 58, -9, 9, 4);
-    svg += line(50, -15, 50, -21) + line(46, -21, 54, -21); // sfiato camera stelo
   }
   return { w: through ? 250 : 152, h: 52, ports, svg };
 }
@@ -555,7 +568,7 @@ function proximityGeometry(comp: ComponentData, state?: SymbolState): Geometry {
 function pressureSwitchGeometry(state?: SymbolState): Geometry {
   // pressostato: pilotaggio dal basso su una molla regolabile, con contatto elettrico
   const on = state?.actuated ? " active" : "";
-  const svg = line(0, 16, 0, E, "dash") + arrowHead(0, 26, 0, 16, 6) + rect(-14, -16, 28, 32, `body coil${on}`) +
+  const svg = line(0, 25, 0, E, "dash") + hollowHead(0, 26, 0, 17, 8) + rect(-14, -16, 28, 32, `body coil${on}`) +
     zigzag(-8, -4, 8, -4, 4, 3) + line(10, -10, 10, -2) + line(6, -12, 12, -6) +
     line(-8, 6, 0, 6) + line(0, 6, 6, 2);
   return { w: 40, h: 2 * E, ports: { 1: eBottom() }, svg };

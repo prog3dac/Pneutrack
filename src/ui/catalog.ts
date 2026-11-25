@@ -1,0 +1,159 @@
+/**
+ * Catalogo dei simboli: tutti i componenti della palette, con le varianti, la descrizione
+ * del componente, la lettura del simbolo e le porte. Generato dagli stessi dati dell'editor,
+ * così un componente nuovo compare qui senza altro lavoro.
+ */
+import {
+  ACTUATIONS, ACTUATION_LABELS, typeList, type ComponentData, type PortKind, type TypeDef,
+} from "../model/components";
+import { geometry } from "./symbols";
+
+/** Come si legge il simbolo (pneumatici: ISO 1219-1; elettrici: CEI EN 60617). */
+export const SYMBOL_NOTES: Record<string, string> = {
+  pressure_source: "Cerchio con triangolo vuoto: sorgente di pressione pneumatica (il triangolo vuoto indica l'aria, quello pieno l'olio).",
+  air_reservoir: "Rettangolo con i lati corti arrotondati, disteso: serbatoio d'aria.",
+  air_filter: "Rombo (elemento di trattamento) con linea tratteggiata perpendicolare al flusso: cartuccia filtrante; sotto, lo scarico della condensa.",
+  lubricator: "Rombo attraversato dalla linea di flusso con la goccia d'olio sotto: lubrificatore.",
+  frl_unit: "Filtro, riduttore con manometro e lubrificatore racchiusi da una linea a tratto e punto, che delimita un gruppo montato come unità unica.",
+  pressure_regulator: "Casella con freccia in linea con le porte (valvola normalmente aperta), molla regolabile (freccia obliqua) e pilotaggio tratteggiato dall'uscita sul lato opposto alla molla.",
+  pressure_gauge: "Cerchio con freccia obliqua: strumento di misura della pressione.",
+  silencer: "Triangolo di scarico con l'elemento silenziatore.",
+  exhaust: "Triangolo vuoto sulla linea: scarico diretto in atmosfera, senza raccordo.",
+  junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
+  plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
+  directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione.",
+  check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera.",
+  pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
+  shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
+  and_valve: "Casella con un otturatore tra due sedi: l'uscita è in pressione solo se lo sono entrambi gli ingressi (funzione E).",
+  quick_exhaust_valve: "Casella con sfera e sede sul lato di alimentazione e lo scarico 3 sotto, col triangolo: quando 1 si svuota, 2 scarica direttamente da 3.",
+  flow_control_valve: "Due archi che restringono la linea (strozzamento) attraversati dalla freccia obliqua di regolazione.",
+  one_way_flow_control: "Strozzatore regolabile in parallelo a un non ritorno: strozza in un verso, nell'altro l'aria passa libera dalla valvola di ritegno.",
+  relief_valve: "Casella con freccia spostata rispetto alle porte (normalmente chiusa), molla regolabile e pilotaggio dall'ingresso sul lato opposto alla molla.",
+  sequence_valve: "Valvola 3/2 normalmente chiusa comandata da un pilotaggio che agisce contro una molla tarabile: commuta alla pressione impostata.",
+  time_delay_valve: "Valvola 3/2 normalmente chiusa pilotata attraverso uno strozzatore e un piccolo serbatoio: commuta con ritardo.",
+  single_acting_cylinder: "Rettangolo (camicia), linea spessa (pistone) e stelo; la molla nella camera stelo riporta indietro il pistone. Una sola porta, la camera stelo comunica con l'atmosfera.",
+  double_acting_cylinder: "Camicia, pistone e stelo, con una porta per camera. Con l'ammortizzo: tampone sul pistone e freccia obliqua di regolazione sulla testata.",
+  double_rod_cylinder: "Cilindro a doppio effetto con lo stelo che esce dai due lati.",
+  rotary_actuator: "Cerchio con freccia curva a due punte: attuatore rotante ad angolo limitato, nei due versi.",
+  air_motor: "Cerchio con due triangoli vuoti rivolti verso l'interno (l'energia entra) e albero sul lato: motore pneumatico a due sensi di rotazione.",
+  electric_supply: "Tratto lungo (+) e tratto corto spesso (0V): sorgente in corrente continua.",
+  pushbutton: "Contatto con la lama mobile e il comando a pulsante collegato dalla linea tratteggiata; con ritenuta, la tacca d'arresto.",
+  relay_coil: "Rettangolo: bobina del relè.",
+  timer_relay: "Bobina con la casella del ritardo: piena se ritardata all'eccitazione, con la croce se ritardata alla diseccitazione.",
+  relay_contact: "Contatto NA, NC o in scambio, azionato dalla bobina che porta la stessa sigla.",
+  valve_solenoid: "Rettangolo con la diagonale: bobina di un'elettrovalvola.",
+  limit_switch: "Contatto azionato da un rullo (o da un rullo su leva ribaltabile).",
+  proximity_sensor: "Riquadro con il rombo del sensore: sensore senza contatto a tre fili.",
+  pressure_switch: "Pilotaggio pneumatico (triangolo vuoto) contro una molla regolabile che aziona un contatto elettrico.",
+  signal_lamp: "Cerchio con la croce: lampada di segnalazione.",
+  wire_junction: "Pallino pieno: morsetto comune di più fili.",
+};
+
+/** Come si legge ciascun comando delle valvole (ISO 1219-1). */
+export const ACTUATION_NOTES: Record<string, string> = {
+  solenoid: "Rettangolo con una diagonale: solenoide a un avvolgimento.",
+  solenoid_pilot: "Solenoide che comanda una valvola pilota (rettangolo con triangolo vuoto), alimentata dall'interno.",
+  solenoid_pilot_ext: "Come sopra, con la linea tratteggiata dell'alimentazione esterna del pilota.",
+  pilot: "Linea tratteggiata di pilotaggio con triangolo vuoto: comando pneumatico diretto in pressione.",
+  manual: "Pulsante: testa arrotondata.",
+  lever: "Leva inclinata.",
+  lever_detent: "Leva con il dispositivo di arresto (tacche) che la tiene in posizione.",
+  pedal: "Pedale.",
+  mechanical: "Rullo: azionamento meccanico da una camma o dal cilindro a fine corsa.",
+  plunger: "Tastatore: asta a testa arrotondata.",
+  roller_oneway: "Rullo su leva ribaltabile: aziona la valvola in un solo verso di passaggio.",
+  spring: "Molla di ritorno.",
+  air_return: "Ritorno pneumatico: pilotaggio interno sul lato opposto al comando.",
+  air_return_ext: "Ritorno pneumatico con alimentazione esterna.",
+};
+
+const PORT_KIND: Record<PortKind, string> = {
+  supply: "alimentazione", work: "utilizzo", exhaust: "scarico", pilot: "pilotaggio", electric: "morsetto",
+};
+
+const esc = (t: string) => t.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+
+function symbolSvg(comp: ComponentData, scale = 1.4): string {
+  const g = geometry(comp);
+  const pad = 14;
+  const w = g.w + 2 * pad, h = g.h + 2 * pad;
+  return `<svg class="symbol" viewBox="${-w / 2} ${-h / 2} ${w} ${h}" width="${Math.round(w * scale)}" ` +
+    `height="${Math.round(h * scale)}" role="img">${g.svg}</svg>`;
+}
+
+/** Varianti di un tipo: una per voce della palette, oppure la sola configurazione predefinita. */
+export function variants(def: TypeDef): { label: string; comp: ComponentData }[] {
+  const base = (opts: Record<string, string | undefined> = {}): ComponentData => {
+    const c: ComponentData = { id: "X", type: def.type, params: { ...def.defaults } };
+    for (const o of def.options ?? []) (c as unknown as Record<string, string>)[o.name] = o.default;
+    for (const [k, v] of Object.entries(opts)) if (v !== undefined) (c as unknown as Record<string, string>)[k] = v;
+    return c;
+  };
+  if (!def.presets?.length) return [{ label: def.label, comp: base() }];
+  return def.presets.map((p) => ({ label: p.label, comp: base(p.options) }));
+}
+
+/** Varianti con simbolo diverso: le voci che cambiano solo i parametri (es. il volume) hanno lo stesso disegno. */
+export function distinctVariants(def: TypeDef): { label: string; comp: ComponentData }[] {
+  const seen = new Set<string>();
+  return variants(def).filter((v) => {
+    const svg = geometry(v.comp).svg;
+    if (seen.has(svg)) return false;
+    seen.add(svg);
+    return true;
+  });
+}
+
+function card(def: TypeDef, label: string, comp: ComponentData, showDoc: boolean): string {
+  const ports = def.ports({
+    function: comp.function, actuation_14: comp.actuation_14, actuation_12: comp.actuation_12, contact: comp.contact,
+  } as never);
+  const portList = ports.map((p) => `<span class="cat-port"><b>${esc(p.name)}</b> ${PORT_KIND[p.kind]}</span>`).join(" ");
+  return `<article class="cat-card" data-type="${def.type}">` +
+    `<div class="cat-symbol">${symbolSvg(comp)}</div>` +
+    `<h3>${esc(label)}</h3>` +
+    (showDoc ? `<p class="cat-doc">${esc(def.doc)}</p><p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>` : "") +
+    `<p class="cat-ports">${portList}</p>` +
+    `</article>`;
+}
+
+/** Corpo HTML del catalogo. */
+export function renderCatalog(): string {
+  const defs = typeList().filter((d) => !d.hidden);
+  const categories = [...new Set(defs.map((d) => d.category))];
+  let html = "";
+  const toc: string[] = [];
+  categories.forEach((cat, i) => {
+    const id = `cat-${i}`;
+    toc.push(`<a href="#${id}">${esc(cat)}</a>`);
+    html += `<section id="${id}"><h2>${esc(cat)}</h2>`;
+    // i componenti con un solo simbolo stanno in un'unica griglia; quelli con più varianti hanno un blocco proprio
+    let singles = "", groups = "";
+    for (const def of defs.filter((d) => d.category === cat)) {
+      const vs = distinctVariants(def);
+      if (vs.length === 1) singles += card(def, def.label, vs[0]!.comp, true);
+      else {
+        groups += `<div class="cat-type"><h3>${esc(def.label)}</h3><p class="cat-doc">${esc(def.doc)}</p>` +
+          `<p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>` +
+          `<div class="cat-grid">${vs.map((v) => card(def, v.label, v.comp, false)).join("")}</div></div>`;
+      }
+    }
+    if (singles) html += `<div class="cat-grid">${singles}</div>`;
+    html += groups;
+    html += `</section>`;
+  });
+  // comandi delle valvole, ciascuno disegnato su una 3/2
+  toc.push(`<a href="#cat-act">Comandi delle valvole</a>`);
+  html += `<section id="cat-act"><h2>Comandi delle valvole</h2><p class="cat-doc">Ogni comando è mostrato a ` +
+    `sinistra di una valvola 3/2 con ritorno a molla (la molla a destra), tranne i ritorni, mostrati a destra.</p><div class="cat-grid">`;
+  for (const a of ACTUATIONS) {
+    const ret = a === "spring" || a === "air_return" || a === "air_return_ext";
+    const comp: ComponentData = { id: "X", type: "directional_valve", function: "3/2",
+      actuation_14: ret ? "manual" : a, actuation_12: ret ? a : "spring" };
+    html += `<article class="cat-card"><div class="cat-symbol">${symbolSvg(comp)}</div>` +
+      `<h3>${esc(ACTUATION_LABELS[a])}</h3><p class="cat-note">${esc(ACTUATION_NOTES[a] ?? "")}</p></article>`;
+  }
+  html += `</div></section>`;
+  return `<nav class="cat-toc">${toc.join("")}</nav>${html}`;
+}
