@@ -126,6 +126,13 @@ una porta pneumatica. Le due parti si legano per sigla, dal pannello delle propr
 
 Rinominando un componente, i riferimenti che lo indicano si aggiornano.
 
+In simulazione si fa clic su pulsanti, interruttori e finecorsa senza cilindro (nel disegno o tra i «Comandi
+elettrici» del pannello): a impulso restano azionati finché si tiene premuto, con ritenuta cambiano stato a ogni
+clic. I fili sotto tensione diventano rossi, i contatti azionati e le bobine eccitate si colorano e le lampade si
+accendono. Un solenoide con una bobina segue il circuito elettrico e non compare più tra i comandi a clic. Il
+pannello mostra lo stato di relè, temporizzatori (con il tempo che manca), bobine e lampade, e avvisa in caso di
+cortocircuito o di un relè che continua a commutare da solo.
+
 ## Selezione, copia e incolla
 
 - Un clic seleziona un componente; `Maiusc`+clic aggiunge o toglie un componente dalla selezione.
