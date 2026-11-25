@@ -15,21 +15,48 @@ Una porta può avere più linee: equivale a un raccordo a T.
 
 ## Componenti
 
-| Tipo (`type`) | Porte | Parametri da catalogo | Parametri di simulazione (predefinito) |
-|---|---|---|---|
-| `pressure_source` | 1 | `pressure`, `flow`? | |
-| `pressure_regulator` | 1 → 2 | `setpoint`, `max_pressure`? | `conductance` (1 dm³/(s·bar)), `critical_ratio` (0,35) |
-| `directional_valve` | ISO 5599: 1, 2, 3, 4, 5, 12/14 se pilotata | `max_pressure`?, `min_pressure`?, `flow`? | `conductance` (1,5), `critical_ratio` (0,35) |
-| `flow_control_valve` | 1, 2 | `max_pressure`? | `conductance` (0,3), `critical_ratio` (0,5) |
-| `single_acting_cylinder` | A | `bore`, `stroke`, `rod`?, `max_pressure`?, `min_pressure`? | `mass` (1 kg), `load` (0 N), `friction` (5 N), `spring_force` (15 N) |
-| `double_acting_cylinder` | A (fondello), B (stelo) | come sopra | `mass`, `load`, `friction` |
-| `rotary_actuator` | A, B | `angle`, `max_pressure`?, `min_pressure`? | non ancora simulato |
-| `silencer` | 1 | `max_pressure`? | |
-| `plug` | 1 | `max_pressure`? | |
+Il catalogo (`DEFS` in `components.ts`) è diviso in categorie, come la palette dell'editor.
+Le porte seguono la numerazione ISO 5599 (1 alimentazione, 2/4 utilizzo, 3/5 scarico, 12/14 pilotaggio).
+Tutti i tipi accettano `max_pressure`; i parametri di simulazione (`conductance` in dm³/(s·bar),
+`critical_ratio`) hanno valori predefiniti ragionevoli.
 
-Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`) e un comando per
-lato (`actuation_14`, `actuation_12`: `solenoid`, `pilot`, `manual`, `mechanical`, `spring`).
-Un comando `pilot` aggiunge la porta di pilotaggio. Gli scarichi 3 e 5 possono restare liberi.
+| Categoria | Tipo (`type`) | Nome | Porte | Parametri principali |
+|---|---|---|---|---|
+| Alimentazione e trattamento aria | `pressure_source` | Alimentazione | 1 | `pressure`, `flow`? |
+| | `air_reservoir` | Serbatoio | 1, 2 (stesso volume; 2 può restare tappata) | `volume` |
+| | `air_filter` | Filtro | 1 → 2 | |
+| | `lubricator` | Lubrificatore | 1 → 2 | |
+| | `frl_unit` | Gruppo FRL | 1 → 2 | `setpoint` |
+| | `pressure_regulator` | Riduttore di pressione | 1 → 2 | `setpoint` |
+| | `pressure_gauge` | Manometro | 1 | |
+| | `silencer`, `plug` | Silenziatore, tappo | 1 | |
+| Valvole distributrici | `directional_valve` | 2/2, 3/2, 4/2, 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`? |
+| Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure` |
+| | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |
+| | `shuttle_valve` | Selettore (OR) | 1, 3 → 2 | |
+| | `and_valve` | Due pressioni (AND) | 1, 3 → 2 | |
+| | `quick_exhaust_valve` | Scarico rapido | 1, 2, 3 | |
+| Regolazione | `flow_control_valve` | Strozzatore bidirezionale | 1, 2 | `conductance` |
+| | `one_way_flow_control` | Regolatore di flusso unidirezionale | 1, 2 | `conductance`, `free_conductance` |
+| | `relief_valve` | Valvola limitatrice | 1, 3 | `setpoint` |
+| | `sequence_valve` | Valvola di sequenza | 1, 2, 3, 12 | `setpoint` |
+| | `time_delay_valve` | Temporizzatore | 1, 2, 3, 12 | `delay`, `pilot_pressure` |
+| Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `spring_force` |
+| | `double_acting_cylinder` | Cilindro a doppio effetto | A, B | come sopra |
+| | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod` |
+| | `rotary_actuator` | Attuatore rotante | A, B | `angle` (non ancora simulato) |
+| | `air_motor` | Motore pneumatico | 1, 2 | |
+
+Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`, `5/3E`, `5/3P`) e un
+comando per lato (`actuation_14`, `actuation_12`: `solenoid`, `pilot`, `manual`, `mechanical`,
+`spring`). Un comando `pilot` aggiunge la porta di pilotaggio. Gli scarichi lasciati liberi
+scaricano in atmosfera. La palette propone valvole già configurate (`presets`), per esempio
+"3/2 NC a rullo" o "5/2 bistabile pneumatica", e serbatoi di volume diverso.
+
+Un comando `mechanical` può essere un **finecorsa** azionato da un cilindro: `"cam_14": "C1+"`
+significa che il lato 14 è azionato quando lo stelo di C1 è tutto fuori, `"C1-"` quando è tutto
+dentro. Con i finecorsa si costruiscono cicli automatici (esempio "Ciclo automatico A+ A- con
+finecorsa").
 
 Nuovi tipi: una voce in `DEFS` (`src/model/components.ts`) con porte, parametri ed eventualmente
 `paths` (percorsi interni della pressione) e `sources`; poi il simbolo in `src/ui/symbols.ts` e,
@@ -83,6 +110,8 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 | `UNDERPRESSURE` | warning | pressione di comando sotto `min_pressure` |
 | `UNSUPPLIED_ACTUATOR` | warning | attuatore che nessuna sorgente alimenta |
 | `UNSUPPLIED_PILOT` | warning | pilotaggio collegato ma mai in pressione |
+| `INVALID_CAM` | error | finecorsa che indica un cilindro inesistente o su un lato non meccanico |
+| `SETPOINT_UNREACHABLE` | warning | valvola di sequenza tarata sopra la pressione che può ricevere |
 
 ## Formato file
 

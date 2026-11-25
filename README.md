@@ -12,8 +12,9 @@ sono sviluppati da zero.
 installazione). Disegna lo schema, guarda la validazione in tempo reale e premi *Simula* per
 animarlo.
 
-> Stato: prima versione. Editor, archivio dei progetti, validazione e simulazione di valvole,
-> riduttori, strozzatori e cilindri. Dettagli in [docs/interfaccia.md](docs/interfaccia.md),
+> Stato: prima versione. Editor, archivio dei progetti, validazione e simulazione di 25 tipi di
+> componenti (trattamento aria, serbatoi, valvole distributrici e logiche, regolatori, finecorsa,
+> temporizzatori, cilindri e motori). Dettagli in [docs/interfaccia.md](docs/interfaccia.md),
 > [docs/modello-dati.md](docs/modello-dati.md) e [docs/PIANO.md](docs/PIANO.md).
 
 ## Sviluppo

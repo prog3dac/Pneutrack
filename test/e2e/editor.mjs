@@ -42,7 +42,7 @@ async function wire(a, b) {
 }
 async function dropFromPalette(type, x, y) {
   const canvas = await page.locator("#canvas").boundingBox();
-  await page.locator(`.palette-item[data-type="${type}"]`).dragTo(page.locator("#canvas"), {
+  await page.locator(`.palette-item[data-type="${type}"]`).first().dragTo(page.locator("#canvas"), {
     targetPosition: { x, y } });
   void canvas;
 }
@@ -52,9 +52,17 @@ await page.waitForSelector(".palette-item");
 await page.waitForFunction(() => document.body.dataset.ready === "1");
 assert.equal(await page.evaluate(() => window.pneutrack.store), expectedStore);
 
-// 1. palette completa
+// 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(types.length, 9, `palette: ${types}`);
+assert.equal(new Set(types).size, 25, `tipi in palette: ${[...new Set(types)]}`);
+assert.ok(types.length >= 37, "valvole già configurate");
+await page.fill("#palette-search", "non ritorno");
+const visible = () => page.locator(".palette-item:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
+assert.deepEqual(await visible(), ["Valvola di non ritorno", "Non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
+await page.fill("#palette-search", "5/2 bistabile");
+assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica"]);
+await page.fill("#palette-search", "");
+assert.equal((await visible()).length, types.length);
 
 // 2. costruzione di uno schema: sorgente -> 3/2 -> cilindro semplice effetto
 await dropFromPalette("pressure_source", 300, 520);
