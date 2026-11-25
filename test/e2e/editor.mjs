@@ -70,7 +70,7 @@ await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(new Set(types).size, 25, `tipi in palette: ${[...new Set(types)]}`);
+assert.equal(new Set(types).size, 27, `tipi in palette: ${[...new Set(types)]}`);
 assert.ok(types.length >= 37, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
@@ -436,6 +436,69 @@ assert.equal(s.doc.blocks.length, 2);
 assert.equal(s.doc.components.length, 14);
 await page.click('.library-item .remove');
 assert.equal(await page.locator(".library-item").count(), 0);
+
+// 15. punti di connessione e scarico
+assert.equal(await page.locator('.palette-item[data-type="exhaust"]').count(), 1);
+assert.equal(await page.locator('.palette-item[data-type="junction"]').count(), 1);
+// punto a metà del tratto più lungo della linea dall'alimentazione, in coordinate dello schermo
+async function linePoint(from) {
+  // senza `from`: la linea con il tratto più lungo, lontano dalle porte
+  return page.evaluate((from) => {
+    const conns = window.pneutrack.doc.connections;
+    let best = null;
+    conns.forEach((c, i) => {
+      if (from && c.from !== from && c.to !== from) return;
+      const pl = document.querySelector(`[data-connection="${i}"] .stroke`);
+      const pts = pl.getAttribute("points").split(" ").map((p) => p.split(",").map(Number));
+      for (let j = 0; j + 1 < pts.length; j++) {
+        const d = Math.abs(pts[j + 1][0] - pts[j][0]) + Math.abs(pts[j + 1][1] - pts[j][1]);
+        if (!best || d > best.d) best = { d, i, pl, a: pts[j], b: pts[j + 1] };
+      }
+    });
+    const m = best.pl.getScreenCTM();
+    const x = (best.a[0] + best.b[0]) / 2, y = (best.a[1] + best.b[1]) / 2;
+    return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f, index: best.i,
+             from: conns[best.i].from, to: conns[best.i].to };
+  }, from);
+}
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+s = await state();
+const nConn = s.doc.connections.length, nComp = s.doc.components.length;
+await dropFromPalette("pressure_gauge", 900, 120);
+await settled();
+s = await state();
+const gauge = s.doc.components.at(-1).id;
+// trascinando una linea dal manometro sopra la linea dell'alimentazione nasce un punto di connessione
+const mid = await linePoint(null);
+const gp = await portCenter(`${gauge}.1`);
+await page.mouse.move(gp.x, gp.y); await page.mouse.down();
+await page.mouse.move((gp.x + mid.x) / 2, (gp.y + mid.y) / 2, { steps: 4 });
+await page.mouse.move(mid.x, mid.y, { steps: 4 });
+await page.mouse.up();
+await settled();
+s = await state();
+const junction = s.doc.components.find((c) => c.type === "junction");
+assert.ok(junction, "punto di connessione creato");
+const jref = `${junction.id}.1`;
+assert.equal(s.doc.connections.filter((c) => c.from === jref || c.to === jref).length, 3);
+assert.equal(s.doc.connections.length, nConn + 2);
+const linePr = s.analysis.pressures[mid.from]?.bar ?? 0;
+assert.equal(s.analysis.pressures[`${gauge}.1`]?.bar ?? 0, linePr, "il manometro è nella stessa rete della linea");
+// pulsante del pannello: un altro punto su una linea; Canc lo toglie ricucendo la linea
+const mid2 = await linePoint(`${gauge}.1`);
+await page.mouse.click(mid2.x, mid2.y);
+await page.click('#properties button:has-text("Aggiungi punto di connessione")');
+await settled();
+s = await state();
+assert.equal(s.doc.components.filter((c) => c.type === "junction").length, 2);
+assert.equal(s.doc.connections.length, nConn + 3);
+await page.keyboard.press("Delete");
+await settled();
+s = await state();
+assert.equal(s.doc.components.filter((c) => c.type === "junction").length, 1);
+assert.equal(s.doc.connections.length, nConn + 2);
+assert.equal(s.doc.components.length, nComp + 2);
+if (shots) await page.screenshot({ path: `${shots}/15-junction.png` });
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();

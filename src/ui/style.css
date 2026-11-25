@@ -343,3 +343,13 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 
 /* componenti */
 .symbol .cam-label { font-size: 9px; fill: var(--accent); stroke: none; font-weight: 600; }
+
+/* punti di connessione: pallino pieno, colorato come le linee in pressione */
+.symbol .junction-dot { fill: var(--ink); stroke: none; }
+.component.junction.pressurized .junction-dot { fill: var(--air); }
+.component.junction.p1 .junction-dot { fill: var(--p1); } .component.junction.p2 .junction-dot { fill: var(--p2); }
+.component.junction.p3 .junction-dot { fill: var(--p3); } .component.junction.p4 .junction-dot { fill: var(--p4); }
+.component.junction.p5 .junction-dot { fill: var(--p5); }
+.component.junction.selected .junction-dot { fill: var(--sel); }
+.junction-grab { fill: transparent; cursor: move; }
+.line.target .stroke { stroke: var(--accent); stroke-width: 3.4; }

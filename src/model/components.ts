@@ -288,6 +288,19 @@ const DEFS: TypeDef[] = [
     ports: () => [port("1", "exhaust")],
   },
   {
+    type: "exhaust", label: "Scarico", category: AIR,
+    doc: "Scarico diretto in atmosfera, senza silenziatore (simbolo ISO 1219: triangolo).",
+    params: [MAX_P], defaults: {},
+    ports: () => [port("1", "exhaust")],
+  },
+  {
+    type: "junction", label: "Punto di connessione", category: AIR,
+    doc: "Punto di connessione (raccordo a T o a croce): più linee unite nello stesso punto, " +
+      "tutte alla stessa pressione. Trascina una linea su un'altra per crearne uno.",
+    params: [], defaults: {},
+    ports: () => [port("1", "work", true)],
+  },
+  {
     type: "plug", label: "Tappo", category: AIR,
     doc: "Tappo: chiude una porta che non si vuole usare.",
     params: [MAX_P], defaults: {},

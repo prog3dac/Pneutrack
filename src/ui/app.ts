@@ -4,6 +4,7 @@ import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import { dissolveJunction, JUNCTION, splitConnection } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
@@ -33,7 +34,7 @@ const SESSION_KEY = "pneutrack.session.v1"; // ultimo progetto aperto
 const AUTOSAVE_MS = 1200;
 
 const PREFIX: Record<string, string> = {
-  pressure_source: "P", pressure_regulator: "R", silencer: "SL", plug: "T",
+  pressure_source: "P", pressure_regulator: "R", silencer: "SL", exhaust: "S", plug: "T", junction: "N",
   directional_valve: "V", flow_control_valve: "F", single_acting_cylinder: "C",
   double_acting_cylinder: "C", double_rod_cylinder: "C", rotary_actuator: "RA",
   air_reservoir: "SB", air_filter: "FI", lubricator: "LU", frl_unit: "FRL", pressure_gauge: "M",
@@ -217,6 +218,27 @@ function nearestSegment(pts: Pt[], x: number, y: number) {
   return best;
 }
 
+const isJunction = (id: string) => byId(id)?.type === JUNCTION;
+
+/** Direzione d'uscita da un punto di connessione: verso il punto successivo della linea. */
+function aim(p: PortPoint, toward: Pt): PortPoint {
+  const dx = toward[0] - p.x, dy = toward[1] - p.y;
+  if (!dx && !dy) return p;
+  return { ...p, dir: Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)] };
+}
+
+/** Capi di una linea; sui punti di connessione la linea esce verso la piega più vicina. */
+function connEnds(c: ConnectionData): { a: PortPoint; b: PortPoint } | null {
+  const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
+  let a = portWorld(ca, pa), b = portWorld(cb, pb);
+  if (!a || !b) return null;
+  const bends = c.points ?? [];
+  const pa0 = a, pb0 = b;
+  if (isJunction(ca)) a = aim(a, bends[0] ?? (isJunction(cb) ? [pb0.x, pb0.y] : [pb0.x + pb0.dir[0] * 15, pb0.y + pb0.dir[1] * 15]));
+  if (isJunction(cb)) b = aim(b, bends[bends.length - 1] ?? (isJunction(ca) ? [pa0.x, pa0.y] : [pa0.x + pa0.dir[0] * 15, pa0.y + pa0.dir[1] * 15]));
+  return { a, b };
+}
+
 /** Tubo valido di un collegamento, o null. */
 function tubeOf(c: ConnectionData): Tube | null {
   try { return parseTube(c.tube, "linea"); } catch { return null; }
@@ -290,8 +312,9 @@ function render() {
   // collegamenti
   doc.connections.forEach((c, index) => {
     const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
-    const a = portWorld(ca, pa), b = portWorld(cb, pb);
-    if (!a || !b) return;
+    const ends = connEnds(c);
+    if (!ends) return;
+    const { a, b } = ends;
     const kinds = [portKind(ca, pa), portKind(cb, pb)];
     const pilot = kinds.includes("pilot");
     const exhaust = kinds.includes("exhaust"); // linea di scarico: sfoga in atmosfera
@@ -347,7 +370,9 @@ function render() {
     const l = layoutOf(comp.id);
     const g = geometry(comp, symbolState(comp));
     const iss = issuesFor(comp.id);
-    const cls = ["component",
+    const junction = comp.type === JUNCTION;
+    const jp = junction ? (livePressure(`${comp.id}.1`) ?? analysis.pressures[`${comp.id}.1`]?.bar ?? 0) : 0;
+    const cls = ["component", junction ? "junction" : "", jp > 0.2 ? `pressurized ${pressureBand(jp)}` : "",
       selectedIds().includes(comp.id) ? "selected" : "",
       iss.some((i) => i.severity === "error") ? "has-error" :
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
@@ -377,6 +402,9 @@ function render() {
       if (left != null && left > 0) parts.push(`${left.toFixed(1).replace(".", ",")} s`);
     }
     text.textContent = parts.join(" · ");
+    // i punti di connessione mostrano solo la descrizione, se c'è
+    if (junction && !(show.desc && comp.label)) parts.length = 0;
+    else if (junction) text.textContent = comp.label!;
     if (parts.length) labels.append(text);
 
     // porte
@@ -387,6 +415,15 @@ function render() {
       const pc = ["port", isOpen ? "open" : "connected", portIssue(ref) ? "error" : "",
                   portKind(comp.id, name) || ""].filter(Boolean).join(" ");
       const pg = el("g", { class: pc, "data-port": ref, transform: `translate(${pw.x},${pw.y})` });
+      if (junction) {
+        // anello attorno al pallino: da qui parte una nuova linea; il centro sposta il punto
+        pg.append(el("circle", { r: 12, class: "port-hit" }));
+        pg.append(svgTitle(`${comp.id} · trascina dall'anello per collegare una linea, dal centro per spostare`));
+        ports.append(pg);
+        ports.append(el("circle", { cx: pw.x, cy: pw.y, r: 5, class: "junction-grab",
+                                    "data-component": comp.id, "data-port-target": ref }));
+        continue;
+      }
       pg.append(el("circle", { r: 9, class: "port-hit" }));
       pg.append(el("circle", { r: 3.2, class: "port-dot" }));
       const lx = pw.dir[0] * -9 + (pw.dir[0] === 0 ? 7 : 0);
@@ -1101,6 +1138,26 @@ function renderProperties() {
       straight.addEventListener("click", () => mutate(() => { delete doc.connections[(selection as { index: number }).index]!.points; }));
       actions.append(straight);
     }
+    const split = document.createElement("button");
+    split.textContent = "Aggiungi punto di connessione";
+    split.title = "Spezza la linea con un punto a cui collegare altre linee";
+    split.addEventListener("click", () => {
+      const index = (selection as { index: number }).index;
+      const ends = connEnds(doc.connections[index]!);
+      if (!ends) return;
+      // a metà del tratto più lungo
+      const { pts } = routePoints(ends.a, ends.b, doc.connections[index]!.points);
+      let k = 0, best = -1;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const d = Math.abs(pts[i + 1]![0] - pts[i]![0]) + Math.abs(pts[i + 1]![1] - pts[i]![1]);
+        if (d > best) { best = d; k = i; }
+      }
+      const mid = { x: (pts[k]![0] + pts[k + 1]![0]) / 2, y: (pts[k]![1] + pts[k + 1]![1]) / 2 };
+      let id = "";
+      mutate(() => { id = splitLine(index, mid)?.split(".")[0] ?? ""; });
+      if (id) select({ kind: "component", id });
+    });
+    actions.append(split);
     const del = document.createElement("button");
     del.className = "danger"; del.textContent = "Elimina collegamento";
     del.addEventListener("click", deleteSelection);
@@ -1108,7 +1165,8 @@ function renderProperties() {
     panel.append(actions);
     const help = document.createElement("p");
     help.className = "help";
-    help.textContent = "Trascina la linea per aggiungere una piega, trascina i punti per spostarle, doppio clic su un punto per toglierlo.";
+    help.textContent = "Trascina la linea per aggiungere una piega, trascina i punti per spostarle, doppio clic su un punto per toglierlo. " +
+      "Per diramare la linea trascina sopra di essa un'altra linea: nasce un punto di connessione.";
     panel.append(help);
   } else {
     title.textContent = "Schema";
@@ -1120,7 +1178,7 @@ function renderProperties() {
     const help = document.createElement("div");
     help.className = "help";
     help.innerHTML = `<p>Trascina un componente dalla palette sul foglio, oppure fai clic per inserirlo al centro.</p>
-      <p>Per collegare due porte trascina da una porta all'altra. Più linee sulla stessa porta formano un raccordo a T.</p>
+      <p>Per collegare due porte trascina da una porta all'altra. Per diramare una linea trascina una nuova linea sopra di essa: nasce un punto di connessione a cui collegarne altre.</p>
       <p>Con <b>Simula</b> lo schema si anima: azioni pulsanti e solenoidi facendo clic sui comandi delle valvole.</p>
       <ul><li><kbd>R</kbd> ruota</li><li><kbd>Canc</kbd> elimina</li>
       <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulla / ripeti</li>
@@ -1329,6 +1387,8 @@ function deleteSelection() {
       doc.connections.splice(sel.index, 1);
       return;
     }
+    // un punto di connessione tra due sole linee si toglie ricucendole
+    if (sel.kind === "component" && dissolveJunction(doc, sel.id)) { pruneBlocks(doc); return; }
     const ids = new Set(selectedIds());
     doc.components = doc.components.filter((c) => !ids.has(c.id));
     for (const id of ids) delete doc.layout[id];
@@ -1847,10 +1907,9 @@ svg.addEventListener("pointermove", (e) => {
     if (drag.bend < 0) {
       if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
       // nuova piega nel tratto più vicino al punto in cui si è cominciato a trascinare
-      const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
-      const a = portWorld(ca, pa), b = portWorld(cb, pb);
-      if (!a || !b) return;
-      const { pts, bendAt } = routePoints(a, b, c.points);
+      const ends = connEnds(c);
+      if (!ends) return;
+      const { pts, bendAt } = routePoints(ends.a, ends.b, c.points);
       const start = toWorld({ clientX: drag.sx, clientY: drag.sy });
       const seg = nearestSegment(pts, start.x, start.y);
       drag.bend = bendAt.filter((k) => k <= seg).length;
@@ -1866,11 +1925,13 @@ svg.addEventListener("pointermove", (e) => {
     }
   } else if (drag.mode === "wire") {
     const temp = $("#temp-wire");
-    temp.setAttribute("points", route(drag.start, { x: w.x, y: w.y }));
+    const start = isJunction(splitRef(drag.from)[0]) ? aim(drag.start, [w.x, w.y]) : drag.start;
+    temp.setAttribute("points", route(start, { x: w.x, y: w.y }));
     temp.style.display = "";
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest<SVGElement>("[data-port]");
-    document.querySelectorAll(".port.target").forEach((p) => p.classList.remove("target"));
-    if (over && over.dataset.port !== drag.from) over.classList.add("target");
+    const over = portUnder(e);
+    document.querySelectorAll(".port.target, .line.target").forEach((p) => p.classList.remove("target"));
+    if (over && over !== drag.from) document.querySelector(`[data-port="${CSS.escape(over)}"]`)?.classList.add("target");
+    else if (!over) lineUnder(e, drag.from)?.el.classList.add("target");
   }
 });
 
@@ -1902,15 +1963,64 @@ svg.addEventListener("pointerup", (e) => {
     if (!d.moved) select(null);
   } else if (d.mode === "wire") {
     $("#temp-wire").style.display = "none";
-    document.querySelectorAll(".port.target").forEach((p) => p.classList.remove("target"));
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest<SVGElement>("[data-port]");
-    if (over && over.dataset.port !== d.from) connect(d.from, over.dataset.port!);
+    document.querySelectorAll(".port.target, .line.target").forEach((p) => p.classList.remove("target"));
+    const over = portUnder(e);
+    const onLine = over ? null : lineUnder(e, d.from);
+    if (over && over !== d.from) connect(d.from, over);
+    else if (onLine) connectToLine(d.from, onLine.index, toWorld(e));
     else if (!over) {
       const [cid] = splitRef(d.from);
       if (selection?.kind !== "component" || selection.id !== cid) select({ kind: "component", id: cid });
     }
   }
 });
+
+/** Porta sotto il puntatore (anche il centro di un punto di connessione). */
+function portUnder(e: { clientX: number; clientY: number }): string | null {
+  const t = document.elementFromPoint(e.clientX, e.clientY)?.closest<SVGElement>("[data-port], [data-port-target]");
+  return t ? (t.dataset.port ?? t.dataset.portTarget ?? null) : null;
+}
+
+/** Linea sotto il puntatore, esclusa quella che parte già dalla porta `from`. */
+function lineUnder(e: { clientX: number; clientY: number }, from?: string) {
+  const t = document.elementFromPoint(e.clientX, e.clientY)?.closest<SVGElement>("[data-connection]");
+  if (!t || t.dataset.bend !== undefined) return null;
+  const index = Number(t.dataset.connection);
+  const c = doc.connections[index];
+  if (!c || (from && (c.from === from || c.to === from))) return null;
+  return { index, el: t };
+}
+
+/**
+ * Spezza la linea `index` con un nuovo punto di connessione nel punto più vicino a `w`.
+ * Va chiamata dentro mutate(); restituisce la porta del nuovo punto.
+ */
+function splitLine(index: number, w: { x: number; y: number }): string | null {
+  const c = doc.connections[index];
+  const ends = c && connEnds(c);
+  if (!c || !ends) return null;
+  const { pts, bendAt } = routePoints(ends.a, ends.b, c.points);
+  const seg = nearestSegment(pts, w.x, w.y);
+  const [x1, y1] = pts[seg]!, [x2, y2] = pts[seg + 1]!;
+  const clamp = (v: number, a: number, b: number) => Math.max(Math.min(a, b), Math.min(Math.max(a, b), v));
+  // sul tratto ortogonale si aggancia alla griglia lungo il tratto stesso
+  const at: Pt = y1 === y2 ? [clamp(snap(w.x), x1, x2), y1] : x1 === x2 ? [x1, clamp(snap(w.y), y1, y2)] : [snap(w.x), snap(w.y)];
+  const segLen = (i: number) => Math.abs(pts[i + 1]![0] - pts[i]![0]) + Math.abs(pts[i + 1]![1] - pts[i]![1]);
+  let before = Math.abs(at[0] - x1) + Math.abs(at[1] - y1), total = 0;
+  for (let i = 0; i + 1 < pts.length; i++) { total += segLen(i); if (i < seg) before += segLen(i); }
+  const bendsBefore = bendAt.filter((k) => k <= seg).length;
+  return splitConnection(doc, index, at, nextId(JUNCTION), bendsBefore, total ? before / total : 0.5);
+}
+
+/** Collega la porta `from` a una linea esistente, con un punto di connessione dove la si lascia. */
+function connectToLine(from: string, index: number, w: { x: number; y: number }) {
+  if (sim) return;
+  mutate(() => {
+    const ref = splitLine(index, w);
+    if (ref) doc.connections.push(lastTube ? { from, to: ref, tube: { ...lastTube } } : { from, to: ref });
+  });
+  select({ kind: "connection", index: doc.connections.length - 1 });
+}
 
 /** Trascinamento di più componenti: posizioni di partenza e pieghe delle linee tra loro. */
 function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string): Drag {
@@ -1963,6 +2073,13 @@ svg.addEventListener("drop", (e) => {
   if (!data) return;
   e.preventDefault();
   const [type, preset] = data.split("|");
+  const onLine = type === JUNCTION ? lineUnder(e) : null;
+  if (onLine) {
+    let id = "";
+    mutate(() => { id = splitLine(onLine.index, toWorld(e))?.split(".")[0] ?? ""; });
+    if (id) select({ kind: "component", id });
+    return;
+  }
   addComponent(type!, toWorld(e), Number(preset ?? -1));
 });
 

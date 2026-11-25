@@ -372,6 +372,18 @@ const silencerGeometry = (): Geometry => ({
   svg: line(0, -14, 0, -6) + path("M0,-6 L9,6 L-9,6 Z", "nofill") + rect(-9, 6, 18, 6, "hatch"),
 });
 
+/** Scarico in atmosfera (ISO 1219): triangolo vuoto con la punta verso la linea. */
+const exhaustGeometry = (): Geometry => ({
+  w: 22, h: 26, ports: { 1: { x: 0, y: -14, dir: up } },
+  svg: line(0, -14, 0, -2) + path("M0,-2 L9,10 L-9,10 Z", "nofill"),
+});
+
+/** Punto di connessione: il pallino pieno degli incroci collegati (ISO 1219). */
+const junctionGeometry = (): Geometry => ({
+  w: 12, h: 12, ports: { 1: { x: 0, y: 0, dir: up } },
+  svg: circle(0, 0, 4, "junction-dot"),
+});
+
 const plugGeometry = (): Geometry => ({
   w: 16, h: 14, ports: { 1: { x: 0, y: -10, dir: up } },
   svg: line(0, -10, 0, 0) + line(-7, 0, 7, 0, "thick"),
@@ -441,6 +453,8 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "pressure_source": return sourceGeometry();
     case "silencer": return silencerGeometry();
     case "plug": return plugGeometry();
+    case "junction": return junctionGeometry();
+    case "exhaust": return exhaustGeometry();
     case "pressure_regulator": return regulatorGeometry();
     case "flow_control_valve": return flowControlGeometry();
     case "single_acting_cylinder": return cylinderGeometry(false, state);
