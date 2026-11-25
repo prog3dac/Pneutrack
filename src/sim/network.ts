@@ -9,10 +9,11 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { cushionLength, hasPilotPort, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { cushionLength, hasPilotPort, isElectricType, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { analyze, build, pneumaticPorts } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
+import { compileElectric, type ElectricNetwork } from "./electric";
 
 /** Posizione di una valvola: casella lato 14, lato 12, o centrale (5/3). */
 export type Position = "14" | "12" | "0";
@@ -85,6 +86,8 @@ export interface SimNetwork {
   /** "C1.A" -> nodo */
   portNode: Record<string, number>;
   temperature: number;
+  /** circuito elettrico di comando, se lo schema ne ha uno */
+  electric: ElectricNetwork | null;
 }
 
 export type CompileResult =
@@ -178,6 +181,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   };
 
   for (const c of comps) {
+    // la parte elettrica la compila compileElectric (il pressostato legge solo la pressione della sua porta)
+    if (isElectricType(c.type)) continue;
     // scarichi lasciati liberi: aperti in atmosfera
     for (const p of c.ports) {
       if (p.kind === "exhaust" && !connected.has(`${c.id}.${p.name}`)) fixed.set(node(c, p.name), P_ATM);
@@ -329,6 +334,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     network: {
       nodeCount, fixed, baseVolume,
       orifices, valves, cylinders, portNode, temperature: 293.15,
+      electric: compileElectric(built, portNode),
     },
   };
 }

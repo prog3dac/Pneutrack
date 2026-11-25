@@ -158,7 +158,7 @@ I componenti elettrici non sono ancora nella palette dell'editor (mancano i simb
 | `relay_contact` | Contatto di relè | K | secondo `contact` | `contact`, `relay`: relè, temporizzatore o pressostato |
 | `valve_solenoid` | Bobina di elettrovalvola | Y | A1, A2 | `drives`: valvola e lato, `"V1.14"` |
 | `limit_switch` | Finecorsa elettrico | S | secondo `contact` | `contact`, `cam` (`"C1+"`), `switch_actuation`: `roller` o `roller_oneway` |
-| `proximity_sensor` | Sensore di prossimità (PNP, 3 fili) | B | BN (+), BU (0V), BK (uscita) | `cam`, `position` (dal fondello, al posto del fine corsa), `hysteresis`, `sensor_kind` |
+| `proximity_sensor` | Sensore di prossimità (PNP, 3 fili) | B | BN (+), BU (0V), BK (uscita) | `cam`, `position` (dal fondello, al posto del fine corsa), `range` (campo di rilevamento ±, 3 mm), `sensor_kind` |
 | `pressure_switch` | Pressostato | B | porta pneumatica 1 | `setpoint`, `hysteresis`; i suoi contatti sono `relay_contact` con `"relay": "B1"` |
 | `signal_lamp` | Lampada di segnalazione | H | X1, X2 | `lamp_color` |
 
@@ -243,3 +243,26 @@ orifizi ISO 6358 (conduttanza C, rapporto critico b), i cilindri sono masse con 
 `Simulator` (`src/sim/simulator.ts`) la integra con passi RK4 fissi (20 µs) e lascia cambiare i
 comandi delle valvole mentre gira. Le equazioni sono quelle del solutore di riferimento in
 `src/solver`, con cui `test/sim.test.ts` confronta i risultati.
+
+### Simulazione del circuito elettrico
+
+`compileSim` compila anche la parte elettrica (`src/sim/electric.ts`), e `Simulator` la aggiorna ogni
+millisecondo simulato. La simulazione è logica, non circuitale: i fili uniscono i morsetti in nodi, i contatti
+chiusi uniscono i nodi, e un carico (bobina, lampada) è eccitato quando un suo morsetto è unito al + e l'altro
+al 0V. Se il + e il 0V si uniscono attraverso i contatti c'è un cortocircuito: nessun carico resta eccitato
+finché dura.
+
+- Un solenoide con una bobina (`drives`) segue la bobina e non si comanda più a clic (`setCommand` lo ignora).
+- `setSwitch(id, on)` aziona pulsanti e interruttori; anche un finecorsa elettrico senza `cam` si aziona a mano.
+- Relè: commutano dopo il tempo di attrazione `pickup_time` (10 ms) e rilasciano dopo lo stesso tempo.
+  Temporizzatori: `on_delay` chiude i contatti quando la bobina resta eccitata per `delay` e li apre subito;
+  `off_delay` li chiude subito e li apre `delay` dopo la diseccitazione.
+- Finecorsa elettrici: premuti negli ultimi 2 mm di corsa; quelli unidirezionali solo negli ultimi 5 mm e
+  mentre lo stelo va verso la camma.
+- Sensori di prossimità: l'uscita BK va a tensione (unita a BN) quando lo stelo è entro `range` (3 mm) dalla
+  posizione del sensore.
+- Pressostati: intervengono quando la porta 1 raggiunge `setpoint` e rilasciano sotto `setpoint − hysteresis`
+  (0,5 bar).
+- `electricState()` restituisce carichi eccitati, relè commutati, contatti azionati, potenziale di ogni morsetto
+  (`"+"`, `"0"` o `null`), cortocircuito e relè in oscillazione (più di 20 commutazioni al secondo, per esempio una
+  bobina alimentata dal proprio contatto NC).
