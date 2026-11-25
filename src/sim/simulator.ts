@@ -18,6 +18,9 @@ const ONEWAY_ZONE = 0.005;
 /** velocità minima dello stelo perché la leva ribaltabile venga azionata [m/s] */
 const ONEWAY_MIN_SPEED = 1e-3;
 
+/** velocità sotto la quale l'attrito vale quello statico [m/s] */
+const STRIBECK_V = 0.01;
+
 export const DT = 2e-5;
 /** il circuito elettrico si aggiorna ogni millisecondo simulato */
 export const ELECTRIC_EVERY = 50;
@@ -258,9 +261,11 @@ export class Simulator {
       V[c.rodNode]! += c.Vrod0 + c.A2 * (c.stroke - x);
       dV[c.rodNode]! += -c.A2 * v;
       const force = P[c.capNode]! * c.A1 - P[c.rodNode]! * c.A2 - P_ATM * (c.A1 - c.A2) - c.spring;
-      const fr = c.frictionCoulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
+      // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
+      const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
+      const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
       dy[this.cylOffset + 2 * i] = v;
-      dy[this.cylOffset + 2 * i + 1] = (force - c.load - fr) / c.mass;
+      dy[this.cylOffset + 2 * i + 1] = (force - c.load - c.gravity - fr) / c.mass;
     });
     for (const n of this.freeNodes) {
       dy[this.stateOfNode[n]!] = ((KAPPA * this.RT) / V[n]!) * inflow[n]! - (KAPPA * P[n]! * dV[n]!) / V[n]!;

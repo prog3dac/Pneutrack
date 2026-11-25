@@ -3,6 +3,13 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.19.0 · 2026-11-25
+
+- Strozzatore bidirezionale e regolatore di flusso unidirezionale: nuovo campo «Apertura», da 0 % (chiuso) a 100 % (tutto aperto). La conduttanza C ora è quella a tutta apertura, come a catalogo, e la simulazione usa apertura × C; nel regolatore unidirezionale il verso libero non cambia. Un regolatore nuovo parte al 20 % di 1,5 dm³/(s·bar). Gli schemi salvati con la sola C simulano come prima; quelli con C vuota ora usano 1,5 dm³/(s·bar) tutto aperto: per ritrovare la velocità di prima basta scrivere 20 % nell'apertura.
+- Portata nominale Qn su valvole distributrici, filtri, riduttori, valvole logiche e di regolazione e motore pneumatico: se la conduttanza C è vuota, la simulazione la ricava da Qn (6 bar a monte, 5 bar a valle) con la formula ISO 6358. Corretto il suggerimento della conduttanza: C ≈ Qn / 260, non Qn / 600.
+- Apertura della vite dell'ammortizzo in percentuale (0–100 %); i valori già scritti come frazione restano validi e compaiono in %.
+- Cilindri: nuovi parametri «Attrito statico (di primo distacco)», per lo spunto da fermo, e «Angolo di montaggio», che aggiunge il peso della massa mobile lungo l'asse (90° stelo verso l'alto, −90° verso il basso).
+
 ## 0.18.2 · 2026-11-25
 
 - Valvole a 5 vie (5/2 e posizioni esterne delle 5/3): nelle caselle compare il simbolo della bocca chiusa sullo scarico che non lavora (5 col comando 14, 3 col comando 12), come vuole la ISO 1219-1.

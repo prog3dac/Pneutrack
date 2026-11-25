@@ -36,6 +36,10 @@ export interface ParamSpec {
   simDefault?: string;
   /** limite superiore escluso, nella stessa dimensione (es. b < 1) */
   below?: number;
+  /** percentuale da 0 a 100 %: nell'editor un numero senza unità vale in % (nei file 0,3 vale 30 %) */
+  percent?: boolean;
+  /** ammette valori negativi (angolo di montaggio) */
+  signed?: boolean;
 }
 
 /** Voce della palette: un tipo con opzioni e parametri già scelti. */
@@ -175,6 +179,13 @@ const conductance = (def: string) =>
   p("conductance", "Conduttanza C", "conductance", { group: "sim", simDefault: def });
 const critical = (def: string) =>
   p("critical_ratio", "Rapporto critico b", "dimensionless", { group: "sim", simDefault: def, below: 1 });
+/** portata nominale di catalogo: se la conduttanza C manca, la simulazione ricava C da qui */
+const FLOW = p("flow", "Portata nominale Qn", "flow");
+/** apertura della vite di regolazione di uno strozzatore */
+const OPENING = p("opening", "Apertura", "dimensionless", { group: "sim", simDefault: "100 %", percent: true });
+const FLOW_MAX = p("flow", "Portata nominale Qn a tutta apertura", "flow");
+const maxConductance = (def: string) =>
+  p("conductance", "Conduttanza C a tutta apertura", "conductance", { group: "sim", simDefault: def });
 
 export const VALVE_PORTS: Record<ValveFunction, [string, PortKind][]> = {
   "2/2": [["1", "supply"], ["2", "work"]],
@@ -236,13 +247,15 @@ const cylinderParams: ParamSpec[] = [
   p("mass", "Massa mobile", "mass", { group: "sim", simDefault: "1 kg" }),
   p("load", "Carico", "force", { group: "sim", simDefault: "0 N" }),
   p("friction", "Attrito", "force", { group: "sim", simDefault: "5 N" }),
+  p("static_friction", "Attrito statico (di primo distacco)", "force", { group: "sim", simDefault: "uguale all'attrito" }),
+  p("mounting_angle", "Angolo di montaggio", "angle", { group: "sim", simDefault: "0 deg", signed: true }),
 ];
 
 /** Ammortizzo pneumatico regolabile (cilindri a doppio effetto). */
 const cushionParams: ParamSpec[] = [
   p("cushion_length", "Lunghezza ammortizzo", "length", { simDefault: "≈ 0,6 × alesaggio" }),
-  p("cushion_opening", "Apertura vite ammortizzo (0 chiusa, 1 tutta aperta)", "dimensionless",
-    { group: "sim", simDefault: "0.3" }),
+  p("cushion_opening", "Apertura vite ammortizzo", "dimensionless",
+    { group: "sim", simDefault: "30 %", percent: true }),
 ];
 const cushionOption: OptionSpec = {
   name: "cushioning", label: "Ammortizzo", default: "none", choices: CUSHIONING_CHOICES,
@@ -298,7 +311,7 @@ const DEFS: TypeDef[] = [
   {
     type: "air_filter", label: "Filtro", category: AIR,
     doc: "Filtro con scarico della condensa.",
-    params: [MAX_P, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    params: [MAX_P, FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: () => both("1", "2"),
@@ -306,7 +319,7 @@ const DEFS: TypeDef[] = [
   {
     type: "lubricator", label: "Lubrificatore", category: AIR,
     doc: "Lubrificatore: nebulizza olio nell'aria.",
-    params: [MAX_P, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    params: [MAX_P, FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: () => both("1", "2"),
@@ -315,7 +328,7 @@ const DEFS: TypeDef[] = [
     type: "frl_unit", label: "Gruppo FRL", category: AIR,
     doc: "Gruppo filtro, riduttore con manometro e lubrificatore: l'uscita 2 non supera la pressione regolata.",
     params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
-             conductance("1.5 dm3/(s·bar)"), critical("0.35")],
+             FLOW, conductance("1.5 dm3/(s·bar)"), critical("0.35")],
     defaults: { setpoint: "6 bar", max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
@@ -324,7 +337,7 @@ const DEFS: TypeDef[] = [
     type: "pressure_regulator", label: "Riduttore di pressione", category: AIR,
     doc: "Riduttore di pressione: l'uscita 2 non supera la pressione regolata.",
     params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
-             conductance("1 dm3/(s·bar)"), critical("0.35")],
+             FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
     defaults: { setpoint: "4 bar", max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
@@ -365,7 +378,7 @@ const DEFS: TypeDef[] = [
   {
     type: "directional_valve", label: "Valvola distributrice", category: DIRECTIONAL,
     doc: "Valvola distributrice n/m con comandi sui lati 14 e 12.",
-    params: [MAX_P, MIN_P, p("flow", "Portata", "flow"), conductance("1.5 dm3/(s·bar)"), critical("0.35")],
+    params: [MAX_P, MIN_P, FLOW, conductance("1.5 dm3/(s·bar)"), critical("0.35")],
     options: [
       { name: "function", label: "Funzione", default: "5/2",
         choices: [["2/2", "2/2"], ["3/2", "3/2"], ["4/2", "4/2"], ["5/2", "5/2"], ["5/3", "5/3 centri chiusi"],
@@ -423,7 +436,7 @@ const DEFS: TypeDef[] = [
     type: "check_valve", label: "Valvola di non ritorno", category: LOGIC,
     doc: "Valvola di non ritorno: l'aria passa solo da 1 a 2.",
     params: [MAX_P, p("cracking_pressure", "Pressione di apertura", "pressure", { group: "sim", simDefault: "0.1 bar" }),
-             conductance("2 dm3/(s·bar)"), critical("0.4")],
+             FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: () => [oneWay("1", "2")],
@@ -432,7 +445,7 @@ const DEFS: TypeDef[] = [
     type: "pilot_check_valve", label: "Non ritorno pilotata", category: LOGIC,
     doc: "Non ritorno pilotata: passa da 1 a 2; da 2 a 1 solo con il pilotaggio 21 in pressione.",
     params: [MAX_P, p("pilot_pressure", "Pressione di pilotaggio", "pressure", { group: "sim", simDefault: "1.5 bar" }),
-             conductance("2 dm3/(s·bar)"), critical("0.4")],
+             FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("21", "pilot")],
     paths: () => both("1", "2"),
@@ -440,7 +453,7 @@ const DEFS: TypeDef[] = [
   {
     type: "shuttle_valve", label: "Valvola selettrice (OR)", category: LOGIC,
     doc: "Funzione O: l'uscita 2 riceve l'aria dall'ingresso (1 o 3) a pressione maggiore.",
-    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    params: [MAX_P, FLOW, conductance("1 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("3", "supply"), port("2", "work")],
     paths: () => [oneWay("1", "2"), oneWay("3", "2")],
@@ -448,7 +461,7 @@ const DEFS: TypeDef[] = [
   {
     type: "and_valve", label: "Valvola a due pressioni (AND)", category: LOGIC,
     doc: "Funzione E: l'uscita 2 è in pressione solo se lo sono entrambi gli ingressi 1 e 3.",
-    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    params: [MAX_P, FLOW, conductance("1 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("3", "supply"), port("2", "work")],
     paths: () => [oneWay("1", "2"), oneWay("3", "2")],
@@ -456,7 +469,7 @@ const DEFS: TypeDef[] = [
   {
     type: "quick_exhaust_valve", label: "Valvola di scarico rapido", category: LOGIC,
     doc: "Scarico rapido: l'aria va da 1 a 2; quando 1 si scarica, 2 sfoga subito dallo scarico 3.",
-    params: [MAX_P, conductance("1.5 dm3/(s·bar)"), critical("0.4"),
+    params: [MAX_P, FLOW, conductance("1.5 dm3/(s·bar)"), critical("0.4"),
              p("exhaust_conductance", "Conduttanza di scarico", "conductance", { group: "sim", simDefault: "4 dm3/(s·bar)" })],
     defaults: { max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
@@ -467,16 +480,16 @@ const DEFS: TypeDef[] = [
   {
     type: "flow_control_valve", label: "Strozzatore bidirezionale", category: REGULATION,
     doc: "Strozzatore regolabile: riduce la portata nei due versi.",
-    params: [MAX_P, conductance("0.3 dm3/(s·bar)"), critical("0.5")], defaults: {},
+    params: [MAX_P, FLOW_MAX, OPENING, maxConductance("1.5 dm3/(s·bar)"), critical("0.5")], defaults: { opening: "20 %" },
     ports: () => [port("1", "work"), port("2", "work")],
     paths: () => both("1", "2"),
   },
   {
     type: "one_way_flow_control", label: "Regolatore di flusso unidirezionale", category: REGULATION,
     doc: "Strozzatore con non ritorno: da 1 a 2 strozzato, da 2 a 1 libero.",
-    params: [MAX_P, conductance("0.3 dm3/(s·bar)"), critical("0.5"),
+    params: [MAX_P, FLOW_MAX, OPENING, maxConductance("1.5 dm3/(s·bar)"), critical("0.5"),
              p("free_conductance", "Conduttanza in senso libero", "conductance", { group: "sim", simDefault: "2 dm3/(s·bar)" })],
-    defaults: { max_pressure: "10 bar" },
+    defaults: { max_pressure: "10 bar", opening: "20 %" },
     ports: () => [port("1", "work"), port("2", "work")],
     paths: () => both("1", "2"),
   },
@@ -484,7 +497,7 @@ const DEFS: TypeDef[] = [
     type: "relief_valve", label: "Valvola limitatrice di pressione", category: REGULATION,
     doc: "Valvola di sicurezza: scarica da 1 a 3 quando la pressione supera la taratura.",
     params: [p("setpoint", "Pressione di taratura", "pressure", { required: true }), MAX_P,
-             conductance("2 dm3/(s·bar)"), critical("0.4")],
+             FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { setpoint: "7 bar", max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("3", "exhaust", true)],
     paths: () => [oneWay("1", "3")],
@@ -493,7 +506,7 @@ const DEFS: TypeDef[] = [
     type: "sequence_valve", label: "Valvola di sequenza", category: REGULATION,
     doc: "3/2 NC che commuta quando il pilotaggio 12 raggiunge la pressione di taratura.",
     params: [p("setpoint", "Pressione di commutazione", "pressure", { required: true }), MAX_P,
-             conductance("1 dm3/(s·bar)"), critical("0.35")],
+             FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
     defaults: { setpoint: "4 bar", max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true), port("12", "pilot")],
     paths: () => [oneWay("1", "2"), oneWay("2", "3")],
@@ -503,7 +516,7 @@ const DEFS: TypeDef[] = [
     doc: "3/2 NC che commuta quando il pilotaggio 12 resta in pressione per il tempo impostato.",
     params: [p("delay", "Ritardo", "time", { required: true }), MAX_P,
              p("pilot_pressure", "Pressione di pilotaggio", "pressure", { group: "sim", simDefault: "2 bar" }),
-             conductance("1 dm3/(s·bar)"), critical("0.35")],
+             FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
     defaults: { delay: "2 s", max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true), port("12", "pilot")],
     paths: () => [oneWay("1", "2"), oneWay("2", "3")],
@@ -552,7 +565,7 @@ const DEFS: TypeDef[] = [
   {
     type: "air_motor", label: "Motore pneumatico", category: ACTUATORS,
     doc: "Motore pneumatico reversibile: gira consumando aria tra le porte 1 e 2.",
-    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    params: [MAX_P, FLOW, conductance("1 dm3/(s·bar)"), critical("0.4")],
     defaults: { max_pressure: "8 bar" },
     actuator: true,
     ports: () => [port("1", "work"), port("2", "work")],
@@ -729,9 +742,14 @@ export function buildComponent(raw: ComponentData): Component {
       throw new ParameterError(`${id}.${spec.name}: atteso ${spec.dimension}, ricevuto ${qty.dimension} (${qty})`);
     }
     // i parametri di simulazione come il carico possono valere zero
-    const allowZero = (spec.group === "sim" && spec.dimension === "force") || spec.name === "cushion_opening";
-    if (allowZero ? qty.si < 0 : qty.si <= 0) {
+    const allowZero = (spec.group === "sim" && spec.dimension === "force") || spec.percent === true;
+    if (spec.signed) {
+      if (!Number.isFinite(qty.si)) throw new ParameterError(`${id}.${spec.name}: valore non valido (${qty})`);
+    } else if (allowZero ? qty.si < 0 : qty.si <= 0) {
       throw new ParameterError(`${id}.${spec.name}: deve essere ${allowZero ? "positivo o nullo" : "positivo"} (${qty})`);
+    }
+    if (spec.percent && qty.si > 1 + 1e-9) {
+      throw new ParameterError(`${id}.${spec.name}: va da 0 % (chiuso) a 100 % (tutto aperto) (${qty})`);
     }
     if (spec.below !== undefined && qty.si >= spec.below) {
       throw new ParameterError(`${id}.${spec.name}: deve essere minore di ${spec.below} (${qty})`);
@@ -749,8 +767,6 @@ export function buildComponent(raw: ComponentData): Component {
     if (cu !== "none" && len && len.si * (cu === "both" ? 2 : 1) > comp.params.stroke!.si) {
       throw new ParameterError(`${id}: l'ammortizzo (${len}) è troppo lungo per la corsa (${comp.params.stroke})`);
     }
-    const op = comp.params.cushion_opening;
-    if (op && op.si > 1) throw new ParameterError(`${id}.cushion_opening: va da 0 (vite chiusa) a 1 (tutta aperta)`);
   } else if (raw.cushioning && raw.cushioning !== "none") {
     throw new ParameterError(`${id}: questo componente non ha l'ammortizzo`);
   }
@@ -816,6 +832,30 @@ export function simParam(c: Component, name: string): Quantity {
   const spec = TYPES.get(c.type)!.params.find((s) => s.name === name);
   if (!spec?.simDefault) throw new Error(`${c.type}: nessun default per ${name}`);
   return Quantity.parse(spec.simDefault);
+}
+
+/** Pressioni di prova della portata nominale Qn (ISO 6358, cataloghi): 6 bar a monte, 5 bar a valle. */
+const QN_UPSTREAM = 6e5, QN_DOWNSTREAM = 5e5;
+const P_ATM_ABS = 101325;
+
+/** Conduttanza C [m³/(s·Pa)] che dà la portata nominale `qn` [Nm³/s] tra 6 e 5 bar con rapporto critico `b`. */
+export function conductanceFromFlow(qn: number, b: number): number {
+  const p1 = QN_UPSTREAM + P_ATM_ABS, p2 = QN_DOWNSTREAM + P_ATM_ABS;
+  const x = Math.max(0, (p2 / p1 - b) / (1 - b));
+  return qn / (p1 * Math.sqrt(Math.max(1e-9, 1 - x * x)));
+}
+
+/**
+ * Conduttanza C del passaggio principale [m³/(s·Pa)]: quella scritta, altrimenti quella ricavata dalla
+ * portata nominale Qn, altrimenti il valore predefinito. Negli strozzatori è moltiplicata per l'apertura.
+ */
+export function conductanceOf(c: Component): number {
+  const spec = TYPES.get(c.type)!.params;
+  const b = simParam(c, "critical_ratio").si;
+  const flow = spec.some((s) => s.name === "flow") && c.type !== "pressure_source" ? c.params.flow : undefined;
+  let C = c.params.conductance?.si ?? (flow ? conductanceFromFlow(flow.si, b) : simParam(c, "conductance").si);
+  if (spec.some((s) => s.name === "opening")) C *= simParam(c, "opening").si;
+  return C;
 }
 
 export const internalPaths = (c: Component): InternalPath[] => TYPES.get(c.type)?.paths?.(c) ?? [];
