@@ -1,10 +1,13 @@
 // Editor di schemi pneumatici: stato, disegno SVG e interazioni.
 import { geometry, rotate, thumbnail } from "./symbols.js";
 import * as api from "./api.js";
+import { exportFile, newProjectId, openStore } from "./storage.js";
 
 const GRID = 10;
 const SVGNS = "http://www.w3.org/2000/svg";
-const STORAGE_KEY = "pneutrack.autosave.v1";
+const STORAGE_KEY = "pneutrack.autosave.v1"; // bozza non ancora salvata come progetto
+const SESSION_KEY = "pneutrack.session.v1"; // ultimo progetto aperto
+const AUTOSAVE_MS = 1200;
 
 const PREFIX = {
   pressure_source: "P", pressure_regulator: "R", silencer: "SL", plug: "T",
@@ -386,7 +389,7 @@ function renderProperties() {
       <p>Per collegare due porte trascina da una porta all'altra. Più linee sulla stessa porta formano un raccordo a T.</p>
       <ul><li><kbd>R</kbd> ruota</li><li><kbd>Canc</kbd> elimina</li>
       <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulla / ripeti</li>
-      <li><kbd>Ctrl</kbd>+<kbd>D</kbd> duplica</li><li><kbd>Ctrl</kbd>+<kbd>S</kbd> salva</li>
+      <li><kbd>Ctrl</kbd>+<kbd>D</kbd> duplica</li><li><kbd>Ctrl</kbd>+<kbd>S</kbd> salva il progetto</li>
       <li>Rotella: zoom · trascina il foglio: sposta la vista</li></ul>`;
     panel.append(help);
   }
@@ -433,6 +436,7 @@ function renderStatus() {
   $("#btn-undo").disabled = !history.past.length;
   $("#btn-redo").disabled = !history.future.length;
   $("#doc-name").textContent = doc.name || "Senza nome";
+  renderSaveState();
 }
 
 // --- modifiche -----------------------------------------------------------------
@@ -537,7 +541,7 @@ let analyzeSeq = 0;
 function changed() {
   render();
   renderProperties();
-  try { localStorage.setItem(STORAGE_KEY, snapshot()); } catch { /* storage non disponibile */ }
+  projectChanged();
   clearTimeout(analyzeTimer);
   analyzeTimer = setTimeout(runAnalysis, 120);
 }
@@ -687,7 +691,8 @@ svg.addEventListener("drop", (e) => {
 document.addEventListener("keydown", (e) => {
   const typing = e.target.closest("input, select, textarea");
   const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveFile(); return; }
+  if (mod && e.key.toLowerCase() === "s") { e.preventDefault(); saveProject({ asNew: e.shiftKey }); return; }
+  if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
   if (typing) return;
   if (mod && e.key.toLowerCase() === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
   else if (mod && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
@@ -712,17 +717,131 @@ function loadDoc(data, { fit = true } = {}) {
   if (fit) fitView();
 }
 
-function saveFile() {
-  const name = (doc.name || "schema").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "schema";
-  const blob = new Blob([JSON.stringify(doc, null, 2) + "\n"], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}.pneu.json`;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast(`Salvato ${a.download}`);
+// --- progetti --------------------------------------------------------------------------
+
+let store = null;
+let project = null; // { id, createdAt } del progetto aperto, null per una bozza
+let savedSnapshot = null; // stato dell'ultimo salvataggio
+let saveState = "idle"; // idle | saving | saved | error
+let saveError = "";
+let lastSavedAt = null;
+let autosaveTimer = null;
+let saving = null; // promessa del salvataggio in corso (un solo salvataggio alla volta)
+
+const isDirty = () => snapshot() !== savedSnapshot;
+const fileName = () =>
+  `${(doc.name || "schema").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "schema"}.pneu.json`;
+const fmtTime = (iso) => {
+  const d = new Date(iso);
+  const today = new Date().toDateString() === d.toDateString();
+  return today ? `oggi ${d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}`
+    : d.toLocaleString("it-IT", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+
+function remember(key, value) {
+  try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch { /* non disponibile */ }
+}
+
+function projectChanged() {
+  if (!project) {
+    remember(STORAGE_KEY, snapshot());
+  } else if (isDirty()) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => saveProject(), AUTOSAVE_MS);
+  }
+  renderSaveState();
+}
+
+function renderSaveState() {
+  const el = $("#save-state");
+  if (!el) return;
+  let text, cls;
+  if (!project) {
+    text = doc.components.length ? "Bozza non salvata" : "";
+    cls = "draft";
+  } else if (saveState === "saving") {
+    text = "Salvataggio…"; cls = "saving";
+  } else if (saveState === "error") {
+    text = `Non salvato: ${saveError}`; cls = "error";
+  } else if (isDirty()) {
+    text = "Modifiche da salvare"; cls = "draft";
+  } else {
+    text = lastSavedAt ? `Salvato ${fmtTime(lastSavedAt)}` : "Salvato"; cls = "saved";
+  }
+  el.textContent = text;
+  el.className = `save-state ${cls}`;
+  el.title = store ? `Archivio: ${store.label}` : "";
+}
+
+async function saveProject({ asNew = false, silent = false } = {}) {
+  clearTimeout(autosaveTimer);
+  if (!store) return;
+  if (saving) { await saving; if (!asNew && !isDirty()) return; }
+  const now = new Date().toISOString();
+  if (!project || asNew) {
+    project = { id: newProjectId(), createdAt: now };
+    if (asNew && doc.name) doc.name = doc.name.endsWith(" (copia)") ? doc.name : `${doc.name} (copia)`;
+  }
+  const snap = snapshot();
+  const record = { id: project.id, name: doc.name || "Senza nome", createdAt: project.createdAt,
+                   updatedAt: now, circuit: JSON.parse(snap) };
+  saveState = "saving";
+  renderSaveState();
+  saving = store.put(record).then(() => {
+    savedSnapshot = snap;
+    lastSavedAt = now;
+    saveState = "saved";
+    remember(SESSION_KEY, project.id);
+    remember(STORAGE_KEY, null);
+    if (!silent && asNew) toast("Progetto salvato come copia");
+  }).catch((err) => {
+    saveState = "error";
+    saveError = err.message || "errore";
+    toast(`Salvataggio non riuscito: ${saveError}`);
+  }).finally(() => { saving = null; renderStatus(); });
+  await saving;
+  if (!projectsDialogHidden()) refreshProjectList();
+}
+
+async function openProject(id) {
+  if (project && isDirty()) await saveProject();
+  try {
+    const p = await store.get(id);
+    clearTimeout(autosaveTimer);
+    project = null; // il caricamento non deve finire nel progetto precedente
+    loadDoc(p.circuit);
+    history.past = []; history.future = [];
+    project = { id: p.id, createdAt: p.createdAt };
+    savedSnapshot = snapshot();
+    lastSavedAt = p.updatedAt;
+    saveState = "saved";
+    remember(SESSION_KEY, p.id);
+    remember(STORAGE_KEY, null);
+    closeProjects();
+    renderStatus();
+    toast(`Aperto «${p.name}»`);
+  } catch (err) {
+    toast(`Impossibile aprire il progetto: ${err.message}`);
+  }
+}
+
+async function newDocument(data = emptyDoc(), message = "Nuovo schema") {
+  if (project && isDirty()) await saveProject();
+  project = null;
+  savedSnapshot = null;
+  saveState = "idle";
+  remember(SESSION_KEY, null);
+  loadDoc(data);
+  toast(`${message} (Ctrl+Z per tornare indietro)`);
+}
+
+async function exportCurrent() {
+  try {
+    const r = await exportFile(fileName(), JSON.stringify(doc, null, 2) + "\n");
+    if (r === "saved") toast(`Esportato ${fileName()}`);
+  } catch (err) {
+    toast(`Esportazione non riuscita: ${err.message}`);
+  }
 }
 
 $("#file-input").addEventListener("change", async (e) => {
@@ -731,23 +850,179 @@ $("#file-input").addEventListener("change", async (e) => {
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
-    if (data.format && data.format !== "pneutrack/circuit") throw new Error("formato non riconosciuto");
-    loadDoc(data);
-    toast(`Aperto ${file.name}`);
+    const circuit = data.circuit && data.circuit.components ? data.circuit : data; // progetto o schema
+    if (circuit.format && circuit.format !== "pneutrack/circuit") throw new Error("formato non riconosciuto");
+    if (!Array.isArray(circuit.components)) throw new Error("il file non contiene uno schema");
+    if (!circuit.name) circuit.name = file.name.replace(/\.pneu\.json$|\.json$/i, "");
+    await newDocument(circuit, `Importato ${file.name}`);
+    await saveProject({ silent: true });
+    closeProjects();
   } catch (err) {
     toast(`Impossibile aprire il file: ${err.message}`);
   }
 });
 
+// --- finestra Progetti -----------------------------------------------------------------
+
+const projectsDialogHidden = () => $("#projects-dialog").hidden;
+let projectList = [];
+let pendingDelete = null;
+
+function openProjects() {
+  $("#projects-dialog").hidden = false;
+  $("#projects-store").textContent = store ? `Archivio: ${store.label}` : "";
+  $("#projects-search").value = "";
+  $("#projects-list").replaceChildren();
+  refreshProjectList();
+  $("#projects-search").focus();
+}
+function closeProjects() {
+  $("#projects-dialog").hidden = true;
+  pendingDelete = null;
+}
+
+async function refreshProjectList() {
+  const ul = $("#projects-list");
+  try {
+    projectList = await store.list();
+  } catch (err) {
+    ul.innerHTML = "";
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = `Impossibile leggere l'archivio: ${err.message}`;
+    ul.append(li);
+    return;
+  }
+  renderProjectList();
+}
+
+function renderProjectList() {
+  const ul = $("#projects-list");
+  ul.replaceChildren();
+  const q = $("#projects-search").value.trim().toLowerCase();
+  const items = projectList.filter((p) => !q || p.name.toLowerCase().includes(q));
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = projectList.length ? "Nessun progetto corrisponde alla ricerca."
+      : "Nessun progetto salvato. Salva lo schema corrente o creane uno nuovo.";
+    ul.append(li);
+    return;
+  }
+  for (const p of items) {
+    const li = document.createElement("li");
+    li.dataset.id = p.id;
+    if (project?.id === p.id) li.classList.add("current");
+    const open = document.createElement("button");
+    open.className = "project-open";
+    open.dataset.pact = "open";
+    const name = document.createElement("span");
+    name.className = "project-name";
+    name.textContent = p.name;
+    const meta = document.createElement("span");
+    meta.className = "project-meta";
+    meta.textContent = `${p.updatedAt ? fmtTime(p.updatedAt) : ""} · ${p.components} component${p.components === 1 ? "e" : "i"}` +
+      (project?.id === p.id ? " · aperto" : "");
+    open.append(name, meta);
+    const acts = document.createElement("span");
+    acts.className = "project-actions";
+    if (pendingDelete === p.id) {
+      acts.innerHTML = `<span class="confirm-text">Eliminare?</span>
+        <button data-pact="delete-yes" class="danger">Elimina</button><button data-pact="delete-no">Annulla</button>`;
+    } else {
+      acts.innerHTML = `<button data-pact="rename" title="Rinomina">Rinomina</button>
+        <button data-pact="duplicate" title="Duplica">Duplica</button>
+        <button data-pact="delete" class="danger" title="Elimina">Elimina</button>`;
+    }
+    li.append(open, acts);
+    ul.append(li);
+  }
+}
+
+$("#projects-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-pact]");
+  const li = e.target.closest("li[data-id]");
+  if (!btn || !li) return;
+  const id = li.dataset.id;
+  const act = btn.dataset.pact;
+  try {
+    if (act === "open") return openProject(id);
+    if (act === "delete") { pendingDelete = id; return renderProjectList(); }
+    if (act === "delete-no") { pendingDelete = null; return renderProjectList(); }
+    if (act === "delete-yes") {
+      await store.remove(id);
+      pendingDelete = null;
+      if (project?.id === id) { project = null; savedSnapshot = null; remember(SESSION_KEY, null); renderStatus(); }
+      toast("Progetto eliminato");
+    } else if (act === "duplicate") {
+      const p = await store.get(id);
+      const now = new Date().toISOString();
+      const name = `${p.name} (copia)`;
+      await store.put({ ...p, id: newProjectId(), name, createdAt: now, updatedAt: now,
+                        circuit: { ...p.circuit, name } });
+      toast("Progetto duplicato");
+    } else if (act === "rename") {
+      return startRename(li, id);
+    }
+    await refreshProjectList();
+  } catch (err) {
+    toast(`Operazione non riuscita: ${err.message}`);
+  }
+});
+
+function startRename(li, id) {
+  const current = projectList.find((p) => p.id === id);
+  const input = document.createElement("input");
+  input.className = "rename-input";
+  input.value = current?.name || "";
+  input.setAttribute("aria-label", "Nuovo nome del progetto");
+  li.querySelector(".project-open").replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (ok) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    if (ok && name && name !== current?.name) {
+      try {
+        if (project?.id === id) {
+          mutate(() => { doc.name = name; });
+          await saveProject();
+        } else {
+          const p = await store.get(id);
+          await store.put({ ...p, name, updatedAt: new Date().toISOString(), circuit: { ...p.circuit, name } });
+        }
+        toast("Progetto rinominato");
+      } catch (err) { toast(`Rinomina non riuscita: ${err.message}`); }
+    }
+    refreshProjectList();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") { e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+$("#projects-search").addEventListener("input", renderProjectList);
+$("#projects-dialog").addEventListener("click", (e) => {
+  if (e.target.id === "projects-dialog") return closeProjects();
+  const act = e.target.closest("button")?.dataset.dact;
+  if (act === "close") closeProjects();
+  if (act === "new") { closeProjects(); newDocument(); }
+  if (act === "import") $("#file-input").click();
+  if (act === "save-current") saveProject().then(refreshProjectList);
+});
+
 $("#toolbar").addEventListener("click", async (e) => {
   const act = e.target.closest("button")?.dataset.act;
   switch (act) {
-    case "new":
-      if (doc.components.length && !confirmDiscard()) return;
-      loadDoc(emptyDoc());
-      break;
-    case "open": $("#file-input").click(); break;
-    case "save": saveFile(); break;
+    case "projects": openProjects(); break;
+    case "new": newDocument(); break;
+    case "save": saveProject(); break;
+    case "save-as": saveProject({ asNew: true }); break;
+    case "export": exportCurrent(); break;
     case "undo": undo(); break;
     case "redo": redo(); break;
     case "fit": fitView(); break;
@@ -758,15 +1033,12 @@ $("#examples").addEventListener("change", async (e) => {
   const id = e.target.value;
   e.target.value = "";
   if (!id) return;
-  loadDoc(await api.example(id));
-  toast("Esempio caricato");
+  await newDocument(await api.example(id), "Esempio caricato");
 });
 
-function confirmDiscard() {
-  // nessuna finestra modale del browser: il nuovo schema resta annullabile con Ctrl+Z
-  toast("Nuovo schema (Ctrl+Z per tornare indietro)");
-  return true;
-}
+window.addEventListener("beforeunload", (e) => {
+  if (project && isDirty()) { saveProject(); e.preventDefault(); }
+});
 
 let toastTimer = null;
 function toast(msg) {
@@ -788,17 +1060,40 @@ async function init() {
     o.value = ex.id; o.textContent = ex.name;
     $("#examples").append(o);
   }
-  let restored = null;
-  try { restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { restored = null; }
-  if (restored?.components) {
-    doc = { ...emptyDoc(), ...restored };
-  }
   const r = svg.getBoundingClientRect();
   view = { x: r.width / 2, y: r.height / 2, k: 1 };
+
+  // bozza locale subito, poi l'archivio (sul web può rispondere dopo qualche secondo)
+  let restored = null;
+  try { restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { restored = null; }
+  if (restored?.components) doc = { ...emptyDoc(), ...restored };
   history.past = []; history.future = [];
   changed();
   if (doc.components.length) fitView();
+
+  store = await openStore({ serverAvailable: !api.isLocal() });
+  document.body.dataset.store = store.kind;
+  let lastId = null;
+  try { lastId = localStorage.getItem(SESSION_KEY); } catch { lastId = null; }
+  if (lastId && !restored?.components) {
+    try {
+      const p = await store.get(lastId);
+      doc = { ...emptyDoc(), ...p.circuit };
+      project = { id: p.id, createdAt: p.createdAt };
+      savedSnapshot = snapshot();
+      lastSavedAt = p.updatedAt;
+      saveState = "saved";
+      history.past = []; history.future = [];
+      changed();
+      fitView();
+    } catch { remember(SESSION_KEY, null); }
+  }
+  renderStatus();
+  document.body.dataset.ready = "1";
 }
 
-window.pneutrack = { get doc() { return doc; }, get analysis() { return analysis; }, loadDoc, addComponent, connect };
+window.pneutrack = {
+  get doc() { return doc; }, get analysis() { return analysis; }, get project() { return project; },
+  get store() { return store?.kind; }, isDirty, loadDoc, addComponent, connect, saveProject,
+};
 init();

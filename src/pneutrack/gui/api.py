@@ -49,7 +49,8 @@ def analyze(data: Mapping[str, Any]) -> dict[str, Any]:
         try:
             a, b = PortRef.parse(raw["from"]), PortRef.parse(raw["to"])
         except (KeyError, TypeError, ValueError):
-            issues.append(_issue("error", "INVALID_CONNECTION", f"collegamento non valido: {raw!r}"))
+            issues.append(_issue("error", "INVALID_CONNECTION", "collegamento non valido: "
+                                 + json.dumps(raw, ensure_ascii=False, separators=(",", ":"))))
             continue
         if a.component not in circuit or b.component not in circuit:
             continue  # già segnalato come componente non valido

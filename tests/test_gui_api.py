@@ -8,14 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from pneutrack.gui import api
+from pneutrack.gui import api, build_static
+from pneutrack.gui.projects import ProjectError, ProjectStore
 from pneutrack.gui.server import make_server
 from pneutrack.model import COMPONENT_TYPES
 
 
 @pytest.fixture(scope="module")
-def base_url():
-    server = make_server(port=0)
+def base_url(tmp_path_factory):
+    server = make_server(port=0, projects_dir=str(tmp_path_factory.mktemp("progetti")))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{server.server_address[1]}"
@@ -26,6 +27,14 @@ def base_url():
 def get(url):
     with urllib.request.urlopen(url) as r:
         return r.status, r.headers.get("Content-Type"), r.read()
+
+
+def call(url, method, data=None):
+    body = None if data is None else json.dumps(data).encode()
+    req = urllib.request.Request(url, body, {"Content-Type": "application/json"}, method=method)
+    with urllib.request.urlopen(req) as r:
+        raw = r.read()
+        return r.status, (json.loads(raw) if raw else None)
 
 
 def post(url, data):
@@ -121,6 +130,74 @@ def test_server_rejects_bad_json(base_url):
     assert exc.value.code == 400
 
 
+PROJECT = {"name": "Pressa", "createdAt": "2026-11-25T10:00:00Z", "updatedAt": "2026-11-25T10:05:00Z",
+           "circuit": {"format": "pneutrack/circuit", "version": 1, "name": "Pressa",
+                       "components": [{"id": "P", "type": "pressure_source",
+                                       "params": {"pressure": "6 bar"}}],
+                       "connections": [], "layout": {"P": {"x": 0, "y": 0, "rot": 0}}}}
+
+
+def test_project_store_roundtrip(tmp_path):
+    store = ProjectStore(tmp_path / "progetti")
+    assert store.list() == []
+    store.put("p1", PROJECT)
+    store.put("p2", {**PROJECT, "name": "Nastro", "updatedAt": "2026-11-25T11:00:00Z"})
+    assert [p["name"] for p in store.list()] == ["Nastro", "Pressa"]
+    assert store.list()[1] == {"id": "p1", "name": "Pressa", "createdAt": PROJECT["createdAt"],
+                               "updatedAt": PROJECT["updatedAt"], "components": 1}
+    assert store.get("p1")["circuit"] == PROJECT["circuit"]
+    store.delete("p2")
+    assert [p["id"] for p in store.list()] == ["p1"]
+    assert not list((tmp_path / "progetti").glob(".tmp-*"))
+    with pytest.raises(KeyError):
+        store.get("p2")
+
+
+@pytest.mark.parametrize("bad_id", ["../evil", "a/b", "", "x" * 65, "nome con spazi"])
+def test_project_store_rejects_bad_ids(tmp_path, bad_id):
+    with pytest.raises(ProjectError):
+        ProjectStore(tmp_path).put(bad_id, PROJECT)
+
+
+def test_project_store_rejects_bad_content(tmp_path):
+    store = ProjectStore(tmp_path)
+    with pytest.raises(ProjectError):
+        store.put("p1", {"name": "x"})
+    with pytest.raises(ProjectError):
+        store.put("p1", {"circuit": {"format": "altro"}})
+
+
+def test_projects_http(base_url):
+    status, saved = call(base_url + "/api/projects/abc", "PUT", PROJECT)
+    assert status == 200 and saved["id"] == "abc"
+    _, listing = call(base_url + "/api/projects", "GET")
+    assert [p["id"] for p in listing] == ["abc"]
+    _, got = call(base_url + "/api/projects/abc", "GET")
+    assert got["circuit"]["components"][0]["id"] == "P"
+    status, _ = call(base_url + "/api/projects/abc", "DELETE")
+    assert status == 204
+    for method, path in [("GET", "/api/projects/abc"), ("DELETE", "/api/projects/abc")]:
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            call(base_url + path, method)
+        assert exc.value.code == 404
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        call(base_url + "/api/projects/..%2Fevil", "PUT", PROJECT)
+    assert exc.value.code in (400, 404)
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        call(base_url + "/api/projects/con%20spazi", "PUT", PROJECT)
+    assert exc.value.code == 400
+
+
+def test_build_static(tmp_path):
+    out = build_static.build(tmp_path / "sito")
+    assert (out / "index.html").is_file() and (out / "js" / "engine.js").is_file()
+    catalog = json.loads((out / "data" / "catalog.json").read_text(encoding="utf-8"))
+    assert {t["type"] for t in catalog} == set(COMPONENT_TYPES)
+    examples = json.loads((out / "data" / "examples.json").read_text(encoding="utf-8"))
+    for ex in examples:
+        assert (out / "data" / "examples" / f"{ex['id']}.json").is_file()
+
+
 def _playwright_available() -> bool:
     if not shutil.which("node"):
         return False
@@ -135,3 +212,25 @@ def test_editor_end_to_end(base_url):
     proc = subprocess.run(["node", str(script), base_url + "/"], capture_output=True, text=True,
                           timeout=180)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+@pytest.mark.skipif(not _playwright_available(), reason="serve Node.js con Playwright")
+def test_static_editor_end_to_end(tmp_path):
+    """La pagina statica (senza server Python) funziona con il motore JS e l'archivio del browser."""
+    import functools
+    import http.server
+
+    site = build_static.build(tmp_path / "sito")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(site))
+    handler.log_message = lambda *a: None
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        script = Path(__file__).parent / "e2e" / "editor.mjs"
+        proc = subprocess.run(["node", str(script), f"http://127.0.0.1:{httpd.server_address[1]}/"],
+                              capture_output=True, text=True, timeout=180,
+                              env={**__import__("os").environ, "PNEUTRACK_EXPECT_STORE": "browser"})
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

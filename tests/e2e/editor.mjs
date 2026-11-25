@@ -8,6 +8,7 @@ const { chromium } = require("playwright");
 
 const url = process.argv[2] || "http://127.0.0.1:8765/";
 const shots = process.argv[3];
+const expectedStore = process.env.PNEUTRACK_EXPECT_STORE || "server"; // "browser" per la pagina statica
 
 const browser = await chromium.launch(
   process.env.PNEUTRACK_CHROMIUM ? { executablePath: process.env.PNEUTRACK_CHROMIUM } : {});
@@ -47,6 +48,8 @@ async function dropFromPalette(type, x, y) {
 
 await page.goto(url);
 await page.waitForSelector(".palette-item");
+await page.waitForFunction(() => document.body.dataset.ready === "1");
+assert.equal(await page.evaluate(() => window.pneutrack.store), expectedStore);
 
 // 1. palette completa
 const types = await page.locator(".palette-item").evaluateAll((els) => els.map((e) => e.dataset.type));
@@ -138,12 +141,74 @@ assert.equal(s.doc.components.length, 8);
 assert.equal(s.analysis.issues.length, 0);
 if (shots) await page.screenshot({ path: `${shots}/esempio.png` });
 
-// 9. salvataggio: scarica un file che il modello sa rileggere
-const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="save"]')]);
+// 9. esportazione: scarica un file che il modello sa rileggere
+const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="export"]')]);
 assert.match(download.suggestedFilename(), /\.pneu\.json$/);
 const saved = JSON.parse(await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c).toString()));
 assert.equal(saved.format, "pneutrack/circuit");
 assert.equal(saved.components.length, 8);
+
+// 10. progetti: salva, autosalvataggio, riapertura dopo ricarica
+const projects = () => page.evaluate(async () => {
+  const r = [];
+  document.querySelectorAll("#projects-list li[data-id] .project-name").forEach((e) => r.push(e.textContent));
+  return r;
+});
+const saveText = () => page.textContent("#save-state");
+assert.equal(await saveText(), "Bozza non salvata");
+await page.click('[data-act="save"]');
+await page.waitForFunction(() => document.querySelector("#save-state").textContent.startsWith("Salvato"));
+const firstId = await page.evaluate(() => window.pneutrack.project.id);
+
+await page.click('[data-component="C1"] .halo', { force: true });
+await page.keyboard.press("r");
+assert.equal(await saveText(), "Modifiche da salvare");
+await page.waitForFunction(() => document.querySelector("#save-state").textContent.startsWith("Salvato"), null, { timeout: 5000 });
+assert.equal(await page.evaluate(() => window.pneutrack.isDirty()), false, "autosalvataggio");
+
+await page.reload();
+await page.waitForFunction(() => document.body.dataset.ready === "1");
+s = await state();
+assert.equal(await page.evaluate(() => window.pneutrack.project?.id), firstId, "progetto riaperto");
+assert.equal(s.doc.layout.C1.rot, 1, "modifica autosalvata");
+assert.equal(s.doc.components.length, 8);
+
+// 11. finestra Progetti: salva copia, rinomina, duplica, elimina, apri
+await page.click('[data-act="save-as"]');
+await page.waitForFunction(() => document.querySelector("#save-state").textContent.startsWith("Salvato"));
+assert.notEqual(await page.evaluate(() => window.pneutrack.project.id), firstId);
+await page.click('[data-act="projects"]');
+await page.waitForSelector("#projects-list li[data-id]");
+let names = await projects();
+assert.deepEqual(names.sort(), ["Comando indiretto cilindro doppio effetto",
+                                "Comando indiretto cilindro doppio effetto (copia)"]);
+if (shots) await page.screenshot({ path: `${shots}/progetti.png` });
+
+const row = (name) => page.locator("#projects-list li[data-id]", { has: page.locator(".project-name", { hasText: new RegExp(`^${name.replace(/[()]/g, "\\$&")}$`) }) });
+await row("Comando indiretto cilindro doppio effetto").locator('[data-pact="rename"]').click();
+await page.fill(".rename-input", "Pressa banco 1");
+await page.press(".rename-input", "Enter");
+await page.waitForFunction(() => [...document.querySelectorAll(".project-name")].some((e) => e.textContent === "Pressa banco 1"));
+await row("Pressa banco 1").locator('[data-pact="duplicate"]').click();
+await page.waitForFunction(() => document.querySelectorAll("#projects-list li[data-id]").length === 3);
+await row("Pressa banco 1 (copia)").locator('[data-pact="delete"]').click();
+await row("Pressa banco 1 (copia)").locator('[data-pact="delete-yes"]').click();
+await page.waitForFunction(() => document.querySelectorAll("#projects-list li[data-id]").length === 2);
+await page.fill("#projects-search", "pressa");
+assert.deepEqual(await projects(), ["Pressa banco 1"]);
+await row("Pressa banco 1").locator('[data-pact="open"]').click();
+await page.waitForFunction(() => document.querySelector("#projects-dialog").hidden);
+assert.equal(await page.evaluate(() => window.pneutrack.project.id), firstId);
+assert.equal(await page.textContent("#doc-name"), "Pressa banco 1");
+
+// 12. nuovo schema: bozza separata, il progetto resta in archivio
+await page.click('[data-act="new"]');
+s = await state();
+assert.equal(s.doc.components.length, 0);
+assert.equal(await page.evaluate(() => window.pneutrack.project), null);
+await page.click('[data-act="projects"]');
+await page.waitForFunction(() => document.querySelectorAll("#projects-list li[data-id]").length === 2);
+await page.keyboard.press("Escape");
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();

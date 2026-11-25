@@ -40,8 +40,9 @@ body {
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+html, body { height: 100%; }
 #app {
-  display: grid; height: 100vh;
+  display: grid; height: 100%;
   grid-template-columns: 190px 1fr 300px;
   grid-template-rows: auto 1fr;
   grid-template-areas: "bar bar bar" "pal stage side";
@@ -187,3 +188,47 @@ code { font: 11.5px ui-monospace, monospace; }
   #side { flex-direction: row; border-left: 0; border-top: 1px solid var(--border); }
   #properties { border-bottom: 0; border-right: 1px solid var(--border); }
 }
+
+/* salvataggio e progetti */
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.save-state { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.save-state.saved { color: var(--ok); }
+.save-state.saving { color: var(--muted); }
+.save-state.error { color: var(--error); font-weight: 600; }
+.save-state.draft { color: var(--warning); }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: start center;
+  padding: max(6vh, 16px) 16px; background: color-mix(in srgb, var(--text) 35%, transparent);
+}
+.overlay[hidden] { display: none; }
+.dialog {
+  width: min(720px, 100%); max-height: 84vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .18); padding: 16px 18px;
+}
+.dialog header { display: flex; align-items: center; justify-content: space-between; }
+.dialog h2 { margin: 0; font-size: 18px; }
+button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
+.store-label { margin: 4px 0 12px; color: var(--muted); font-size: 12.5px; }
+.dialog-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.dialog-bar input { flex: 1 1 200px; }
+#projects-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-top: 1px solid var(--border); }
+#projects-list li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+#projects-list li.current { background: var(--accent-soft); }
+#projects-list li.empty { color: var(--muted); padding: 18px 4px; display: block; }
+.project-open {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start;
+  border: 0; background: transparent; text-align: left; padding: 2px 4px;
+}
+.project-open:hover .project-name { color: var(--accent); text-decoration: underline; }
+.project-name { font-weight: 600; overflow-wrap: anywhere; }
+.project-meta { font-size: 12px; color: var(--muted); }
+.project-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.project-actions button { padding: 3px 8px; font-size: 12.5px; }
+.confirm-text { font-size: 12.5px; color: var(--error); font-weight: 600; }
+.rename-input { flex: 1 1 auto; }
