@@ -10,7 +10,7 @@ import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
 import {
-  ACTUATION_SHORT, buildComponent, cylinderInfo, isElectric, isLatching, isMechanical, isMomentary, typeList,
+  ACTUATION_SHORT, buildComponent, cylinderInfo, isElectric, isLatching, isMechanical, isMomentary, isElectricType, typeList,
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
@@ -297,6 +297,10 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
   }
   if (!sim) return undefined;
   const s = sim.s;
+  const el = s.electricState();
+  if (el && isElectricType(comp.type)) {
+    return { actuated: el.actuated.has(comp.id) || el.switched.has(comp.id), energized: el.energized.has(comp.id) };
+  }
   const spec = s.net.valves.find((v) => v.id === comp.id);
   if (spec) {
     return { position: s.valvePosition(comp.id), active14: s.sideActive(spec, "14"), active12: s.sideActive(spec, "12") };
@@ -326,6 +330,7 @@ function render() {
     return n === undefined ? 0 : (P[n]! - P_ATM) / BAR;
   };
 
+  const switchIds = new Set(manualSwitches().map((x) => x.id));
   // collegamenti
   doc.connections.forEach((c, index) => {
     const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
@@ -335,13 +340,14 @@ function render() {
     const kinds = [portKind(ca, pa), portKind(cb, pb)];
     const pilot = kinds.includes("pilot");
     const wire = kinds.includes("electric");
+    const liveWire = wire && sim?.s.electricState()?.potential[c.from] === "+";
     const exhaust = kinds.includes("exhaust"); // linea di scarico: sfoga in atmosfera
     const lf = livePressure(c.from), lt = livePressure(c.to);
     const live = lf === null || lt === null ? null : (lf + lt) / 2;
     const pr = analysis.pressures[c.from] || analysis.pressures[c.to];
     const bar = live !== null ? live : pr && !exhaust ? pr.bar : 0;
     const pressurized = bar > 0.2;
-    const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "", wire ? "wire" : "",
+    const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "", wire ? "wire" : "", liveWire ? "live" : "",
                  selection?.kind === "connection" && selection.index === index ? "selected" : ""]
       .filter(Boolean).join(" ");
     const { pts: path, bendAt } = routePoints(a, b, c.points);
@@ -392,6 +398,7 @@ function render() {
     const jp = junction ? (livePressure(`${comp.id}.1`) ?? analysis.pressures[`${comp.id}.1`]?.bar ?? 0) : 0;
     const cls = ["component", junction ? "junction" : "", jp > 0.2 ? `pressurized ${pressureBand(jp)}` : "",
       selectedIds().includes(comp.id) ? "selected" : "",
+      sim && switchIds.has(comp.id) ? "switchable" : "",
       iss.some((i) => i.severity === "error") ? "has-error" :
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
     const grp = el("g", {
@@ -424,7 +431,7 @@ function render() {
       if (sim && (comp.type === "pressure_gauge" || comp.type === "air_reservoir")) {
         parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
       }
-      const left = sim?.s.delayRemaining(comp.id);
+      const left = sim?.s.delayRemaining(comp.id) ?? sim?.s.electric?.remaining(comp.id, sim.s.t);
       if (left != null && left > 0) parts.push(`${left.toFixed(1).replace(".", ",")} s`);
     }
     text.textContent = parts.join(" · ");
@@ -530,7 +537,7 @@ function renderLegend() {
   box.innerHTML = `<details${closed ? "" : " open"}><summary>Legenda linee</summary>
     <p class="legend-note">${sim ? "Pressione istantanea" : "Pressione massima raggiungibile"}</p>
     <ul>${swatch("lg-none", "senza pressione")}${PRESSURE_BANDS.map((b) => swatch(`lg ${b.cls}`, b.label)).join("")}
-    ${swatch("lg-exhaust", "scarico")}${swatch("lg-pilot", "pilotaggio")}${swatch("lg-wire", "filo elettrico")}${swatch("lg-selected", "linea selezionata")}</ul></details>`;
+    ${swatch("lg-exhaust", "scarico")}${swatch("lg-pilot", "pilotaggio")}${swatch("lg-wire", "filo elettrico")}${sim?.s.electric ? swatch("lg-live", "filo sotto tensione") : ""}${swatch("lg-selected", "linea selezionata")}</ul></details>`;
   box.querySelector("details")!.addEventListener("toggle", (e) => {
     try { localStorage.setItem(LEGEND_KEY, (e.target as HTMLDetailsElement).open ? "open" : "closed"); } catch { /* */ }
   });
@@ -1724,6 +1731,7 @@ interface SimRun {
 let sim: SimRun | null = null;
 /** comandi a pressione (pulsante, rullo) tenuti premuti col puntatore */
 let held: { id: string; side: "14" | "12" } | null = null;
+let heldSwitch: string | null = null;
 
 function startSim() {
   if (sim) return;
@@ -1755,6 +1763,7 @@ function stopSim() {
   cancelAnimationFrame(sim.raf);
   sim = null;
   held = null;
+  heldSwitch = null;
   $("#app").classList.remove("simulating");
   $("#sim-bar").hidden = true;
   $("#btn-sim").textContent = "▶ Simula";
@@ -1769,8 +1778,10 @@ function resetSim() {
   if (!sim) return;
   const commands = sim.s.net.valves.flatMap((v) => (["14", "12"] as const)
     .filter((side) => sim!.s.command(v.id, side)).map((side) => [v.id, side] as const));
+  const latched = manualSwitches().filter((x) => x.latching && sim!.s.switchState(x.id)).map((x) => x.id);
   sim.s = new Simulator(sim.s.net);
-  // i solenoidi restano come li ha lasciati l'utente
+  // interruttori con ritenuta e solenoidi restano come li ha lasciati l'utente
+  for (const id of latched) sim.s.setSwitch(id, true);
   for (const [id, side] of commands) {
     const v = sim.s.net.valves.find((x) => x.id === id)!;
     if (isLatching(side === "14" ? v.act14 : v.act12)) sim.s.setCommand(id, side, true);
@@ -1799,6 +1810,7 @@ function commandSides() {
   return sim.s.net.valves.flatMap((v) => (["14", "12"] as const).flatMap((side) => {
     const act = side === "14" ? v.act14 : v.act12;
     const cam = side === "14" ? v.cam14 : v.cam12;
+    if (sim!.s.isDriven(v.id, side)) return []; // il solenoide segue la sua bobina
     return isLatching(act) || (isMomentary(act) && !cam) ? [{ id: v.id, side, act }] : [];
   }));
 }
@@ -1824,9 +1836,35 @@ function pressCommand(id: string, side: "14" | "12") {
   render();
   updateSimPanel();
 }
+/** Pulsanti, interruttori e finecorsa senza cilindro: si azionano a mano in simulazione. */
+function manualSwitches() {
+  if (!sim?.s.electric) return [];
+  return sim.s.electric.net.contacts.filter((c) => c.manual).map((c) => {
+    const comp = byId(c.id);
+    return { id: c.id, latching: comp?.type === "pushbutton" && comp.operation === "latching",
+             label: comp?.type === "limit_switch" ? "finecorsa" : comp?.operation === "latching" ? "interruttore" : "pulsante" };
+  });
+}
+
+function pressSwitch(id: string) {
+  const sw = manualSwitches().find((x) => x.id === id);
+  if (!sim || !sw) return;
+  if (sw.latching) {
+    sim.s.setSwitch(id, !sim.s.switchState(id));
+  } else {
+    releaseHeld();
+    sim.s.setSwitch(id, true);
+    heldSwitch = id;
+  }
+  render();
+  updateSimPanel();
+}
+
 function releaseHeld() {
   if (sim && held) sim.s.setCommand(held.id, held.side, false);
+  if (sim && heldSwitch) sim.s.setSwitch(heldSwitch, false);
   held = null;
+  heldSwitch = null;
   if (sim) { render(); updateSimPanel(); }
 }
 
@@ -1839,7 +1877,9 @@ function renderSimPanel() {
   info.className = "sim-help";
   info.textContent = "Fai clic sui comandi delle valvole nello schema o qui sotto. " +
     "Pulsanti, leve, pedali e rulli restano azionati finché tieni premuto; solenoidi e leve con arresto " +
-    "cambiano stato a ogni clic. Le elettrovalvole servopilotate commutano solo se il pilota ha pressione.";
+    "cambiano stato a ogni clic. Le elettrovalvole servopilotate commutano solo se il pilota ha pressione. " +
+    "Nel circuito elettrico si fa clic su pulsanti e interruttori; i solenoidi con una bobina seguono la bobina, " +
+    "e i fili sotto tensione diventano rossi.";
   panel.append(info);
   for (const w of sim.warnings) {
     const p = document.createElement("p");
@@ -1865,6 +1905,29 @@ function renderSimPanel() {
     panel.append(box);
   }
 
+  const switches = manualSwitches();
+  if (switches.length) {
+    heading(panel, "Comandi elettrici");
+    const box = document.createElement("div");
+    box.className = "sim-commands";
+    for (const sw of switches) {
+      const b = document.createElement("button");
+      b.dataset.switch = sw.id;
+      b.className = "sim-cmd";
+      b.textContent = `${sw.id} · ${sw.label}`;
+      b.title = sw.latching ? "Clic: chiudi / apri" : "Tieni premuto per azionare";
+      box.append(b);
+    }
+    panel.append(box);
+  }
+  if (sim.s.electric) {
+    const fault = document.createElement("p");
+    fault.className = "sim-warning";
+    fault.dataset.live = "fault:";
+    fault.hidden = true;
+    panel.append(fault);
+  }
+
   const dl = document.createElement("dl");
   dl.className = "sim-values";
   const row = (label: string, key: string) => {
@@ -1876,6 +1939,11 @@ function renderSimPanel() {
   };
   for (const v of sim.s.net.valves) row(`Valvola ${v.id}`, `valve:${v.id}`);
   for (const c of sim.s.net.cylinders) row(`Cilindro ${c.id}`, `cyl:${c.id}`);
+  for (const r of sim.s.electric?.net.relays ?? []) row(`${byId(r.id)?.type === "timer_relay" ? "Temporizzatore" : "Relè"} ${r.id}`, `relay:${r.id}`);
+  for (const l of sim.s.electric?.net.loads ?? []) {
+    if (l.type === "valve_solenoid") row(`Bobina ${l.id}`, `load:${l.id}`);
+    if (l.type === "signal_lamp") row(`Lampada ${l.id}`, `load:${l.id}`);
+  }
   const comp = selection?.kind === "component" ? byId(selection.id) : undefined;
   if (comp) {
     for (const name of Object.keys(geometry(comp).ports)) row(`${comp.id}.${name}`, `port:${comp.id}.${name}`);
@@ -1890,6 +1958,7 @@ function updateSimPanel() {
   $("#sim-time").textContent = `t = ${s.t.toFixed(2).replace(".", ",")} s`;
   document.body.dataset.simTime = s.t.toFixed(3);
   const POS: Record<string, string> = { "14": "lato 14 (azionata)", "12": "lato 12", "0": "centrale" };
+  const el = s.electricState();
   for (const dd of document.querySelectorAll<HTMLElement>("#properties [data-live]")) {
     const [kind, key] = [dd.dataset.live!.slice(0, dd.dataset.live!.indexOf(":")),
                          dd.dataset.live!.slice(dd.dataset.live!.indexOf(":") + 1)];
@@ -1904,6 +1973,21 @@ function updateSimPanel() {
         : c.fraction > 0.995 ? "tutto fuori" : c.fraction < 0.005 ? "tutto dentro" : "fermo";
       dd.textContent = `${(c.x * 1000).toFixed(1).replace(".", ",")} mm · ${state}`;
       dd.dataset.value = c.fraction.toFixed(4);
+    } else if (kind === "relay" && el) {
+      const left = s.electric!.remaining(key, s.t);
+      dd.textContent = (el.switched.has(key) ? "commutato" : "a riposo") +
+        (left != null ? ` · ${left.toFixed(1).replace(".", ",")} s` : "") + (el.energized.has(key) ? " · bobina eccitata" : "");
+      dd.dataset.value = el.switched.has(key) ? "1" : "0";
+    } else if (kind === "load" && el) {
+      const on = el.energized.has(key);
+      dd.textContent = byId(key)?.type === "signal_lamp" ? (on ? "accesa" : "spenta") : on ? "eccitata" : "diseccitata";
+      dd.dataset.value = on ? "1" : "0";
+    } else if (kind === "fault" && el) {
+      const msg = el.shortCircuit ? "Cortocircuito: il + e il 0V sono uniti da contatti chiusi, nessun carico ha tensione."
+        : el.oscillating.length ? `${el.oscillating.join(", ")} continua a commutare: controlla l'autoritenuta o i contatti NC sulla propria bobina.`
+        : "";
+      dd.textContent = msg;
+      dd.hidden = !msg;
     } else if (kind === "port") {
       const bar = s.gauge(key);
       dd.textContent = fmtBar(bar);
@@ -1914,17 +1998,22 @@ function updateSimPanel() {
     const [id, side] = b.dataset.cmd!.split("|") as [string, "14" | "12"];
     b.classList.toggle("on", s.command(id, side));
   }
+  for (const b of document.querySelectorAll<HTMLElement>("#properties [data-switch]")) {
+    b.classList.toggle("on", s.switchState(b.dataset.switch!));
+  }
 }
 
 $("#properties").addEventListener("pointerdown", (e) => {
+  const sw = target(e).closest("[data-switch]") as HTMLElement | null;
+  if (sw && sim) { e.preventDefault(); pressSwitch(sw.dataset.switch!); return; }
   const b = (target(e).closest("[data-cmd]") as HTMLElement | null);
   if (!b || !sim) return;
   e.preventDefault();
   const [id, side] = b.dataset.cmd!.split("|") as [string, "14" | "12"];
   pressCommand(id, side);
 });
-window.addEventListener("pointerup", () => { if (held) releaseHeld(); });
-window.addEventListener("pointercancel", () => { if (held) releaseHeld(); });
+window.addEventListener("pointerup", () => { if (held || heldSwitch) releaseHeld(); });
+window.addEventListener("pointercancel", () => { if (held || heldSwitch) releaseHeld(); });
 
 $("#sim-speed").addEventListener("change", (e) => {
   if (sim) sim.speed = Number((e.target as HTMLSelectElement).value) || 0.25;
@@ -2018,6 +2107,11 @@ svg.addEventListener("pointerdown", (e) => {
     if (side && comp) {
       e.preventDefault();
       pressCommand(comp.dataset.component!, side.dataset.side as "14" | "12");
+      return;
+    }
+    if (comp && manualSwitches().some((x) => x.id === comp.dataset.component)) {
+      e.preventDefault();
+      pressSwitch(comp.dataset.component!);
       return;
     }
     if (comp) { select({ kind: "component", id: comp.dataset.component! }); return; }

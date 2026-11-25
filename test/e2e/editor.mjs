@@ -614,6 +614,31 @@ assert.equal(s.doc.components.find((c) => c.id === "Y1").drives, "V1.14");
 assert.deepEqual(s.analysis.issues.map((i) => i.code), []);
 assert.match(await page.textContent('[data-component="V1"]'), /Y1/, "la valvola mostra la sua bobina");
 
+// simulazione del circuito elettrico: il pulsante S1 eccita Y1 e il cilindro esce
+await page.click('[data-act="sim"]');
+await page.waitForFunction(() => document.body.dataset.sim === "on");
+await page.selectOption("#sim-speed", "1");
+assert.equal(await page.locator('#properties [data-cmd="V1|14"]').count(), 0, "il solenoide con bobina non si comanda a clic");
+await waitLive("load:Y1", "v === '0'");
+assert.ok((await page.locator(".line.wire.live").count()) >= 1, "il filo dal + è sotto tensione");
+await page.hover('#properties [data-switch="S1"]');
+await page.mouse.down();
+await waitLive("load:Y1", "v === '1'");
+await waitLive("cyl:C1", "Number(v) > 0.99");
+assert.equal(await page.locator(".line.wire.live").count(), 2, "con S1 premuto anche il filo verso Y1 è sotto tensione");
+if (shots) await page.screenshot({ path: `${shots}/simulazione-elettrica.png` });
+await page.mouse.up();
+await waitLive("load:Y1", "v === '0'");
+await waitLive("cyl:C1", "Number(v) < 0.01");
+// anche nel disegno: clic sul pulsante
+await page.mouse.move(...(await at('[data-component="S1"] .halo')));
+await page.mouse.down();
+await waitLive("load:Y1", "v === '1'");
+await page.mouse.up();
+await waitLive("load:Y1", "v === '0'");
+await page.click('[data-act="sim"]');
+await page.waitForFunction(() => document.body.dataset.sim !== "on");
+
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();
 console.log("e2e ok");
