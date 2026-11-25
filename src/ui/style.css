@@ -172,6 +172,8 @@ button.link:hover { text-decoration: underline; }
 
 .label { font-size: 12px; font-weight: 600; fill: var(--text); text-anchor: middle; pointer-events: none;
   paint-order: stroke; stroke: var(--sheet); stroke-width: 4px; stroke-linejoin: round; }
+/* fuori dalla simulazione sigla e descrizione si trascinano */
+#app:not(.simulating) .label { pointer-events: auto; cursor: move; }
 
 .port { cursor: crosshair; }
 .port-hit { fill: transparent; }
