@@ -18,10 +18,12 @@
  * | UNDERPRESSURE         | warning | pressione di comando sotto il minimo di funzionamento|
  * | UNSUPPLIED_ACTUATOR   | warning | attuatore che nessuna sorgente alimenta              |
  * | UNSUPPLIED_PILOT      | warning | pilotaggio collegato ma mai in pressione             |
+ * | INVALID_CAM           | error   | finecorsa riferito a un cilindro che non c'è         |
+ * | SETPOINT_UNREACHABLE  | warning | taratura (sequenza, FRL...) sopra la pressione max   |
  */
 import { CircuitError, nets, parseRef, refCmp, refStr, type CircuitDoc } from "./circuit";
 import {
-  buildComponent, internalPaths, isActuator, ParameterError, sourcePressures,
+  buildComponent, internalPaths, isActuator, isCylinder, ParameterError, sourcePressures,
   type Component, type PortSpec,
 } from "./components";
 import { parseTube, type Tube } from "./tubes";
@@ -216,12 +218,26 @@ export function analyze(data: Pick<CircuitDoc, "components" | "connections">): A
       issues.push(issue("warning", "UNSUPPLIED_ACTUATOR",
         `l'attuatore ${c.id} non è alimentato da alcuna sorgente`, c.id, refs));
     }
-    if (c.type === "directional_valve") {
-      for (const side of ["14", "12"]) {
-        const ref = `${c.id}.${side}`;
-        if (c.ports.some((p) => p.name === side) && connected.has(ref) && pAt(ref) === 0) {
-          issues.push(issue("warning", "UNSUPPLIED_PILOT", `il pilotaggio ${ref} non riceve mai pressione`, c.id, [ref]));
-        }
+    for (const p of c.ports.filter((x) => x.kind === "pilot")) {
+      const ref = `${c.id}.${p.name}`;
+      if (connected.has(ref) && pAt(ref) === 0) {
+        issues.push(issue("warning", "UNSUPPLIED_PILOT", `il pilotaggio ${ref} non riceve mai pressione`, c.id, [ref]));
+      }
+    }
+    for (const side of ["14", "12"] as const) {
+      const cam = c[`cam_${side}`];
+      if (!cam) continue;
+      const cyl = comps.get(cam.cylinder);
+      if (!cyl || !isCylinder(cyl.type)) {
+        issues.push(issue("error", "INVALID_CAM",
+          `${c.id}: il finecorsa ${cam.cylinder}${cam.end} non corrisponde a nessun cilindro dello schema`, c.id));
+      }
+    }
+    if (c.type === "sequence_valve") {
+      const pilot = pAt(`${c.id}.12`);
+      if (pilot > 0 && pilot < c.params.setpoint!.si * (1 - 1e-9)) {
+        issues.push(issue("warning", "SETPOINT_UNREACHABLE",
+          `${c.id}: il pilotaggio arriva al più a ${fmtBar(barFromPa(pilot))}, sotto la taratura ${c.params.setpoint}: la valvola non commuterà`, c.id));
       }
     }
     if (minP) {

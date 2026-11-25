@@ -10,7 +10,7 @@ import { Quantity, UnitError, type Dimension } from "./units";
 
 export type PortKind = "supply" | "work" | "exhaust" | "pilot";
 export type Actuation = "solenoid" | "pilot" | "manual" | "mechanical" | "spring";
-export type ValveFunction = "2/2" | "3/2" | "4/2" | "5/2" | "5/3";
+export type ValveFunction = "2/2" | "3/2" | "4/2" | "5/2" | "5/3" | "5/3E" | "5/3P";
 
 export interface PortSpec {
   name: string;
@@ -32,6 +32,13 @@ export interface ParamSpec {
   below?: number;
 }
 
+/** Voce della palette: un tipo con opzioni e parametri già scelti. */
+export interface Preset {
+  label: string;
+  options?: Partial<Record<OptionSpec["name"], string>>;
+  params?: Record<string, string>;
+}
+
 export interface OptionSpec {
   name: "function" | "actuation_14" | "actuation_12";
   label: string;
@@ -48,6 +55,9 @@ export interface ComponentData {
   function?: string;
   actuation_14?: string;
   actuation_12?: string;
+  /** rullo azionato da un cilindro: "C1+" a fine corsa in uscita, "C1-" in rientro */
+  cam_14?: string;
+  cam_12?: string;
 }
 
 /** Componente validato, con parametri convertiti. */
@@ -59,7 +69,15 @@ export interface Component {
   function?: ValveFunction;
   actuation_14?: Actuation;
   actuation_12?: Actuation;
+  cam_14?: Cam;
+  cam_12?: Cam;
   ports: PortSpec[];
+}
+
+/** Finecorsa: il cilindro `cylinder` a fine corsa in uscita ("+") o in rientro ("-"). */
+export interface Cam {
+  cylinder: string;
+  end: "+" | "-";
 }
 
 /** La pressione su `src` può arrivare su `dst`, al più `cap` (Pa). */
@@ -78,6 +96,8 @@ export interface TypeDef {
   options?: OptionSpec[];
   /** parametri di un componente appena inserito dalla palette */
   defaults: Record<string, string>;
+  /** voci della palette; senza, il tipo compare una volta con le opzioni predefinite */
+  presets?: Preset[];
   actuator?: boolean;
   ports(c: Pick<Component, "function" | "actuation_14" | "actuation_12">): PortSpec[];
   paths?(c: Component): InternalPath[];
@@ -105,6 +125,8 @@ export const VALVE_PORTS: Record<ValveFunction, [string, PortKind][]> = {
   "4/2": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"]],
   "5/2": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
   "5/3": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
+  "5/3E": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
+  "5/3P": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
 };
 export const ACTUATIONS: Actuation[] = ["solenoid", "pilot", "manual", "mechanical", "spring"];
 const ACTUATION_LABELS: Record<Actuation, string> = {
@@ -126,9 +148,18 @@ const cylinderParams: ParamSpec[] = [
   p("friction", "Attrito", "force", { group: "sim", simDefault: "5 N" }),
 ];
 
+const AIR = "Alimentazione e trattamento aria";
+const DIRECTIONAL = "Valvole distributrici";
+const LOGIC = "Valvole di blocco e logiche";
+const REGULATION = "Regolazione di portata e pressione";
+const ACTUATORS = "Attuatori";
+const both = (a: string, b: string) => [{ src: a, dst: b, cap: Infinity }, { src: b, dst: a, cap: Infinity }];
+const oneWay = (a: string, b: string) => ({ src: a, dst: b, cap: Infinity });
+
 const DEFS: TypeDef[] = [
+  // --- alimentazione e trattamento aria ---------------------------------------
   {
-    type: "pressure_source", label: "Alimentazione", category: "Alimentazione e scarichi",
+    type: "pressure_source", label: "Alimentazione", category: AIR,
     doc: "Alimentazione d'aria compressa (compressore / rete) a pressione nota.",
     params: [p("pressure", "Pressione", "pressure", { required: true }), p("flow", "Portata", "flow")],
     defaults: { pressure: "6 bar" },
@@ -136,7 +167,47 @@ const DEFS: TypeDef[] = [
     sources: (c) => ({ 1: c.params.pressure! }),
   },
   {
-    type: "pressure_regulator", label: "Riduttore di pressione", category: "Alimentazione e scarichi",
+    type: "air_reservoir", label: "Serbatoio", category: AIR,
+    doc: "Serbatoio d'aria (polmone): accumula aria e smorza i picchi di consumo. Le porte 1 e 2 " +
+      "sono sullo stesso volume; la 2 può restare tappata.",
+    params: [p("volume", "Volume", "volume", { required: true }), MAX_P],
+    defaults: { volume: "1 l", max_pressure: "11 bar" },
+    presets: [
+      { label: "Serbatoio 1 l", params: { volume: "1 l" } },
+      { label: "Serbatoio 10 l", params: { volume: "10 l" } },
+      { label: "Serbatoio 50 l", params: { volume: "50 l" } },
+      { label: "Serbatoio 0,1 l (temporizzazione)", params: { volume: "0.1 l" } },
+    ],
+    ports: () => [port("1", "work"), port("2", "work", true)],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "air_filter", label: "Filtro", category: AIR,
+    doc: "Filtro con scarico della condensa.",
+    params: [MAX_P, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "lubricator", label: "Lubrificatore", category: AIR,
+    doc: "Lubrificatore: nebulizza olio nell'aria.",
+    params: [MAX_P, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "frl_unit", label: "Gruppo FRL", category: AIR,
+    doc: "Gruppo filtro, riduttore con manometro e lubrificatore: l'uscita 2 non supera la pressione regolata.",
+    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
+             conductance("1.5 dm3/(s·bar)"), critical("0.35")],
+    defaults: { setpoint: "6 bar", max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
+    paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
+  },
+  {
+    type: "pressure_regulator", label: "Riduttore di pressione", category: AIR,
     doc: "Riduttore di pressione: l'uscita 2 non supera la pressione regolata.",
     params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
              conductance("1 dm3/(s·bar)"), critical("0.35")],
@@ -145,30 +216,54 @@ const DEFS: TypeDef[] = [
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
   },
   {
-    type: "silencer", label: "Silenziatore", category: "Alimentazione e scarichi",
+    type: "pressure_gauge", label: "Manometro", category: AIR,
+    doc: "Manometro: mostra la pressione della linea (in simulazione, il valore istantaneo).",
+    params: [MAX_P], defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "work")],
+  },
+  {
+    type: "silencer", label: "Silenziatore", category: AIR,
     doc: "Silenziatore / scarico in atmosfera.",
     params: [MAX_P], defaults: {},
     ports: () => [port("1", "exhaust")],
   },
   {
-    type: "plug", label: "Tappo", category: "Alimentazione e scarichi",
+    type: "plug", label: "Tappo", category: AIR,
     doc: "Tappo: chiude una porta che non si vuole usare.",
     params: [MAX_P], defaults: {},
     ports: () => [port("1", "work")],
   },
+
+  // --- valvole distributrici ------------------------------------------------------
   {
-    type: "directional_valve", label: "Valvola distributrice", category: "Valvole",
+    type: "directional_valve", label: "Valvola distributrice", category: DIRECTIONAL,
     doc: "Valvola distributrice n/m con comandi sui lati 14 e 12.",
     params: [MAX_P, MIN_P, p("flow", "Portata", "flow"), conductance("1.5 dm3/(s·bar)"), critical("0.35")],
     options: [
       { name: "function", label: "Funzione", default: "5/2",
-        choices: [["2/2", "2/2"], ["3/2", "3/2"], ["4/2", "4/2"], ["5/2", "5/2"], ["5/3", "5/3 centri chiusi"]] },
+        choices: [["2/2", "2/2"], ["3/2", "3/2"], ["4/2", "4/2"], ["5/2", "5/2"], ["5/3", "5/3 centri chiusi"],
+                  ["5/3E", "5/3 centri in scarico"], ["5/3P", "5/3 centri in pressione"]] },
       { name: "actuation_14", label: "Comando lato 14", default: "solenoid",
         choices: ACTUATIONS.map((a) => [a, ACTUATION_LABELS[a]]) },
       { name: "actuation_12", label: "Comando lato 12", default: "spring",
         choices: ACTUATIONS.map((a) => [a, ACTUATION_LABELS[a]]) },
     ],
     defaults: { max_pressure: "10 bar" },
+    presets: [
+      { label: "3/2 NC a pulsante", options: { function: "3/2", actuation_14: "manual", actuation_12: "spring" } },
+      { label: "3/2 NC a rullo (finecorsa)", options: { function: "3/2", actuation_14: "mechanical", actuation_12: "spring" } },
+      { label: "3/2 NC a solenoide", options: { function: "3/2", actuation_14: "solenoid", actuation_12: "spring" } },
+      { label: "3/2 NC pilotata", options: { function: "3/2", actuation_14: "pilot", actuation_12: "spring" } },
+      { label: "3/2 NA a pulsante", options: { function: "3/2", actuation_14: "spring", actuation_12: "manual" } },
+      { label: "2/2 a pulsante (intercettazione)", options: { function: "2/2", actuation_14: "manual", actuation_12: "spring" } },
+      { label: "5/2 monostabile a solenoide", options: { function: "5/2", actuation_14: "solenoid", actuation_12: "spring" } },
+      { label: "5/2 monostabile pilotata", options: { function: "5/2", actuation_14: "pilot", actuation_12: "spring" } },
+      { label: "5/2 bistabile pneumatica", options: { function: "5/2", actuation_14: "pilot", actuation_12: "pilot" } },
+      { label: "5/2 bistabile elettrica", options: { function: "5/2", actuation_14: "solenoid", actuation_12: "solenoid" } },
+      { label: "5/3 centri chiusi", options: { function: "5/3", actuation_14: "solenoid", actuation_12: "solenoid" } },
+      { label: "5/3 centri in scarico", options: { function: "5/3E", actuation_14: "solenoid", actuation_12: "solenoid" } },
+      { label: "5/3 centri in pressione", options: { function: "5/3P", actuation_14: "solenoid", actuation_12: "solenoid" } },
+    ],
     ports: (c) => {
       const ports = VALVE_PORTS[c.function ?? "5/2"].map(([n, k]) => port(n, k, k === "exhaust"));
       if (c.actuation_14 === "pilot") ports.push(port("14", "pilot"));
@@ -187,15 +282,101 @@ const DEFS: TypeDef[] = [
       ];
     },
   },
+
+  // --- valvole di blocco e logiche --------------------------------------------------
   {
-    type: "flow_control_valve", label: "Regolatore di flusso", category: "Valvole",
-    doc: "Regolatore di flusso (strozzatore) bidirezionale.",
-    params: [MAX_P, conductance("0.3 dm3/(s·bar)"), critical("0.5")], defaults: {},
-    ports: () => [port("1", "work"), port("2", "work")],
-    paths: () => [{ src: "1", dst: "2", cap: Infinity }, { src: "2", dst: "1", cap: Infinity }],
+    type: "check_valve", label: "Valvola di non ritorno", category: LOGIC,
+    doc: "Valvola di non ritorno: l'aria passa solo da 1 a 2.",
+    params: [MAX_P, p("cracking_pressure", "Pressione di apertura", "pressure", { group: "sim", simDefault: "0.1 bar" }),
+             conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
+    paths: () => [oneWay("1", "2")],
   },
   {
-    type: "single_acting_cylinder", label: "Cilindro semplice effetto", category: "Attuatori",
+    type: "pilot_check_valve", label: "Non ritorno pilotata", category: LOGIC,
+    doc: "Non ritorno pilotata: passa da 1 a 2; da 2 a 1 solo con il pilotaggio 21 in pressione.",
+    params: [MAX_P, p("pilot_pressure", "Pressione di pilotaggio", "pressure", { group: "sim", simDefault: "1.5 bar" }),
+             conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("21", "pilot")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "shuttle_valve", label: "Valvola selettrice (OR)", category: LOGIC,
+    doc: "Funzione O: l'uscita 2 riceve l'aria dall'ingresso (1 o 3) a pressione maggiore.",
+    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("3", "supply"), port("2", "work")],
+    paths: () => [oneWay("1", "2"), oneWay("3", "2")],
+  },
+  {
+    type: "and_valve", label: "Valvola a due pressioni (AND)", category: LOGIC,
+    doc: "Funzione E: l'uscita 2 è in pressione solo se lo sono entrambi gli ingressi 1 e 3.",
+    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("3", "supply"), port("2", "work")],
+    paths: () => [oneWay("1", "2"), oneWay("3", "2")],
+  },
+  {
+    type: "quick_exhaust_valve", label: "Valvola di scarico rapido", category: LOGIC,
+    doc: "Scarico rapido: l'aria va da 1 a 2; quando 1 si scarica, 2 sfoga subito dallo scarico 3.",
+    params: [MAX_P, conductance("1.5 dm3/(s·bar)"), critical("0.4"),
+             p("exhaust_conductance", "Conduttanza di scarico", "conductance", { group: "sim", simDefault: "4 dm3/(s·bar)" })],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
+    paths: () => [oneWay("1", "2"), oneWay("2", "3")],
+  },
+
+  // --- regolazione di portata e pressione ---------------------------------------------
+  {
+    type: "flow_control_valve", label: "Strozzatore bidirezionale", category: REGULATION,
+    doc: "Strozzatore regolabile: riduce la portata nei due versi.",
+    params: [MAX_P, conductance("0.3 dm3/(s·bar)"), critical("0.5")], defaults: {},
+    ports: () => [port("1", "work"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "one_way_flow_control", label: "Regolatore di flusso unidirezionale", category: REGULATION,
+    doc: "Strozzatore con non ritorno: da 1 a 2 strozzato, da 2 a 1 libero.",
+    params: [MAX_P, conductance("0.3 dm3/(s·bar)"), critical("0.5"),
+             p("free_conductance", "Conduttanza in senso libero", "conductance", { group: "sim", simDefault: "2 dm3/(s·bar)" })],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "work"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "relief_valve", label: "Valvola limitatrice di pressione", category: REGULATION,
+    doc: "Valvola di sicurezza: scarica da 1 a 3 quando la pressione supera la taratura.",
+    params: [p("setpoint", "Pressione di taratura", "pressure", { required: true }), MAX_P,
+             conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { setpoint: "7 bar", max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("3", "exhaust", true)],
+    paths: () => [oneWay("1", "3")],
+  },
+  {
+    type: "sequence_valve", label: "Valvola di sequenza", category: REGULATION,
+    doc: "3/2 NC che commuta quando il pilotaggio 12 raggiunge la pressione di taratura.",
+    params: [p("setpoint", "Pressione di commutazione", "pressure", { required: true }), MAX_P,
+             conductance("1 dm3/(s·bar)"), critical("0.35")],
+    defaults: { setpoint: "4 bar", max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true), port("12", "pilot")],
+    paths: () => [oneWay("1", "2"), oneWay("2", "3")],
+  },
+  {
+    type: "time_delay_valve", label: "Temporizzatore pneumatico", category: REGULATION,
+    doc: "3/2 NC che commuta quando il pilotaggio 12 resta in pressione per il tempo impostato.",
+    params: [p("delay", "Ritardo", "time", { required: true }), MAX_P,
+             p("pilot_pressure", "Pressione di pilotaggio", "pressure", { group: "sim", simDefault: "2 bar" }),
+             conductance("1 dm3/(s·bar)"), critical("0.35")],
+    defaults: { delay: "2 s", max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true), port("12", "pilot")],
+    paths: () => [oneWay("1", "2"), oneWay("2", "3")],
+  },
+
+  // --- attuatori ------------------------------------------------------------------------------
+  {
+    type: "single_acting_cylinder", label: "Cilindro semplice effetto", category: ACTUATORS,
     doc: "Cilindro a semplice effetto con ritorno a molla. Porta A: camera di spinta.",
     params: [...cylinderParams, p("spring_force", "Forza molla", "force", { group: "sim", simDefault: "15 N" })],
     defaults: { bore: "20 mm", stroke: "50 mm", max_pressure: "10 bar" },
@@ -203,7 +384,7 @@ const DEFS: TypeDef[] = [
     ports: () => [port("A", "work")],
   },
   {
-    type: "double_acting_cylinder", label: "Cilindro doppio effetto", category: "Attuatori",
+    type: "double_acting_cylinder", label: "Cilindro doppio effetto", category: ACTUATORS,
     doc: "Cilindro a doppio effetto. A: camera fondello (uscita), B: camera stelo (rientro).",
     params: cylinderParams,
     defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
@@ -211,12 +392,29 @@ const DEFS: TypeDef[] = [
     ports: () => [port("A", "work"), port("B", "work")],
   },
   {
-    type: "rotary_actuator", label: "Attuatore rotante", category: "Attuatori",
-    doc: "Attuatore rotante a doppio effetto.",
+    type: "double_rod_cylinder", label: "Cilindro a doppio stelo", category: ACTUATORS,
+    doc: "Cilindro a doppio effetto con stelo passante: stessa area e stessa forza nei due versi.",
+    params: cylinderParams.map((x) => (x.name === "rod" ? { ...x, required: true } : x)),
+    defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
+    actuator: true,
+    ports: () => [port("A", "work"), port("B", "work")],
+  },
+  {
+    type: "rotary_actuator", label: "Attuatore rotante", category: ACTUATORS,
+    doc: "Attuatore rotante a doppio effetto (non ancora simulato).",
     params: [p("angle", "Angolo", "angle", { required: true }), MAX_P, MIN_P],
     defaults: { angle: "90 deg", max_pressure: "10 bar" },
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
+  },
+  {
+    type: "air_motor", label: "Motore pneumatico", category: ACTUATORS,
+    doc: "Motore pneumatico reversibile: gira consumando aria tra le porte 1 e 2.",
+    params: [MAX_P, conductance("1 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "8 bar" },
+    actuator: true,
+    ports: () => [port("1", "work"), port("2", "work")],
+    paths: () => both("1", "2"),
   },
 ];
 
@@ -224,6 +422,7 @@ export const TYPES: ReadonlyMap<string, TypeDef> = new Map(DEFS.map((d) => [d.ty
 export const typeList = (): TypeDef[] => DEFS;
 
 const isCylinder = (type: string) => type.endsWith("_cylinder");
+export { isCylinder };
 
 /** Valida e converte un componente letto dallo schema. Lancia {@link ParameterError}. */
 export function buildComponent(raw: ComponentData): Component {
@@ -247,6 +446,16 @@ export function buildComponent(raw: ComponentData): Component {
     }
     if (comp.actuation_14 === "spring" && comp.actuation_12 === "spring") {
       throw new ParameterError(`${id}: almeno un lato deve avere un comando attivo`);
+    }
+    for (const side of ["14", "12"] as const) {
+      const raw_cam = raw[`cam_${side}`];
+      if (raw_cam == null || raw_cam === "") continue;
+      const m = /^([A-Za-z0-9_-]+)([+-])$/.exec(String(raw_cam));
+      if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
+      if (comp[`actuation_${side}`] !== "mechanical") {
+        throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede il comando a rullo sul lato ${side}`);
+      }
+      comp[`cam_${side}`] = { cylinder: m[1]!, end: m[2] as "+" | "-" };
     }
   }
 

@@ -22,7 +22,11 @@ const AUTOSAVE_MS = 1200;
 const PREFIX: Record<string, string> = {
   pressure_source: "P", pressure_regulator: "R", silencer: "SL", plug: "T",
   directional_valve: "V", flow_control_valve: "F", single_acting_cylinder: "C",
-  double_acting_cylinder: "C", rotary_actuator: "RA",
+  double_acting_cylinder: "C", double_rod_cylinder: "C", rotary_actuator: "RA",
+  air_reservoir: "SB", air_filter: "FI", lubricator: "LU", frl_unit: "FRL", pressure_gauge: "M",
+  check_valve: "NR", pilot_check_valve: "NRP", shuttle_valve: "OR", and_valve: "AND",
+  quick_exhaust_valve: "SR", one_way_flow_control: "RF", relief_valve: "VS", sequence_valve: "SQ",
+  time_delay_valve: "TM", air_motor: "MP",
 };
 
 /** unità aggiunta quando si scrive solo un numero */
@@ -222,15 +226,9 @@ const fmtBar = (bar: number) => `${bar.toFixed(bar < 10 ? 2 : 1).replace(".", ",
 function symbolState(comp: ComponentData): SymbolState | undefined {
   if (!sim) return undefined;
   const s = sim.s;
-  if (comp.type === "directional_valve") {
-    const spec = s.net.valves.find((v) => v.id === comp.id);
-    if (!spec) return undefined;
-    const active = (side: "14" | "12") => {
-      const act = side === "14" ? spec.act14 : spec.act12;
-      if (act === "pilot") return s.gauge(`${comp.id}.${side}`) * BAR >= spec.pilotThreshold;
-      return act !== "spring" && s.command(comp.id, side);
-    };
-    return { position: s.valvePosition(comp.id), active14: active("14"), active12: active("12") };
+  const spec = s.net.valves.find((v) => v.id === comp.id);
+  if (spec) {
+    return { position: s.valvePosition(comp.id), active14: s.sideActive(spec, "14"), active12: s.sideActive(spec, "12") };
   }
   if (comp.type.endsWith("_cylinder")) {
     const c = s.cylinder(comp.id);
@@ -332,6 +330,11 @@ function render() {
     let label = comp.id + (comp.label ? ` · ${comp.label}` : "");
     const cyl = sim?.s.cylinder(comp.id);
     if (cyl) label += ` · ${(cyl.x * 1000).toFixed(0)} mm`;
+    if (sim && (comp.type === "pressure_gauge" || comp.type === "air_reservoir")) {
+      label += ` · ${fmtBar(sim.s.gauge(`${comp.id}.1`))}`;
+    }
+    const left = sim?.s.delayRemaining(comp.id);
+    if (left != null && left > 0) label += ` · ${left.toFixed(1).replace(".", ",")} s`;
     text.textContent = label;
     labels.append(text);
 
@@ -361,32 +364,78 @@ function render() {
 
 // --- pannelli ------------------------------------------------------------------
 
+/** Voce della palette: un tipo con le opzioni di una sua configurazione. */
+interface PaletteItem { type: TypeDef; preset: number; label: string; data: ComponentData }
+function paletteItems(): PaletteItem[] {
+  return catalog.flatMap((t) => (t.presets ?? [{ label: t.label }]).map((preset, i) => ({
+    type: t, preset: t.presets ? i : -1, label: preset.label,
+    data: { id: "", type: t.type, params: { ...t.defaults, ...preset.params },
+            ...Object.fromEntries((t.options ?? []).map((o) => [o.name, preset.options?.[o.name] ?? o.default])) },
+  })));
+}
+const PALETTE_KEY = "pneutrack.palette.v1"; // categorie chiuse
+
 function renderPalette() {
   const pal = $("#palette");
   pal.replaceChildren();
-  const cats = [...new Set(catalog.map((t) => t.category))];
-  for (const cat of cats) {
-    const h = document.createElement("h3");
-    h.textContent = cat;
-    pal.append(h);
-    for (const t of catalog.filter((x) => x.category === cat)) {
+  const search = document.createElement("input");
+  search.type = "search";
+  search.id = "palette-search";
+  search.placeholder = "Cerca componente";
+  search.setAttribute("aria-label", "Cerca componente");
+  pal.append(search);
+  let closed: string[] = [];
+  try { closed = JSON.parse(localStorage.getItem(PALETTE_KEY) || "[]"); } catch { closed = []; }
+  const items = paletteItems();
+  const groups: HTMLDetailsElement[] = [];
+  for (const cat of [...new Set(catalog.map((t) => t.category))]) {
+    const det = document.createElement("details");
+    det.className = "palette-group";
+    det.open = !closed.includes(cat);
+    const sum = document.createElement("summary");
+    sum.textContent = cat;
+    det.append(sum);
+    det.addEventListener("toggle", () => {
+      if (search.value) return; // durante la ricerca i gruppi si aprono da soli
+      const now = groups.filter((g) => !g.open).map((g) => g.querySelector("summary")!.textContent!);
+      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(now)); } catch { /* non disponibile */ }
+    });
+    for (const it of items.filter((x) => x.type.category === cat)) {
       const b = document.createElement("button");
       b.className = "palette-item";
       b.draggable = true;
-      b.dataset.type = t.type;
-      b.title = t.doc;
-      const sample: ComponentData = { id: "", type: t.type,
-        ...Object.fromEntries((t.options ?? []).map((o) => [o.name, o.default])) };
-      b.innerHTML = `${thumbnail(sample)}<span></span>`;
-      b.querySelector("span")!.textContent = t.label;
-      b.addEventListener("click", () => addComponent(t.type, viewCenter()));
+      b.dataset.type = it.type.type;
+      if (it.preset >= 0) b.dataset.preset = String(it.preset);
+      b.dataset.search = `${it.label} ${it.type.label} ${it.type.doc}`.toLowerCase();
+      b.title = it.type.doc;
+      b.innerHTML = `${thumbnail(it.data)}<span></span>`;
+      b.querySelector("span")!.textContent = it.label;
+      b.addEventListener("click", () => addComponent(it.type.type, viewCenter(), it.preset));
       b.addEventListener("dragstart", (e) => {
-        e.dataTransfer!.setData("application/x-pneutrack-type", t.type);
+        e.dataTransfer!.setData("application/x-pneutrack-type", `${it.type.type}|${it.preset}`);
         e.dataTransfer!.effectAllowed = "copy";
       });
-      pal.append(b);
+      det.append(b);
     }
+    groups.push(det);
+    pal.append(det);
   }
+  const wasOpen = new Map<HTMLDetailsElement, boolean>();
+  search.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    if (q && !wasOpen.size) groups.forEach((g) => wasOpen.set(g, g.open));
+    for (const g of groups) {
+      let any = false;
+      for (const b of g.querySelectorAll<HTMLElement>(".palette-item")) {
+        const show = !q || q.split(/\s+/).every((w) => b.dataset.search!.includes(w));
+        b.hidden = !show;
+        any ||= show;
+      }
+      g.hidden = !any;
+      if (q) g.open = true;
+    }
+    if (!q) { wasOpen.forEach((open, g) => (g.open = open)); wasOpen.clear(); }
+  });
 }
 
 function field(label: string, input: HTMLElement) {
@@ -402,6 +451,31 @@ function heading(panel: HTMLElement, text: string, level: "h2" | "h3" = "h3") {
   h.textContent = text;
   panel.append(h);
   return h;
+}
+
+function camField(comp: ComponentData, side: "14" | "12") {
+  const key = `cam_${side}` as const;
+  const sel = document.createElement("select");
+  sel.name = key;
+  const choices: [string, string][] = [["", "a mano (clic in simulazione)"]];
+  for (const c of doc.components.filter((x) => x.type.endsWith("_cylinder"))) {
+    choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)`]);
+  }
+  const current = comp[key] ?? "";
+  if (current && !choices.some(([v]) => v === current)) choices.push([current, `${current} (cilindro mancante)`]);
+  for (const [value, label] of choices) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = label;
+    sel.append(o);
+  }
+  sel.value = current;
+  sel.addEventListener("change", () => mutate(() => {
+    const c = byId(comp.id)!;
+    if (sel.value) c[key] = sel.value; else delete c[key];
+  }));
+  const f = field(`Rullo ${side} premuto da`, sel);
+  if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
+  return f;
 }
 
 function paramInput(comp: ComponentData, p: ParamSpec) {
@@ -459,10 +533,15 @@ function renderProperties() {
       }
       sel.value = comp[opt.name] ?? opt.default;
       sel.addEventListener("change", () => mutate(() => {
-        byId(comp.id)![opt.name] = sel.value;
+        const c = byId(comp.id)!;
+        c[opt.name] = sel.value;
+        if (opt.name !== "function" && sel.value !== "mechanical") delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
         pruneConnections(comp.id);
       }));
       panel.append(field(opt.label, sel));
+      // rullo: può essere premuto da un cilindro a fine corsa
+      const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
+      if (side && (comp[opt.name] ?? opt.default) === "mechanical") panel.append(camField(comp, side));
     }
 
     const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
@@ -703,11 +782,12 @@ function nextId(type: string) {
   return `${prefix}${n}`;
 }
 
-function addComponent(type: string, at: { x: number; y: number }) {
+function addComponent(type: string, at: { x: number; y: number }, presetIndex = -1) {
   const meta = catalogEntry(type);
   if (!meta || sim) return;
-  const comp: ComponentData = { id: nextId(type), type, params: { ...meta.defaults } };
-  for (const o of meta.options ?? []) comp[o.name] = o.default;
+  const preset = meta.presets?.[presetIndex];
+  const comp: ComponentData = { id: nextId(type), type, params: { ...meta.defaults, ...preset?.params } };
+  for (const o of meta.options ?? []) comp[o.name] = preset?.options?.[o.name] ?? o.default;
   mutate(() => {
     doc.components.push(comp);
     doc.layout[comp.id] = { x: snap(at.x), y: snap(at.y), rot: 0 };
@@ -726,6 +806,13 @@ function renameComponent(oldId: string, newId: string) {
     delete doc.layout[oldId];
     const fix = (ref: string) => { const [c, p] = splitRef(ref); return c === oldId ? `${newId}.${p}` : ref; };
     doc.connections = doc.connections.map((c) => ({ ...c, from: fix(c.from), to: fix(c.to) }));
+    // i finecorsa seguono il cilindro rinominato
+    for (const c of doc.components) {
+      for (const key of ["cam_14", "cam_12"] as const) {
+        const cam = c[key];
+        if (cam && cam.slice(0, -1) === oldId) c[key] = newId + cam.slice(-1);
+      }
+    }
   });
   select({ kind: "component", id: newId });
 }
@@ -897,7 +984,8 @@ function commandSides() {
   if (!sim) return [];
   return sim.s.net.valves.flatMap((v) => (["14", "12"] as const).flatMap((side) => {
     const act = side === "14" ? v.act14 : v.act12;
-    return act === "solenoid" || act === "manual" || act === "mechanical" ? [{ id: v.id, side, act }] : [];
+    const cam = side === "14" ? v.cam14 : v.cam12;
+    return act === "solenoid" || act === "manual" || (act === "mechanical" && !cam) ? [{ id: v.id, side, act }] : [];
   }));
 }
 
@@ -1199,10 +1287,11 @@ svg.addEventListener("dragover", (e) => {
   }
 });
 svg.addEventListener("drop", (e) => {
-  const type = e.dataTransfer?.getData("application/x-pneutrack-type");
-  if (!type) return;
+  const data = e.dataTransfer?.getData("application/x-pneutrack-type");
+  if (!data) return;
   e.preventDefault();
-  addComponent(type, toWorld(e));
+  const [type, preset] = data.split("|");
+  addComponent(type!, toWorld(e), Number(preset ?? -1));
 });
 
 // --- tastiera e barra strumenti ---------------------------------------------------------

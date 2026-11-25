@@ -1,0 +1,47 @@
+{
+  "format": "pneutrack/circuit",
+  "version": 1,
+  "name": "Ciclo automatico A+ A- con finecorsa",
+  "components": [
+    { "id": "P", "type": "pressure_source", "label": "Rete", "params": { "pressure": "7 bar" } },
+    { "id": "FRL1", "type": "frl_unit", "params": { "setpoint": "6 bar", "max_pressure": "16 bar" } },
+    { "id": "SB1", "type": "air_reservoir", "params": { "volume": "5 l", "max_pressure": "11 bar" } },
+    { "id": "S0", "type": "directional_valve", "label": "Marcia/arresto", "function": "3/2", "actuation_14": "solenoid", "actuation_12": "spring", "params": { "max_pressure": "10 bar" } },
+    { "id": "S1", "type": "directional_valve", "label": "Finecorsa indietro", "function": "3/2", "actuation_14": "mechanical", "actuation_12": "spring", "cam_14": "C1-", "params": { "max_pressure": "10 bar" } },
+    { "id": "S2", "type": "directional_valve", "label": "Finecorsa avanti", "function": "3/2", "actuation_14": "mechanical", "actuation_12": "spring", "cam_14": "C1+", "params": { "max_pressure": "10 bar" } },
+    { "id": "AND1", "type": "and_valve", "params": { "max_pressure": "10 bar" } },
+    { "id": "V1", "type": "directional_valve", "label": "5/2 bistabile", "function": "5/2", "actuation_14": "pilot", "actuation_12": "pilot", "params": { "max_pressure": "10 bar" } },
+    { "id": "RF1", "type": "one_way_flow_control", "label": "Velocità in uscita", "params": { "max_pressure": "10 bar", "conductance": "0.15 dm3/(s·bar)" } },
+    { "id": "C1", "type": "double_acting_cylinder", "params": { "bore": "32 mm", "stroke": "100 mm", "rod": "12 mm", "max_pressure": "10 bar" } },
+    { "id": "M1", "type": "pressure_gauge", "params": { "max_pressure": "10 bar" } }
+  ],
+  "connections": [
+    { "from": "P.1", "to": "SB1.2" },
+    { "from": "SB1.1", "to": "FRL1.1" },
+    { "from": "FRL1.2", "to": "S0.1" },
+    { "from": "FRL1.2", "to": "S1.1" },
+    { "from": "FRL1.2", "to": "S2.1" },
+    { "from": "FRL1.2", "to": "V1.1" },
+    { "from": "S0.2", "to": "AND1.1" },
+    { "from": "S1.2", "to": "AND1.3" },
+    { "from": "AND1.2", "to": "V1.14" },
+    { "from": "S2.2", "to": "V1.12" },
+    { "from": "V1.4", "to": "RF1.2" },
+    { "from": "RF1.1", "to": "C1.A" },
+    { "from": "V1.2", "to": "C1.B" },
+    { "from": "C1.A", "to": "M1.1" }
+  ],
+  "layout": {
+    "P": { "x": -360, "y": 500, "rot": 0 },
+    "FRL1": { "x": -230, "y": 360, "rot": 0 },
+    "SB1": { "x": -360, "y": 400, "rot": 0 },
+    "S0": { "x": -160, "y": 230, "rot": 0 },
+    "S1": { "x": 20, "y": 230, "rot": 0 },
+    "S2": { "x": 340, "y": 230, "rot": 0 },
+    "AND1": { "x": -60, "y": 110, "rot": 0 },
+    "V1": { "x": 120, "y": 30, "rot": 0 },
+    "RF1": { "x": 70, "y": -90, "rot": 0 },
+    "C1": { "x": 120, "y": -200, "rot": 0 },
+    "M1": { "x": -10, "y": -110, "rot": 0 }
+  }
+}

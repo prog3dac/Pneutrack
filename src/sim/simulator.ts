@@ -92,14 +92,39 @@ export class Simulator {
     return i < 0 ? undefined : this.positions[i];
   }
 
-  private sideActive(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
+  /** da quando il pilotaggio di ogni temporizzatore è attivo (s), per lato */
+  private readonly pilotSince = new Map<string, number>();
+
+  /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno). */
+  sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (act === "spring") return false;
     if (act === "pilot") {
       const n = side === "14" ? v.pilot14 : v.pilot12;
-      return n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
+      const on = n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
+      if (!v.delay) return on;
+      const key = `${v.id}.${side}`;
+      if (!on) { this.pilotSince.delete(key); return false; }
+      if (!this.pilotSince.has(key)) this.pilotSince.set(key, this.t);
+      return this.t - this.pilotSince.get(key)! >= v.delay - 1e-9;
+    }
+    const cam = side === "14" ? v.cam14 : v.cam12;
+    if (act === "mechanical" && cam) {
+      const c = this.cylinder(cam.cylinder);
+      if (!c) return false;
+      // il rullo è premuto negli ultimi 2 mm di corsa
+      const tol = 0.002 / this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+      return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
     }
     return this.command(v.id, side);
+  }
+
+  /** Tempo che manca allo scatto di un temporizzatore, o null se non sta contando. */
+  delayRemaining(id: string): number | null {
+    const v = this.net.valves.find((x) => x.id === id);
+    if (!v?.delay) return null;
+    const since = this.pilotSince.get(`${id}.14`);
+    return since === undefined ? null : Math.max(0, v.delay - (this.t - since));
   }
 
   /** Logica discreta delle valvole: comandi, pilotaggi, molle e memoria delle bistabili. */
@@ -108,7 +133,7 @@ export class Simulator {
     this.net.valves.forEach((v, i) => {
       const s14 = this.sideActive(v, "14", P), s12 = this.sideActive(v, "12", P);
       let pos = this.positions[i]!;
-      if (v.fn === "5/3") {
+      if (v.fn.startsWith("5/3")) {
         pos = s14 && !s12 ? "14" : s12 && !s14 ? "12" : "0";
       } else if (s14 && !s12) {
         pos = "14";
@@ -130,7 +155,13 @@ export class Simulator {
     for (const o of net.orifices) {
       if (o.valve !== undefined && !o.positions!.includes(this.positions[o.valve]!)) continue;
       const pa = P[o.a]!, pb = P[o.b]!;
+      if (o.oneWay && pa <= pb) continue;
       let m = signedFlow(pa, pb, o.C, o.bcrit, net.temperature);
+      if (o.gate) {
+        const g = o.gate(P);
+        if (g <= 0) continue;
+        m *= g;
+      }
       if (o.limit !== undefined) {
         // riduttore: solo a→b, chiusura progressiva negli ultimi 0,1 bar
         m = m > 0 ? m * Math.min(1, Math.max(0, (o.limit - pb) / (0.1 * BAR))) : 0;

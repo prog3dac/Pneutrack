@@ -20,6 +20,9 @@ npm run build      # versione pubblicabile in dist/
 ## Uso
 
 - **Inserire** un componente: trascinalo dalla palette sul foglio, oppure fai clic per metterlo al centro.
+  La palette è divisa in categorie richiudibili (alimentazione e trattamento aria, valvole
+  distributrici, valvole di blocco e logiche, regolazione, attuatori) e ha una casella di ricerca.
+  Le valvole distributrici più comuni e i serbatoi di varie taglie sono già configurati.
 - **Collegare**: trascina da una porta a un'altra. Più linee sulla stessa porta formano un raccordo a T.
 - **Linee**: trascina una linea per piegarla dove vuoi (nasce un punto di piega, agganciato alla
   griglia); trascina i punti per spostarli, doppio clic su un punto per toglierlo, *Raddrizza linea*
@@ -31,7 +34,8 @@ npm run build      # versione pubblicabile in dist/
 - **Proprietà**: seleziona un componente per cambiarne sigla, descrizione, funzione della valvola,
   comandi, parametri da catalogo (`6 bar`, `32 mm`, `0,6 MPa`...; un numero senza unità prende
   l'unità tipica del parametro) e parametri di simulazione (conduttanza, massa, carico, attrito).
-  Per i cilindri vengono mostrate aree e forze teoriche.
+  Per i cilindri vengono mostrate aree e forze teoriche. Per una valvola con comando meccanico
+  si può scegliere il **finecorsa** (cilindro e posizione, per esempio C1+) che la aziona.
 - **Validazione**: avviene a ogni modifica. I problemi compaiono nel pannello in basso a destra
   (clic per andare al componente), i componenti con errori sono bordati di rosso, le porte
   scollegate sono rosse e le linee in pressione sono blu (tratteggiate quelle di pilotaggio).
@@ -39,7 +43,8 @@ npm run build      # versione pubblicabile in dist/
   pressione, le caselle delle valvole scorrono nella posizione attiva e gli steli dei cilindri si
   muovono. Pulsanti e rulli si azionano tenendo premuto il loro simbolo (o il bottone nel pannello),
   i solenoidi si eccitano e diseccitano a ogni clic; i pilotaggi commutano da soli quando la
-  pressione supera `min_pressure` (2 bar se non indicata). *Pausa* (barra spaziatrice),
+  pressione supera `min_pressure` (2 bar se non indicata), i finecorsa commutano quando lo stelo
+  arriva in fondo. Manometri e serbatoi mostrano la pressione, i temporizzatori il tempo che manca. *Pausa* (barra spaziatrice),
   *Ricomincia* e la velocità (da 0,05× a tempo reale) controllano il tempo. Durante la simulazione
   lo schema non si modifica; *Ferma simulazione* (o `Esc`) torna al disegno.
 - **Progetti**: *Salva* (`Ctrl+S`) registra lo schema nell'archivio dei progetti; da quel momento
