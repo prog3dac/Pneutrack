@@ -26,6 +26,7 @@ import {
   type Orientation, type Rect, type SheetData, type SheetFormat,
 } from "../model/sheet";
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
+import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 
 const GRID = 10;
@@ -581,7 +582,7 @@ function renderSheetFields(panel: HTMLElement) {
     });
     fitView();
   });
-  panel.append(field("Formato", fmt));
+  panel.append(field("Formato", fmt, FIELD_HELP["sheet-format"]));
   if (!doc.sheet) {
     const auto = document.createElement("button");
     auto.textContent = "Scegli il formato adatto al disegno";
@@ -605,14 +606,14 @@ function renderSheetFields(panel: HTMLElement) {
     });
     fitView();
   });
-  panel.append(field("Orientamento", ori));
+  panel.append(field("Orientamento", ori, FIELD_HELP["sheet-orientation"]));
   for (const [key, label] of [["author", "Disegnato da"], ["number", "Numero disegno"], ["revision", "Revisione"]] as const) {
     const inp = document.createElement("input");
     inp.name = `sheet-${key}`; inp.value = doc.sheet[key] ?? "";
     inp.addEventListener("change", () => mutate(() => {
       if (inp.value.trim()) doc.sheet![key] = inp.value.trim(); else delete doc.sheet![key];
     }));
-    panel.append(field(label, inp));
+    panel.append(field(label, inp, FIELD_HELP[`sheet-${key}`]));
   }
   const box = contentBox(), area = drawingArea(currentSheet()!);
   if (box && (box.x < area.x || box.y < area.y || box.x + box.w > area.x + area.w || box.y + box.h > area.y + area.h)) {
@@ -825,11 +826,20 @@ function renderPalette() {
   });
 }
 
-function field(label: string, input: HTMLElement) {
+/** Campo con etichetta; `help` è la descrizione mostrata al passaggio del mouse. */
+function field(label: string, input: HTMLElement, help = "") {
   const wrap = document.createElement("label");
   wrap.className = "field";
   const span = document.createElement("span");
   span.textContent = label;
+  if (help) {
+    wrap.title = help;
+    wrap.classList.add("has-help");
+    const i = document.createElement("i");
+    i.className = "help-mark"; i.textContent = "?"; i.setAttribute("aria-hidden", "true");
+    span.append(" ", i);
+    input.setAttribute("aria-description", help);
+  }
   wrap.append(span, input);
   return wrap;
 }
@@ -861,7 +871,7 @@ function camField(comp: ComponentData, side: "14" | "12") {
     const c = byId(comp.id)!;
     if (sel.value) c[key] = sel.value; else delete c[key];
   }));
-  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel);
+  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel, FIELD_HELP.cam);
   if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
   return f;
 }
@@ -894,7 +904,7 @@ function cylinderSizeField(comp: ComponentData) {
       c.params = { ...c.params, bore: `${bore} mm`, rod: `${rod} mm` };
     });
   });
-  return field("Misura standard", sel);
+  return field("Misura standard", sel, FIELD_HELP["cylinder-size"]);
 }
 
 function button(text: string, onClick: () => void, key = "", act = "", cls = "") {
@@ -916,7 +926,7 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
   nameIn.addEventListener("change", () => mutate(() => {
     doc.blocks!.find((x) => x.id === id)!.name = nameIn.value.trim() || id;
   }));
-  panel.append(field("Nome", nameIn));
+  panel.append(field("Nome", nameIn, FIELD_HELP["block-name"]));
   const desc = document.createElement("textarea");
   desc.name = "block-description"; desc.rows = 3; desc.value = b.description ?? "";
   desc.placeholder = "Che cosa fa questo blocco";
@@ -924,7 +934,7 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
     const x = doc.blocks!.find((y) => y.id === id)!;
     if (desc.value.trim()) x.description = desc.value.trim(); else delete x.description;
   }));
-  panel.append(field("Descrizione", desc));
+  panel.append(field("Descrizione", desc, FIELD_HELP["block-description"]));
   heading(panel, `Componenti (${b.components.length})`);
   const ul = document.createElement("ul");
   ul.className = "block-members";
@@ -992,7 +1002,7 @@ function paramInput(comp: ComponentData, p: ParamSpec) {
     if (v) c.params[p.name] = /^[-+]?[\d.,]+$/.test(v) && unit ? `${v} ${unit}` : v;
     else delete c.params[p.name];
   }));
-  const f = field(p.label + (p.required ? " *" : ""), inp);
+  const f = field(p.label + (p.required ? " *" : ""), inp, paramHelp(comp.type, p));
   const bad = issuesFor(comp.id).find((i) => i.code === "INVALID_COMPONENT" && i.message.includes(`'${p.name}'`));
   if (bad) f.classList.add("invalid");
   return f;
@@ -1012,7 +1022,7 @@ function renderProperties() {
     const idIn = document.createElement("input");
     idIn.value = comp.id; idIn.name = "id"; idIn.spellcheck = false;
     idIn.addEventListener("change", () => renameComponent(comp.id, idIn.value.trim()));
-    panel.append(field("Sigla", idIn));
+    panel.append(field("Sigla", idIn, FIELD_HELP.id));
 
     const labIn = document.createElement("input");
     labIn.value = comp.label || ""; labIn.name = "label"; labIn.placeholder = "facoltativa";
@@ -1020,7 +1030,7 @@ function renderProperties() {
       const c = byId(comp.id)!;
       if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
     }));
-    panel.append(field("Descrizione", labIn));
+    panel.append(field("Descrizione", labIn, FIELD_HELP.label));
     const inBlock = blockOf(doc, comp.id);
     if (inBlock) {
       const p = document.createElement("p");
@@ -1048,7 +1058,7 @@ function renderProperties() {
         if (opt.name !== "function" && !isMechanical(sel.value as Actuation)) delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
         pruneConnections(comp.id);
       }));
-      panel.append(field(opt.label, sel));
+      panel.append(field(opt.label, sel, optionHelp(comp.type, opt)));
       // rullo: può essere premuto da un cilindro a fine corsa
       const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
       if (side && isMechanical((comp[opt.name] ?? opt.default) as Actuation)) panel.append(camField(comp, side));
@@ -1191,7 +1201,7 @@ function renderProperties() {
     const nameIn = document.createElement("input");
     nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
     nameIn.addEventListener("change", () => mutate(() => { doc.name = nameIn.value; }));
-    panel.append(field("Nome", nameIn));
+    panel.append(field("Nome", nameIn, FIELD_HELP["circuit-name"]));
     renderSheetFields(panel);
     const help = document.createElement("div");
     help.className = "help";
@@ -1243,7 +1253,7 @@ function renderTubeFields(panel: HTMLElement, index: number) {
       setTube({ outer_diameter: z.outer, inner_diameter: z.inner, length });
     }
   });
-  panel.append(field("Misura", size));
+  panel.append(field("Misura", size, FIELD_HELP["tube-size"]));
   if (!c.tube) return;
 
   const input = (name: keyof TubeData, label: string, unit: string, placeholder: string) => {
@@ -1259,7 +1269,7 @@ function renderTubeFields(panel: HTMLElement, index: number) {
       else delete tube[name];
       setTube(tube);
     });
-    const f = field(label, inp);
+    const f = field(label, inp, FIELD_HELP[`tube-${name}`]);
     const bad = analysis.issues.some((i) => i.code === "INVALID_TUBE" && i.ports.includes(c.from) &&
       i.ports.includes(c.to) && (i.message.includes(`'${name}'`) || i.message.includes(`.${name}:`)));
     if (bad) f.classList.add("invalid");

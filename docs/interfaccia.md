@@ -97,6 +97,13 @@ connessione* della palette si può lasciare direttamente su una linea. Un tubo s
 in proporzione alla lunghezza disegnata. Eliminando un punto che unisce solo due linee, le due
 linee tornano una sola.
 
+## Descrizioni dei campi
+
+Passando il mouse su un campo del pannello a destra (le etichette con «?») compare una descrizione:
+a che cosa serve il dato, le unità accettate, se è obbligatorio e il valore usato se resta vuoto. I
+testi sono in `src/ui/help.ts`; un test controlla che ogni parametro e ogni opzione del catalogo ne
+abbia uno, quindi un componente nuovo va accompagnato dalle sue descrizioni.
+
 ## Ruota e specchia
 
 *Ruota* (`R`) gira il simbolo di 90° in senso orario. *Specchia ↔* (`H`) lo ribalta da sinistra a
