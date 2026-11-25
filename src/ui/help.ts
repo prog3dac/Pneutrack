@@ -172,6 +172,12 @@ export const FIELD_HELP: Record<string, string> = {
   id:
     "Sigla del componente: un codice breve e unico nello schema (per esempio V1, C2, P). Compare sul disegno " +
     "e nei riferimenti alle porte (C1.A). Solo lettere, numeri, - e _; cambiandola si aggiornano linee e camme.",
+  code:
+    "Codice articolo del costruttore (per esempio «DSBC-32-100-PPVA-N3»). Compare nella distinta componenti " +
+    "(menu File) e la separa: pezzi con codici diversi stanno su righe diverse. Non cambia la simulazione.",
+  "sheet-bom":
+    "Disegna la distinta componenti sopra il cartiglio, con posizione, sigle, descrizione, codice e quantità. " +
+    "Compare anche nel PDF del foglio; lascia libero lo spazio sopra il cartiglio.",
   label:
     "Descrizione libera del componente, per esempio «Pulsante avanti» o «Cilindro di bloccaggio». Compare " +
     "accanto alla sigla sul disegno se nel menu Mostra sono attive le descrizioni.",
