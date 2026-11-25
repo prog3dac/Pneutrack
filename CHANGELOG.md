@@ -3,10 +3,21 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
-## 0.17.1 · 2026-11-25
+## 0.18.1 · 2026-11-25
 
 - Un clic sulla sezione già attiva della barra a sinistra nasconde la palette, un altro clic la riapre; la scelta resta salvata nel browser.
 - Scegliendo Elettrico o Blocchi nella barra a sinistra la sezione resta evidenziata anche quando la palette non scorre fino in cima al gruppo.
+
+## 0.18.0 · 2026-11-25
+
+- Simboli pneumatici ricontrollati sulla ISO 1219-1 e sugli esempi di schema delle ISO 1219-2 e 1219-3: pilotaggi, elettropiloti e motore pneumatico con il triangolo vuoto dell'aria (quello pieno indica l'olio); triangoli del motore rivolti verso l'interno.
+- Alimentazione disegnata come triangolo vuoto con la punta sulla linea, senza cerchio; molla pneumatica di ritorno nel suo riquadro con il triangolo.
+- Non ritorno, non ritorno pilotata, regolatore di flusso unidirezionale, valvola selettrice e scarico rapido: la sfera ora è appoggiata dentro la sede a V, orientata secondo il verso di passaggio libero; lo scarico rapido ha anche la sede verso lo scarico 3.
+- Riduttore di pressione e gruppo FRL: freccia in linea con le porte (valvola normalmente aperta) e molla regolabile; gruppo FRL e regolatore di flusso unidirezionale racchiusi dalla cornice a tratto e punto dei componenti montati in un unico corpo.
+- Filtro con separatore e scarico manuale, lubrificatore con il tubo di pescaggio, come negli esempi della ISO 1219-2.
+- Valvola limitatrice: pilotaggio sul lato opposto alla molla. Valvola di sequenza: molla di taratura regolabile. Cilindro a semplice effetto: molla a tutta altezza e sfiato in atmosfera disegnato col triangolo al posto del tappo.
+- Nuova pagina «Catalogo dei simboli» (menu File e finestra delle Novità): tutti i componenti con simbolo, descrizione, lettura del simbolo e porte, più i comandi delle valvole.
+- Sigla e descrizione dei componenti vanno sul lato del simbolo libero dalle connessioni, così non coprono le linee; si possono trascinare dove si vuole e un doppio clic le rimette al loro posto.
 
 ## 0.17.0 · 2026-11-25
 

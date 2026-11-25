@@ -631,6 +631,8 @@ await page.waitForFunction(() => document.body.dataset.sim === "on");
 await page.selectOption("#sim-speed", "1");
 assert.equal(await page.locator('#properties [data-cmd="V1|14"]').count(), 0, "il solenoide con bobina non si comanda a clic");
 await waitLive("load:Y1", "v === '0'");
+// il disegno dei fili sotto tensione arriva al fotogramma dopo lo stato del carico: lo si attende
+await page.waitForSelector(".line.wire.live", { timeout: 5000 }).catch(() => {});
 assert.ok((await page.locator(".line.wire.live").count()) >= 1, "il filo dal + è sotto tensione");
 await page.hover('#properties [data-switch="S1"]');
 await page.mouse.down();

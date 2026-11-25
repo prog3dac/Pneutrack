@@ -29,6 +29,7 @@ export function mirrorComponents(doc: CircuitDoc, ids: string[], axis: Axis): vo
     [p.x, p.y] = flip([p.x, p.y]);
     p.rot = mod4(axis === "h" ? -(p.rot || 0) : 2 - (p.rot || 0));
     if (p.mirror) delete p.mirror; else p.mirror = true;
+    if (p.label) p.label = axis === "h" ? [-p.label[0], p.label[1]] : [p.label[0], -p.label[1]];
   }
   for (const c of doc.connections) {
     if (c.points && set.has(compOf(c.from)) && set.has(compOf(c.to))) c.points = c.points.map(flip);

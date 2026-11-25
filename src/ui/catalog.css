@@ -1,0 +1,22 @@
+/* Pagina del catalogo dei simboli (simboli.html) */
+html, body.catalog { height: auto; }
+body.catalog { overflow: auto; padding: 0 24px 48px; max-width: 1280px; margin: 0 auto; }
+.cat-header h1 { margin: 20px 0 4px; font-size: 22px; }
+.cat-header p { margin: 0 0 12px; color: var(--muted); max-width: 900px; }
+.cat-header a, .cat-toc a { color: var(--accent); }
+.cat-toc { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.catalog section h2 { font-size: 17px; margin: 28px 0 10px; padding-top: 4px; }
+.cat-type { margin: 16px 0 8px; }
+.cat-type > h3 { font-size: 15px; margin: 0 0 2px; }
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 8px 0; }
+.cat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+.cat-card h3 { font-size: 14px; margin: 6px 0 4px; }
+.cat-symbol { display: flex; justify-content: center; align-items: center; min-height: 110px;
+  background: var(--sheet); border-radius: 4px; }
+.cat-symbol svg { max-width: 100%; height: auto; }
+.cat-doc { margin: 2px 0 4px; }
+.cat-note { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
+.cat-ports { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.cat-port { display: inline-block; margin-right: 8px; white-space: nowrap; }
+.cat-port b { color: var(--text); }
