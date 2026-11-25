@@ -1,0 +1,120 @@
+{
+  "format": "pneutrack/circuit",
+  "version": 1,
+  "name": "Comando indiretto cilindro doppio effetto",
+  "components": [
+    {
+      "id": "P",
+      "type": "pressure_source",
+      "label": "Rete",
+      "params": {
+        "pressure": "6 bar",
+        "flow": "500 Nl/min"
+      }
+    },
+    {
+      "id": "R",
+      "type": "pressure_regulator",
+      "params": {
+        "setpoint": "5 bar",
+        "max_pressure": "16 bar"
+      }
+    },
+    {
+      "id": "V1",
+      "type": "directional_valve",
+      "label": "5/2 bistabile pneumatica",
+      "function": "5/2",
+      "actuation_14": "pilot",
+      "actuation_12": "pilot",
+      "params": {
+        "max_pressure": "10 bar",
+        "min_pressure": "2 bar"
+      }
+    },
+    {
+      "id": "S1",
+      "type": "directional_valve",
+      "label": "Pulsante avanti",
+      "function": "3/2",
+      "actuation_14": "manual",
+      "actuation_12": "spring",
+      "params": {
+        "max_pressure": "10 bar"
+      }
+    },
+    {
+      "id": "S2",
+      "type": "directional_valve",
+      "label": "Pulsante indietro",
+      "function": "3/2",
+      "actuation_14": "manual",
+      "actuation_12": "spring",
+      "params": {
+        "max_pressure": "10 bar"
+      }
+    },
+    {
+      "id": "C1",
+      "type": "double_acting_cylinder",
+      "params": {
+        "bore": "32 mm",
+        "stroke": "100 mm",
+        "rod": "12 mm",
+        "max_pressure": "10 bar"
+      }
+    },
+    {
+      "id": "SL3",
+      "type": "silencer",
+      "params": {}
+    },
+    {
+      "id": "SL5",
+      "type": "silencer",
+      "params": {}
+    }
+  ],
+  "connections": [
+    {
+      "from": "P.1",
+      "to": "R.1"
+    },
+    {
+      "from": "R.2",
+      "to": "V1.1"
+    },
+    {
+      "from": "R.2",
+      "to": "S1.1"
+    },
+    {
+      "from": "R.2",
+      "to": "S2.1"
+    },
+    {
+      "from": "S1.2",
+      "to": "V1.14"
+    },
+    {
+      "from": "S2.2",
+      "to": "V1.12"
+    },
+    {
+      "from": "C1.A",
+      "to": "V1.4"
+    },
+    {
+      "from": "C1.B",
+      "to": "V1.2"
+    },
+    {
+      "from": "SL3.1",
+      "to": "V1.3"
+    },
+    {
+      "from": "SL5.1",
+      "to": "V1.5"
+    }
+  ]
+}
