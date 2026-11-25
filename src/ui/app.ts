@@ -15,6 +15,11 @@ import { compileSim } from "../sim/network";
 import { Simulator } from "../sim/simulator";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
+import { sheetSvg, svgToPdf } from "./pdf";
+import {
+  centeredOrigin, drawingArea, FRAME, SHEET_FORMATS, sheetRect, sheetSizeMm, smallestFormat, TITLE_BLOCK, UNITS_PER_MM,
+  type Orientation, type Rect, type SheetData, type SheetFormat,
+} from "../model/sheet";
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 
@@ -243,6 +248,7 @@ function render() {
   viewport.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
   $("#grid-pattern").setAttribute("patternTransform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
+  renderSheet();
   const lines = $("#lines"), comps = $("#components"), ports = $("#ports"), labels = $("#labels");
   const linesTop = $("#lines-top");
   lines.replaceChildren(); comps.replaceChildren(); ports.replaceChildren(); labels.replaceChildren();
@@ -411,6 +417,134 @@ function renderLegend() {
   box.querySelector("details")!.addEventListener("toggle", (e) => {
     try { localStorage.setItem(LEGEND_KEY, (e.target as HTMLDetailsElement).open ? "open" : "closed"); } catch { /* */ }
   });
+}
+
+// --- foglio e cartiglio -----------------------------------------------------------
+const today = () => new Date().toLocaleDateString("it-IT");
+
+/** Disegna foglio, cornice e cartiglio nel gruppo #sheet (sotto a linee e componenti). */
+function renderSheet() {
+  const g = $("#sheet");
+  g.replaceChildren();
+  const sheet = currentSheet();
+  if (!sheet) return;
+  const u = UNITS_PER_MM;
+  const r = sheetRect(sheet);
+  g.append(el("rect", { x: r.x, y: r.y, width: r.w, height: r.h, class: "paper" }));
+  const fx = r.x + FRAME.left * u, fy = r.y + FRAME.top * u;
+  const fw = r.w - (FRAME.left + FRAME.right) * u, fh = r.h - (FRAME.top + FRAME.bottom) * u;
+  g.append(el("rect", { x: fx, y: fy, width: fw, height: fh, class: "frame" }));
+  // cartiglio: tre righe, la prima con il titolo
+  const tw = TITLE_BLOCK.w * u, th = TITLE_BLOCK.h * u;
+  const tx = fx + fw - tw, ty = fy + fh - th;
+  g.append(el("rect", { x: tx, y: ty, width: tw, height: th, class: "frame" }));
+  const rows = [12, 10, 10].map((h) => h * u);
+  const cells: [number, number, number, string, string][] = []; // x, y, larghezza, etichetta, valore
+  const w1 = 70 * u, w2 = 55 * u, w3 = 55 * u;
+  cells.push([tx, ty, tw, "Titolo", doc.name || "Senza nome"]);
+  let y = ty + rows[0]!;
+  cells.push([tx, y, w1, "Disegnato da", sheet.author ?? ""], [tx + w1, y, w2, "Data", today()],
+             [tx + w1 + w2, y, w3, "Formato", `${sheet.format} ${sheet.orientation === "portrait" ? "verticale" : "orizzontale"}`]);
+  y += rows[1]!;
+  cells.push([tx, y, w1, "Numero disegno", sheet.number ?? ""], [tx + w1, y, w2, "Revisione", sheet.revision ?? ""],
+             [tx + w1 + w2, y, w3, "Programma", `Pneutrack v${APP_VERSION}`]);
+  for (const [x, cy, w, label, value] of cells) {
+    const h = cy === ty ? rows[0]! : rows[1]!;
+    g.append(el("rect", { x, y: cy, width: w, height: h, class: "cell" }));
+    const cap = el("text", { x: x + 1.5 * u, y: cy + 3 * u, class: "tb-caption" });
+    cap.textContent = label;
+    const val = el("text", { x: x + 1.5 * u, y: cy + h - 2 * u, class: cy === ty ? "tb-title" : "tb-value" });
+    val.textContent = value;
+    g.append(cap, val);
+  }
+}
+
+/** Sezione "Foglio" nel pannello dello schema. */
+function renderSheetFields(panel: HTMLElement) {
+  heading(panel, "Foglio");
+  const fmt = document.createElement("select");
+  fmt.name = "sheet-format";
+  for (const [v, t] of [["", "Nessuno (area libera)"], ...SHEET_FORMATS.map((f) => [f, f])] as [string, string][]) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = t;
+    fmt.append(o);
+  }
+  fmt.value = doc.sheet?.format ?? "";
+  fmt.addEventListener("change", () => {
+    mutate(() => {
+      if (!fmt.value) { delete doc.sheet; return; }
+      const next: SheetData = { ...(doc.sheet ?? {}), format: fmt.value as SheetFormat };
+      delete next.origin;
+      next.origin = centeredOrigin(next, contentBox() ?? { x: 0, y: 0, w: 0, h: 0 });
+      doc.sheet = next;
+    });
+    fitView();
+  });
+  panel.append(field("Formato", fmt));
+  if (!doc.sheet) {
+    const auto = document.createElement("button");
+    auto.textContent = "Scegli il formato adatto al disegno";
+    auto.addEventListener("click", () => { fitSheetToDrawing(); });
+    panel.append(auto);
+    return;
+  }
+  const ori = document.createElement("select");
+  ori.name = "sheet-orientation";
+  for (const [v, t] of [["landscape", "Orizzontale"], ["portrait", "Verticale"]]) {
+    const o = document.createElement("option");
+    o.value = v!; o.textContent = t!;
+    ori.append(o);
+  }
+  ori.value = doc.sheet.orientation ?? "landscape";
+  ori.addEventListener("change", () => {
+    mutate(() => {
+      const next: SheetData = { ...doc.sheet!, orientation: ori.value as Orientation };
+      next.origin = centeredOrigin(next, contentBox() ?? { x: 0, y: 0, w: 0, h: 0 });
+      doc.sheet = next;
+    });
+    fitView();
+  });
+  panel.append(field("Orientamento", ori));
+  for (const [key, label] of [["author", "Disegnato da"], ["number", "Numero disegno"], ["revision", "Revisione"]] as const) {
+    const inp = document.createElement("input");
+    inp.name = `sheet-${key}`; inp.value = doc.sheet[key] ?? "";
+    inp.addEventListener("change", () => mutate(() => {
+      if (inp.value.trim()) doc.sheet![key] = inp.value.trim(); else delete doc.sheet![key];
+    }));
+    panel.append(field(label, inp));
+  }
+  const box = contentBox(), area = drawingArea(currentSheet()!);
+  if (box && (box.x < area.x || box.y < area.y || box.x + box.w > area.x + area.w || box.y + box.h > area.y + area.h)) {
+    const warn = document.createElement("p");
+    warn.className = "sheet-warning";
+    warn.textContent = "Il disegno esce dall'area utile del foglio: centralo, scegli un formato più grande o sposta i componenti.";
+    panel.append(warn);
+  }
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const center = document.createElement("button");
+  center.textContent = "Centra sul disegno";
+  center.addEventListener("click", () => {
+    mutate(() => { doc.sheet!.origin = centeredOrigin(doc.sheet!, contentBox() ?? { x: 0, y: 0, w: 0, h: 0 }); });
+    fitView();
+  });
+  const auto = document.createElement("button");
+  auto.textContent = "Formato adatto al disegno";
+  auto.addEventListener("click", () => { fitSheetToDrawing(); });
+  actions.append(center, auto);
+  panel.append(actions);
+}
+
+/** Il formato più piccolo che contiene il disegno, centrato. */
+function fitSheetToDrawing() {
+  const box = contentBox() ?? { x: 0, y: 0, w: 0, h: 0 };
+  const orientation = doc.sheet?.orientation ?? (box.h > box.w ? "portrait" : "landscape");
+  mutate(() => {
+    const next: SheetData = { ...(doc.sheet ?? {}), format: smallestFormat(box, orientation), orientation };
+    next.origin = centeredOrigin(next, box);
+    doc.sheet = next;
+  });
+  fitView();
 }
 
 // --- filtri di visualizzazione --------------------------------------------------
@@ -787,6 +921,7 @@ function renderProperties() {
     nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
     nameIn.addEventListener("change", () => mutate(() => { doc.name = nameIn.value; }));
     panel.append(field("Nome", nameIn));
+    renderSheetFields(panel);
     const help = document.createElement("div");
     help.className = "help";
     help.innerHTML = `<p>Trascina un componente dalla palette sul foglio, oppure fai clic per inserirlo al centro.</p>
@@ -1285,9 +1420,9 @@ function centerOn(id: string) {
   view.y = r.height / 2 - l.y * view.k;
   render();
 }
-function fitView() {
-  const r = svg.getBoundingClientRect();
-  if (!doc.components.length) { view = { x: r.width / 2, y: r.height / 2, k: 1 }; return render(); }
+/** Ingombro del disegno (componenti, etichette e punti di piega) in unità dello schema. */
+function contentBox(): Rect | null {
+  if (!doc.components.length) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const c of doc.components) {
     const l = layoutOf(c.id), g = geometry(c);
@@ -1295,6 +1430,32 @@ function fitView() {
     x0 = Math.min(x0, l.x - hw); x1 = Math.max(x1, l.x + hw);
     y0 = Math.min(y0, l.y - hh - 24); y1 = Math.max(y1, l.y + hh);
   }
+  for (const c of doc.connections) for (const [x, y] of c.points ?? []) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** Foglio mostrato: quello dello schema, con l'origine centrata sul disegno se non indicata. */
+function currentSheet(): SheetData | null {
+  if (!doc.sheet) return null;
+  if (doc.sheet.origin) return doc.sheet;
+  const box = contentBox() ?? { x: 0, y: 0, w: 0, h: 0 };
+  return { ...doc.sheet, origin: centeredOrigin(doc.sheet, box) };
+}
+
+function fitView() {
+  const r = svg.getBoundingClientRect();
+  const sheet = currentSheet();
+  if (sheet) {
+    const s = sheetRect(sheet), pad = 30;
+    const k = Math.min(r.width / (s.w + 2 * pad), r.height / (s.h + 2 * pad));
+    view = { k, x: r.width / 2 - (s.x + s.w / 2) * k, y: r.height / 2 - (s.y + s.h / 2) * k };
+    return render();
+  }
+  const box = contentBox();
+  if (!box) { view = { x: r.width / 2, y: r.height / 2, k: 1 }; return render(); }
+  const x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
   const pad = 60;
   const k = Math.max(0.3, Math.min(2, Math.min(r.width / (x1 - x0 + 2 * pad), r.height / (y1 - y0 + 2 * pad))));
   view = { k, x: r.width / 2 - ((x0 + x1) / 2) * k, y: r.height / 2 - ((y0 + y1) / 2) * k };
@@ -1625,6 +1786,43 @@ async function newDocument(data: Partial<CircuitDoc> = emptyCircuit(), message =
   toast(`${message} (Ctrl+Z per tornare indietro)`);
 }
 
+/** PDF vettoriale del foglio (se non è scelto, il formato più piccolo che contiene il disegno). */
+async function exportPdf() {
+  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  const saved = { selection, sheet: doc.sheet, theme: document.documentElement.dataset.theme };
+  let sheet = currentSheet();
+  if (!sheet) {
+    const box = contentBox()!;
+    const orientation: Orientation = box.h > box.w ? "portrait" : "landscape";
+    const format = smallestFormat(box, orientation);
+    sheet = { format, orientation, origin: centeredOrigin({ format, orientation }, box) };
+  }
+  let svgOut: SVGSVGElement;
+  // disegno pulito, in tema chiaro, senza selezione
+  try {
+    selection = null;
+    doc.sheet = sheet;
+    document.documentElement.dataset.theme = "light";
+    render();
+    svgOut = sheetSvg($("#viewport") as unknown as SVGGElement, sheetRect(sheet), sheetSizeMm(sheet));
+  } finally {
+    selection = saved.selection;
+    doc.sheet = saved.sheet;
+    if (saved.theme) document.documentElement.dataset.theme = saved.theme;
+    else delete document.documentElement.dataset.theme;
+    render();
+  }
+  try {
+    toast("Preparo il PDF…");
+    const blob = await svgToPdf(svgOut, sheetSizeMm(sheet), doc.name || "Schema");
+    const name = fileName().replace(/\.pneu\.json$/, "") + ".pdf";
+    const r = await exportFile(name, blob);
+    if (r === "saved") toast(`Esportato ${name} (${sheet.format})`);
+  } catch (err) {
+    toast(`PDF non riuscito: ${(err as Error).message}`);
+  }
+}
+
 async function exportCurrent() {
   try {
     const r = await exportFile(fileName(), JSON.stringify(doc, null, 2) + "\n");
@@ -1815,6 +2013,7 @@ $("#toolbar").addEventListener("click", (e) => {
     case "save": saveProject(); break;
     case "save-as": saveProject({ asNew: true }); break;
     case "export": exportCurrent(); break;
+    case "pdf": exportPdf(); break;
     case "undo": undo(); break;
     case "redo": redo(); break;
     case "fit": fitView(); break;

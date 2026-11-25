@@ -3,6 +3,12 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.6.0 · 2026-11-25
+
+- Fogli di disegno da A4 ad A0, orizzontali o verticali, con cornice ISO 5457 e cartiglio (titolo, autore, data, numero disegno, revisione, formato).
+- Scelta automatica del formato più piccolo che contiene il disegno e centratura del foglio.
+- Esportazione del foglio in PDF vettoriale (pulsante PDF).
+
 ## 0.5.0 · 2026-11-25
 
 - Ammortizzo pneumatico regolabile nei cilindri a doppio effetto e a doppio stelo: ai due fine corsa o su uno solo, con lunghezza e apertura della vite.

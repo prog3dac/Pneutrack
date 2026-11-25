@@ -147,7 +147,8 @@ export async function openStore(): Promise<Store> {
 }
 
 /** Esporta un file: capability "downloads" su claude.ai, altrimenti link di download. */
-export async function exportFile(filename: string, text: string): Promise<"saved" | "declined"> {
+export async function exportFile(filename: string, content: string | Blob): Promise<"saved" | "declined"> {
+  const blob = typeof content === "string" ? new Blob([content], { type: "application/json" }) : content;
   let downloads: any = null;
   const claude = runtime();
   if (claude?.use) {
@@ -155,7 +156,7 @@ export async function exportFile(filename: string, text: string): Promise<"saved
   }
   if (downloads) {
     try {
-      await downloads.save({ filename, data: new Blob([text], { type: "application/json" }) });
+      await downloads.save({ filename, data: blob });
       return "saved";
     } catch (e: any) {
       if (e?.code === "declined") return "declined";
@@ -163,7 +164,7 @@ export async function exportFile(filename: string, text: string): Promise<"saved
     }
   }
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  a.href = URL.createObjectURL(blob);
   a.download = filename;
   document.body.append(a);
   a.click();

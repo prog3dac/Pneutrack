@@ -6,6 +6,7 @@
  * Formato file: `pneutrack/circuit` versione 1.
  */
 import type { ComponentData } from "./components";
+import { parseSheet, type SheetData } from "./sheet";
 import type { TubeData } from "./tubes";
 
 export const FORMAT = "pneutrack/circuit";
@@ -35,6 +36,8 @@ export interface CircuitDoc {
   connections: ConnectionData[];
   /** posizione grafica dei componenti, usata solo dall'editor */
   layout: Record<string, Placement>;
+  /** foglio di disegno e cartiglio (facoltativo) */
+  sheet?: SheetData;
 }
 
 export const emptyCircuit = (name = "Nuovo schema"): CircuitDoc =>
@@ -99,5 +102,6 @@ export function normalizeCircuit(data: unknown): CircuitDoc {
     components: d.components,
     connections: Array.isArray(d.connections) ? d.connections : [],
     layout: d.layout && typeof d.layout === "object" ? d.layout : {},
+    ...(parseSheet(d.sheet) ? { sheet: parseSheet(d.sheet)! } : {}),
   };
 }
