@@ -147,7 +147,8 @@ formano reti proprie, separate da quelle pneumatiche. Un filo non si collega a u
 `Y1` indica il solenoide che eccita (`"drives": "V1.14"`), il contatto `K1a` il relè che lo aziona
 (`"relay": "K1"`), il finecorsa `S2` il cilindro (`"cam": "C1+"`).
 
-I componenti elettrici non sono ancora nella palette dell'editor (mancano i simboli); si possono già scrivere nel file.
+Nell'editor i componenti elettrici sono nella categoria «Elettrico» della palette. I fili tra morsetti si diramano con
+punti di connessione elettrici (`wire_junction`), distinti da quelli pneumatici (`junction`).
 
 | Tipo (`type`) | Nome | Sigla | Morsetti | Opzioni, parametri e riferimenti |
 |---|---|---|---|---|

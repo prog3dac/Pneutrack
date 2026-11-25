@@ -19,6 +19,7 @@
   /* linee per fascia di pressione e linea selezionata */
   --p1: #7cc4f5; --p2: #3a9be0; --p3: #1f6fd1; --p4: #2a3fb0; --p5: #7b2fbf;
   --sel: #ea580c;
+  --wire: #7a4a1e; --live: #dc2626;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -28,6 +29,7 @@
     --air: #6d9bff; --error: #ff6b5e; --error-soft: #3a1e1c; --warning: #f0a54a;
     --warning-soft: #3a2c17; --ok: #4ade80; --ok-soft: #17311f; color-scheme: dark;
     --p1: #8fd0ff; --p2: #5aaef0; --p3: #3d86f0; --p4: #6e7dff; --p5: #c07bff; --sel: #fb923c;
+    --wire: #d9a066; --live: #ff6b5e;
   }
 }
 :root[data-theme="dark"] {
@@ -36,6 +38,7 @@
   --air: #6d9bff; --error: #ff6b5e; --error-soft: #3a1e1c; --warning: #f0a54a;
   --warning-soft: #3a2c17; --ok: #4ade80; --ok-soft: #17311f; color-scheme: dark;
     --p1: #8fd0ff; --p2: #5aaef0; --p3: #3d86f0; --p4: #6e7dff; --p5: #c07bff; --sel: #fb923c;
+    --wire: #d9a066; --live: #ff6b5e;
 }
 
 * { box-sizing: border-box; }
@@ -185,6 +188,9 @@ button.link:hover { text-decoration: underline; }
 .line.p4 .stroke { stroke: var(--p4); } .line.p5 .stroke { stroke: var(--p5); }
 .line.exhaust .stroke { stroke: var(--muted); }
 .line.pilot .stroke { stroke-dasharray: 6 4; }
+/* fili del circuito elettrico: sottili e in un colore diverso dalle linee pneumatiche */
+.line.wire .stroke { stroke: var(--wire); stroke-width: 1.2; }
+.line.wire.live .stroke { stroke: var(--live); stroke-width: 2; }
 .line:hover .stroke { stroke-width: 3; }
 #lines.dimmed .line .stroke { opacity: .35; }
 .line.selected .hit { stroke: var(--sheet); stroke-width: 9; stroke-opacity: .9; }
@@ -203,6 +209,7 @@ button.link:hover { text-decoration: underline; }
 #legend line.lg.p3 { stroke: var(--p3); } #legend line.lg.p4 { stroke: var(--p4); }
 #legend line.lg.p5 { stroke: var(--p5); }
 #legend line.lg-exhaust { stroke: var(--muted); } #legend line.lg-pilot { stroke-dasharray: 5 3; stroke-width: 2; }
+#legend line.lg-wire { stroke: var(--wire); stroke-width: 1.4; }
 #legend line.lg-selected { stroke: var(--sel); stroke-width: 4; }
 .temp-wire { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 5 4; pointer-events: none; }
 
@@ -343,6 +350,14 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 
 /* componenti */
 .symbol .cam-label { font-size: 9px; fill: var(--accent); stroke: none; font-weight: 600; }
+
+.symbol .coil-label { fill: var(--wire); }
+.symbol .sym-note { font-size: 9px; fill: var(--muted); stroke: none; }
+.symbol .coil.active { fill: var(--live); fill-opacity: .25; stroke: var(--live); }
+.symbol .blade.active { stroke: var(--live); stroke-width: 2.2; }
+.symbol .lamp.lit.lamp-green { fill: #4ade80; } .symbol .lamp.lit.lamp-red { fill: #f87171; }
+.symbol .lamp.lit.lamp-yellow { fill: #facc15; } .symbol .lamp.lit.lamp-white { fill: #f8fafc; }
+.symbol .lamp.lit.lamp-blue { fill: #60a5fa; }
 
 /* punti di connessione: pallino pieno, colorato come le linee in pressione */
 .symbol .junction-dot { fill: var(--ink); stroke: none; }

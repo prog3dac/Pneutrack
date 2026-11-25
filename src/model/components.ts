@@ -561,14 +561,14 @@ const DEFS: TypeDef[] = [
 
   // --- elettrico (comando elettropneumatico, 24 V c.c.) -------------------------------------
   {
-    type: "electric_supply", label: "Alimentazione elettrica", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "electric_supply", label: "Alimentazione elettrica", category: ELECTRIC, domain: "electric",
     doc: "Alimentazione in corrente continua: morsetti + e 0V.",
     params: [p("voltage", "Tensione", "voltage", { required: true })],
     defaults: { voltage: "24 V" },
     ports: () => [eport("+"), eport("0V")],
   },
   {
-    type: "pushbutton", label: "Pulsante", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "pushbutton", label: "Pulsante", category: ELECTRIC, domain: "electric",
     doc: "Pulsante o interruttore: a impulso resta azionato finché si tiene premuto, con ritenuta resta dove lo si lascia.",
     params: [], defaults: {},
     options: [contactOption, operationOption],
@@ -581,14 +581,14 @@ const DEFS: TypeDef[] = [
     ports: contactPorts,
   },
   {
-    type: "relay_coil", label: "Bobina di relè", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "relay_coil", label: "Bobina di relè", category: ELECTRIC, domain: "electric",
     doc: "Bobina di relè (K): eccitata, commuta tutti i contatti che la indicano.",
     params: [p("pickup_time", "Tempo di attrazione", "time", { group: "sim", simDefault: "10 ms" })],
     defaults: {},
     ports: coilPorts,
   },
   {
-    type: "timer_relay", label: "Relè temporizzato", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "timer_relay", label: "Relè temporizzato", category: ELECTRIC, domain: "electric",
     doc: "Temporizzatore (KT): i suoi contatti commutano con ritardo dopo l'eccitazione o dopo la diseccitazione.",
     params: [p("delay", "Ritardo", "time", { required: true })],
     options: [{ name: "timer_mode", label: "Funzione", default: "on_delay", choices: [
@@ -601,7 +601,7 @@ const DEFS: TypeDef[] = [
     ports: coilPorts,
   },
   {
-    type: "relay_contact", label: "Contatto di relè", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "relay_contact", label: "Contatto di relè", category: ELECTRIC, domain: "electric",
     doc: "Contatto azionato da un relè, da un temporizzatore o da un pressostato, indicato per sigla (relay: \"K1\").",
     params: [], defaults: {},
     options: [contactOption],
@@ -613,13 +613,13 @@ const DEFS: TypeDef[] = [
     ports: contactPorts,
   },
   {
-    type: "valve_solenoid", label: "Bobina di elettrovalvola", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "valve_solenoid", label: "Bobina di elettrovalvola", category: ELECTRIC, domain: "electric",
     doc: "Bobina (Y) del solenoide di una valvola, indicato con valvola e lato (drives: \"V1.14\").",
     params: [], defaults: {},
     ports: coilPorts,
   },
   {
-    type: "limit_switch", label: "Finecorsa elettrico", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "limit_switch", label: "Finecorsa elettrico", category: ELECTRIC, domain: "electric",
     doc: "Microinterruttore a rullo azionato da un cilindro a fine corsa (cam: \"C1+\" stelo fuori, \"C1-\" dentro).",
     params: [], defaults: {},
     options: [contactOption, { name: "switch_actuation", label: "Azionamento", default: "roller", choices: [
@@ -633,7 +633,7 @@ const DEFS: TypeDef[] = [
     ports: contactPorts,
   },
   {
-    type: "proximity_sensor", label: "Sensore di prossimità", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "proximity_sensor", label: "Sensore di prossimità", category: ELECTRIC, domain: "electric",
     doc: "Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è " +
       "nella posizione indicata (cam: \"C1+\", oppure il parametro posizione).",
     params: [p("position", "Posizione dal fondello", "length"),
@@ -644,7 +644,7 @@ const DEFS: TypeDef[] = [
     ports: () => [eport("BN"), eport("BU"), eport("BK")],
   },
   {
-    type: "pressure_switch", label: "Pressostato", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "pressure_switch", label: "Pressostato", category: ELECTRIC, domain: "electric",
     doc: "Pressostato: si collega alla linea pneumatica con la porta 1 e aziona i contatti che lo indicano " +
       "quando la pressione supera la taratura.",
     params: [p("setpoint", "Pressione di intervento", "pressure", { required: true }), MAX_P,
@@ -653,7 +653,13 @@ const DEFS: TypeDef[] = [
     ports: () => [port("1", "pilot")],
   },
   {
-    type: "signal_lamp", label: "Lampada di segnalazione", category: ELECTRIC, domain: "electric", hidden: true,
+    type: "wire_junction", label: "Punto di connessione elettrico", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Punto di connessione (morsetto comune) di più fili. Trascina un filo su un altro per crearne uno.",
+    params: [], defaults: {},
+    ports: () => [eport("1", true)],
+  },
+  {
+    type: "signal_lamp", label: "Lampada di segnalazione", category: ELECTRIC, domain: "electric",
     doc: "Lampada (H): accesa quando ha tensione tra i morsetti X1 e X2.",
     params: [], defaults: {},
     options: [{ name: "lamp_color", label: "Colore", default: "green", choices: [
