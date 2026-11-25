@@ -19,9 +19,24 @@ npm run build      # versione pubblicabile in dist/
 
 ## Uso
 
+La finestra ha due modalità, scelte con l'interruttore al centro della barra in alto:
+
+- **Disegno**: a sinistra la barra delle sezioni (Pneumatica, Elettrico, Blocchi, Foglio) e la palette
+  a icone; al centro il foglio; a destra le proprietà dell'elemento selezionato. Sopra la selezione
+  compare una barra con Ruota, Specchia ↔ / ↕, Duplica ed Elimina; in basso a destra del foglio ci sono
+  zoom, *Adatta* e il menu *Mostra*.
+- **Simula**: palette e barra delle sezioni si nascondono; a destra ci sono comandi e valori in tempo
+  reale, in basso la fascia con Pausa, Ricomincia, velocità, tempo e il diagramma delle fasi.
+
+Nella barra in alto il menu **File** raccoglie Progetti, Nuovo, Salva, Salva copia, Importa ed Esporta;
+**Modifica** raccoglie Taglia, Copia, Incolla e Seleziona tutto. Annulla, Ripeti, Esempi e PDF restano a vista.
+Il bollino di validazione a destra («✓ Schema valido», oppure il numero di errori e avvisi) apre l'elenco
+dei problemi.
+
 - **Inserire** un componente: trascinalo dalla palette sul foglio, oppure fai clic per metterlo al centro.
   La palette è divisa in categorie richiudibili (alimentazione e trattamento aria, valvole
-  distributrici, valvole di blocco e logiche, regolazione, attuatori) e ha una casella di ricerca.
+  distributrici, valvole di blocco e logiche, regolazione, attuatori, elettrico) e ha una casella di ricerca;
+  la barra delle sezioni porta direttamente ai componenti elettrici o ai blocchi salvati.
   Le valvole distributrici più comuni e i serbatoi di varie taglie sono già configurati.
 - **Collegare**: trascina da una porta a un'altra. Più linee sulla stessa porta formano un raccordo a T.
 - **Linee**: trascina una linea per piegarla dove vuoi (nasce un punto di piega, agganciato alla
@@ -45,11 +60,11 @@ npm run build      # versione pubblicabile in dist/
   corsa o su uno solo), la sua lunghezza e l'apertura della vite.
 - **Linee**: la linea selezionata diventa arancione e passa sopra ai simboli, le altre si
   attenuano. Il colore delle linee indica la fascia di pressione (massima raggiungibile mentre si
-  disegna, istantanea in simulazione); la legenda è in basso a destra.
-- **Mostra**: il menu nella barra in alto nasconde o mostra sigle, descrizioni, valori della
+  disegna, istantanea in simulazione); la legenda è in basso a sinistra.
+- **Mostra**: il menu in basso a destra del foglio nasconde o mostra sigle, descrizioni, valori della
   simulazione, numeri delle porte, finecorsa, misure dei tubi, punti di collegamento, linee di
   pilotaggio e di scarico, griglia e legenda. La scelta resta salvata nel browser.
-- **Foglio e PDF**: nel pannello *Schema* (clic su un punto vuoto del foglio) si sceglie il formato
+- **Foglio e PDF**: nel pannello *Schema* (clic su un punto vuoto del foglio, o su *Foglio* nella barra delle sezioni) si sceglie il formato
   da A4 ad A0, l'orientamento e i dati del cartiglio (disegnato da, numero disegno, revisione).
   *Formato adatto al disegno* sceglie il formato più piccolo che lo contiene; *Centra sul disegno*
   sposta il foglio. Il pulsante *PDF* scarica il foglio in PDF vettoriale, in tema chiaro e senza
@@ -57,17 +72,17 @@ npm run build      # versione pubblicabile in dist/
   PDF.
 - **Versione**: il numero accanto al nome dell'app apre le novità di ogni versione
   ([CHANGELOG.md](../CHANGELOG.md)); dopo un aggiornamento si aprono da sole una volta.
-- **Validazione**: avviene a ogni modifica. I problemi compaiono nel pannello in basso a destra
-  (clic per andare al componente), i componenti con errori sono bordati di rosso, le porte
+- **Validazione**: avviene a ogni modifica. I problemi si aprono con il bollino di validazione nella barra
+  in alto (clic su un problema per andare al componente), i componenti con errori sono bordati di rosso, le porte
   scollegate sono rosse e le linee in pressione sono blu (tratteggiate quelle di pilotaggio).
-- **Simulazione**: *Simula* anima lo schema, se non ci sono errori. Le linee si colorano con la
+- **Simulazione**: l'interruttore *Simula* anima lo schema, se non ci sono errori. Le linee si colorano con la
   pressione, le caselle delle valvole scorrono nella posizione attiva e gli steli dei cilindri si
   muovono. Pulsanti e rulli si azionano tenendo premuto il loro simbolo (o il bottone nel pannello),
   i solenoidi si eccitano e diseccitano a ogni clic; i pilotaggi commutano da soli quando la
   pressione supera `min_pressure` (2 bar se non indicata), i finecorsa commutano quando lo stelo
   arriva in fondo. Manometri e serbatoi mostrano la pressione, i temporizzatori il tempo che manca. *Pausa* (barra spaziatrice),
   *Ricomincia* e la velocità (da 0,05× a tempo reale) controllano il tempo. Durante la simulazione
-  lo schema non si modifica; *Ferma simulazione* (o `Esc`) torna al disegno.
+  lo schema non si modifica; *Disegno* (o `Esc`) torna al disegno, con la vista com'era prima.
 - **Progetti**: *Salva* (`Ctrl+S`) registra lo schema nell'archivio dei progetti; da quel momento
   ogni modifica viene salvata in automatico dopo un istante. *Salva copia* crea un nuovo progetto.
   La finestra *Progetti* elenca i progetti (più recenti in alto), con ricerca, apertura,
@@ -135,7 +150,7 @@ cortocircuito o di un relè che continua a commutare da solo.
 
 ## Diagramma delle fasi
 
-Durante la simulazione il pulsante «📈 Diagramma» apre, in basso nell'area di lavoro, il diagramma delle fasi:
+Durante la simulazione il diagramma delle fasi occupa la fascia in basso (il pulsante «📈 Diagramma delle fasi» lo nasconde o lo riapre):
 una corsia per ogni cilindro (corsa da 0, tutto dentro, a 1, tutto fuori) e una per ogni bobina, lampada e
 contatto di relè (acceso o spento). Senza circuito elettrico al posto delle bobine ci sono le valvole (azionata o
 a riposo). «Tempo» mette in orizzontale i secondi (diagramma spostamento-tempo); «Passi» mette a distanza uguale

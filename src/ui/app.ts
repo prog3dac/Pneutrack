@@ -479,6 +479,30 @@ function render() {
   }
   renderBlocks();
   renderStatus();
+  positionSelbar();
+  $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
+}
+
+/** Barra mobile sopra la selezione: ruota, specchia, duplica, elimina. */
+function positionSelbar() {
+  const bar = $("#selbar");
+  const ids = sim ? [] : selectedIds().filter((id) => byId(id));
+  if (!ids.length) { bar.hidden = true; return; }
+  const boxes = ids.map(compBox);
+  const x0 = Math.min(...boxes.map((r) => r.x)), x1 = Math.max(...boxes.map((r) => r.x + r.w));
+  const y0 = Math.min(...boxes.map((r) => r.y)), y1 = Math.max(...boxes.map((r) => r.y + r.h));
+  const stage = $("#stage").getBoundingClientRect();
+  // selezione fuori dalla vista: niente barra
+  if (x1 * view.k + view.x < 0 || x0 * view.k + view.x > stage.width ||
+      y1 * view.k + view.y < 0 || y0 * view.k + view.y > stage.height) { bar.hidden = true; return; }
+  bar.hidden = false;
+  $<HTMLButtonElement>('#selbar [data-act="rotate"]').disabled = selection?.kind !== "component";
+  const w = bar.offsetWidth, h = bar.offsetHeight;
+  const cx = ((x0 + x1) / 2) * view.k + view.x;
+  let top = y0 * view.k + view.y - h - 10;
+  if (top < 8) top = y1 * view.k + view.y + 10;
+  bar.style.left = `${Math.max(8, Math.min(stage.width - w - 8, cx - w / 2))}px`;
+  bar.style.top = `${Math.max(8, Math.min(stage.height - h - 8, top))}px`;
 }
 
 /** Ingombro di un componente sul foglio (con l'etichetta sopra). */
@@ -738,8 +762,29 @@ function renderViewFilter() {
 }
 // il menu si chiude facendo clic altrove
 document.addEventListener("pointerdown", (e) => {
-  const menu = $<HTMLDetailsElement>("#view-filter");
-  if (menu.open && !menu.contains(e.target as Node)) menu.open = false;
+  for (const menu of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) {
+    if (!menu.contains(e.target as Node)) menu.open = false;
+  }
+  const issues = $("#issues-panel");
+  if (!issues.hidden && !issues.contains(e.target as Node) && !$("#status").contains(e.target as Node)) showIssues(false);
+});
+// un menu aperto chiude gli altri
+for (const menu of document.querySelectorAll<HTMLDetailsElement>("details.menu")) {
+  menu.addEventListener("toggle", () => {
+    if (menu.open) for (const m of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) if (m !== menu) m.open = false;
+  });
+}
+function closePopups() {
+  for (const m of document.querySelectorAll<HTMLDetailsElement>("details.menu[open]")) m.open = false;
+  showIssues(false);
+}
+/** Elenco dei problemi, aperto dal bollino di validazione nella barra in alto. */
+function showIssues(open: boolean) {
+  $("#issues-panel").hidden = !open;
+  $("#status").setAttribute("aria-expanded", String(open));
+}
+$("#issues-panel").addEventListener("click", (e) => {
+  if (target(e).closest("[data-iact=close]")) showIssues(false);
 });
 
 function renderPalette() {
@@ -762,7 +807,9 @@ function renderPalette() {
     det.open = !closed.includes(cat);
     const sum = document.createElement("summary");
     sum.textContent = cat;
-    det.append(sum);
+    const grid = document.createElement("div");
+    grid.className = "palette-grid";
+    det.append(sum, grid);
     det.addEventListener("toggle", () => {
       if (search.value) return; // durante la ricerca i gruppi si aprono da soli
       const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
@@ -783,7 +830,7 @@ function renderPalette() {
         e.dataTransfer!.setData("application/x-pneutrack-type", `${it.type.type}|${it.preset}`);
         e.dataTransfer!.effectAllowed = "copy";
       });
-      det.append(b);
+      grid.append(b);
     }
     groups.push(det);
     pal.append(det);
@@ -798,7 +845,9 @@ function renderPalette() {
     det.open = !closed.includes(cat);
     const sum = document.createElement("summary");
     sum.textContent = `${cat} (${lib.length})`;
-    det.append(sum);
+    const grid = document.createElement("div");
+    grid.className = "palette-grid";
+    det.append(sum, grid);
     det.addEventListener("toggle", () => {
       if (search.value) return;
       const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
@@ -833,7 +882,7 @@ function renderPalette() {
       rm.className = "remove"; rm.textContent = "×"; rm.title = "Togli dalla libreria"; rm.setAttribute("role", "button");
       rm.addEventListener("click", (e) => { e.stopPropagation(); removeLibraryBlock(i); });
       b.append(rm);
-      det.append(b);
+      grid.append(b);
     });
     groups.push(det);
     pal.append(det);
@@ -1189,22 +1238,6 @@ function renderProperties() {
       } catch { /* parametri non validi: già segnalati */ }
     }
 
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    actions.innerHTML = `<button data-act="rotate">Ruota (R)</button>
-      <button data-act="mirror-h" title="Specchia sinistra ↔ destra (H)">Specchia ↔</button>
-      <button data-act="mirror-v" title="Specchia alto ↕ basso (V)">Specchia ↕</button>
-      <button data-act="duplicate">Duplica</button>
-      <button data-act="delete" class="danger">Elimina</button>`;
-    actions.addEventListener("click", (e) => {
-      const act = (target(e).closest("button") as HTMLElement | null)?.dataset.act;
-      if (act === "rotate") rotateSelection();
-      else if (act === "mirror-h") mirrorSelection("h");
-      else if (act === "mirror-v") mirrorSelection("v");
-      if (act === "duplicate") duplicateSelection();
-      if (act === "delete") deleteSelection();
-    });
-    panel.append(actions);
   } else if (selection?.kind === "block" && doc.blocks?.some((b) => b.id === (selection as { id: string }).id)) {
     renderBlockPanel(panel, title, selection.id);
   } else if (selection?.kind === "multi") {
@@ -1217,10 +1250,6 @@ function renderProperties() {
     actions.className = "actions";
     actions.append(
       button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
-      button("Specchia ↔", () => mirrorSelection("h"), "Specchia sinistra ↔ destra (H)", "mirror-h"),
-      button("Specchia ↕", () => mirrorSelection("v"), "Specchia alto ↕ basso (V)", "mirror-v"),
-      button("Duplica", duplicateSelection, "Ctrl+D"),
-      button("Elimina", deleteSelection, "Canc", "", "danger"),
     );
     panel.append(actions);
     const help = document.createElement("p");
@@ -1409,10 +1438,10 @@ function renderIssues() {
       ? doc.connections.findIndex((c) => i.ports.includes(c.from) && i.ports.includes(c.to)) : -1;
     if (wire >= 0) {
       li.classList.add("clickable");
-      li.addEventListener("click", () => select({ kind: "connection", index: wire }));
+      li.addEventListener("click", () => { showIssues(false); select({ kind: "connection", index: wire }); });
     } else if (cid && byId(cid)) {
       li.classList.add("clickable");
-      li.addEventListener("click", () => { select({ kind: "component", id: cid }); centerOn(cid); });
+      li.addEventListener("click", () => { showIssues(false); select({ kind: "component", id: cid }); centerOn(cid); });
     }
     list.append(li);
   }
@@ -1762,12 +1791,15 @@ function startSim() {
   sim.recorder.record(0);
   $("#app").classList.add("simulating");
   $("#sim-bar").hidden = false;
-  $("#btn-sim").textContent = "■ Ferma simulazione";
-  $("#btn-sim").classList.add("on");
+  setModeButtons(true);
+  closePopups();
+  drawView = { ...view };
   renderLegend();
   document.body.dataset.sim = "on";
   updatePlayButton();
   renderProperties();
+  showDiagram(true);
+  fitView();
   sim.raf = requestAnimationFrame(simFrame);
   if (r.warnings.length) toast(r.warnings[0]!);
 }
@@ -1781,12 +1813,19 @@ function stopSim() {
   $("#app").classList.remove("simulating");
   $("#sim-bar").hidden = true;
   showDiagram(false);
-  $("#btn-sim").textContent = "▶ Simula";
-  $("#btn-sim").classList.remove("on");
+  setModeButtons(false);
+  if (drawView) { view = drawView; drawView = null; }
   delete document.body.dataset.sim;
   render();
   renderProperties();
   renderLegend();
+}
+
+/** vista del disegno prima di entrare in Simula, ripristinata all'uscita */
+let drawView: typeof view | null = null;
+function setModeButtons(simulating: boolean) {
+  $("#btn-draw").setAttribute("aria-pressed", String(!simulating));
+  $("#btn-sim").setAttribute("aria-pressed", String(simulating));
 }
 
 function resetSim() {
@@ -1820,24 +1859,22 @@ function showDiagram(open: boolean) {
   $("#diagram").hidden = !diagramOpen;
   $("#btn-diagram").setAttribute("aria-pressed", String(diagramOpen));
   $("#btn-diagram").classList.toggle("on", diagramOpen);
-  for (const b of document.querySelectorAll<HTMLElement>("#diagram [data-dmode=time], #diagram [data-dmode=step]")) {
+  for (const b of document.querySelectorAll<HTMLElement>("#sim-bar [data-dmode]")) {
     b.setAttribute("aria-pressed", String(b.dataset.dmode === diagramMode));
   }
   renderDiagramPanel();
 }
 
 function renderDiagramPanel() {
-  const stage = $("#stage");
-  if (!sim || !diagramOpen) { stage.style.removeProperty("--diagram-h"); return; }
+  if (!sim || !diagramOpen) return;
   const body = $("#diagram-body");
   const r = sim.recorder;
   if (!r.channels.length) {
     body.innerHTML = `<p class="dg-empty">Nello schema non ci sono cilindri, valvole o bobine da tracciare.</p>`;
   } else {
     body.innerHTML = renderDiagram(r.channels, r.samples, diagramMode, Math.max(320, body.clientWidth - 4));
-    body.style.height = `${Math.min(diagramHeight(r.channels), Math.round(stage.clientHeight * 0.4))}px`;
+    body.style.height = `${Math.min(diagramHeight(r.channels), Math.round(window.innerHeight * 0.28))}px`;
   }
-  stage.style.setProperty("--diagram-h", `${$("#diagram").offsetHeight}px`);
 }
 
 function updatePlayButton() {
@@ -2472,6 +2509,7 @@ document.addEventListener("keydown", (e) => {
   if (mod && key === "s") { e.preventDefault(); saveProject({ asNew: e.shiftKey }); return; }
   if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
   if (e.key === "Escape" && !$("#news-dialog").hidden) { closeNews(); return; }
+  if (e.key === "Escape" && (!$("#issues-panel").hidden || document.querySelector("details.menu[open]"))) { closePopups(); return; }
   if (typing) return;
   if (sim) {
     if (e.key === " ") { e.preventDefault(); togglePlay(); }
@@ -2485,11 +2523,7 @@ document.addEventListener("keydown", (e) => {
   else if (mod && key === "d") { e.preventDefault(); duplicateSelection(); }
   else if (mod && key === "g" && e.shiftKey) { e.preventDefault(); splitSelection(); }
   else if (mod && key === "g") { e.preventDefault(); mergeSelection(); }
-  else if (mod && key === "a") {
-    e.preventDefault();
-    const ids = doc.components.map((c) => c.id);
-    select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
-  }
+  else if (mod && key === "a") { e.preventDefault(); selectAll(); }
   else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); }
   else if (key === "r" && !mod) rotateSelection();
   else if (key === "h" && !mod) mirrorSelection("h");
@@ -2497,6 +2531,22 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") select(null);
   else if (key === "f" && !mod) fitView();
 });
+
+function selectAll() {
+  const ids = doc.components.map((c) => c.id);
+  select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+}
+
+/** Zoom attorno al centro del foglio visibile. */
+function zoomBy(factor: number) {
+  const r = svg.getBoundingClientRect();
+  const mx = r.width / 2, my = r.height / 2;
+  const k = Math.max(0.25, Math.min(4, factor ? view.k * factor : 1));
+  view.x = mx - ((mx - view.x) * k) / view.k;
+  view.y = my - ((my - view.y) * k) / view.k;
+  view.k = k;
+  render();
+}
 
 function togglePlay() {
   if (!sim) return;
@@ -2859,15 +2909,65 @@ $("#projects-dialog").addEventListener("click", (e) => {
   if (act === "save-current") saveProject().then(refreshProjectList);
 });
 
-$("#diagram").addEventListener("click", (e) => {
+$("#sim-bar").addEventListener("click", (e) => {
   const mode = target(e).closest<HTMLElement>("button")?.dataset.dmode;
-  if (mode === "close") showDiagram(false);
-  else if (mode === "time" || mode === "step") { diagramMode = mode; showDiagram(true); }
+  if (mode === "time" || mode === "step") { diagramMode = mode; showDiagram(true); return; }
+  switch (target(e).closest<HTMLElement>("button")?.dataset.act) {
+    case "sim-play": togglePlay(); break;
+    case "sim-reset": resetSim(); break;
+    case "sim-diagram": showDiagram(!diagramOpen); break;
+  }
 });
+$("#selbar").addEventListener("click", (e) => {
+  switch (target(e).closest<HTMLElement>("button")?.dataset.act) {
+    case "rotate": rotateSelection(); break;
+    case "mirror-h": mirrorSelection("h"); break;
+    case "mirror-v": mirrorSelection("v"); break;
+    case "duplicate": duplicateSelection(); break;
+    case "delete": deleteSelection(); break;
+  }
+});
+$("#view-tools").addEventListener("click", (e) => {
+  switch (target(e).closest<HTMLElement>("button")?.dataset.act) {
+    case "zoom-in": zoomBy(1.25); break;
+    case "zoom-out": zoomBy(0.8); break;
+    case "zoom-reset": zoomBy(0); break;
+    case "fit": fitView(); break;
+  }
+});
+// barra laterale: porta alla sezione della palette, o al pannello del foglio
+$("#rail").addEventListener("click", (e) => {
+  const where = target(e).closest<HTMLElement>("button")?.dataset.rail;
+  if (!where || sim) return;
+  for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
+  if (where === "sheet") { select(null); $("#properties").scrollTop = 0; return; }
+  const cat = where === "elec" ? "Elettrico" : where === "blocks" ? "Blocchi salvati" : null;
+  const pal = $("#palette");
+  const search = $<HTMLInputElement>("#palette-search");
+  if (search.value) { search.value = ""; search.dispatchEvent(new Event("input")); }
+  if (!cat) { pal.scrollTo({ top: 0, behavior: "smooth" }); return; }
+  const g = pal.querySelector<HTMLDetailsElement>(`.palette-group[data-cat="${cat}"]`);
+  if (g) { g.open = true; pal.scrollTo({ top: g.offsetTop - pal.offsetTop - 50, behavior: "smooth" }); }
+});
+// rail attiva seguendo lo scorrimento della palette
+$("#palette").addEventListener("scroll", () => {
+  const pal = $("#palette");
+  let where = "pneu";
+  for (const g of pal.querySelectorAll<HTMLElement>(".palette-group")) {
+    if (g.offsetTop - pal.offsetTop - 60 > pal.scrollTop) break;
+    where = g.dataset.cat === "Elettrico" ? "elec" : g.dataset.cat === "Blocchi salvati" ? "blocks" : "pneu";
+  }
+  for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
+}, { passive: true });
 
 $("#toolbar").addEventListener("click", (e) => {
   const act = target(e).closest<HTMLElement>("button")?.dataset.act;
+  if (act && target(e).closest(".menu-body")) closePopups();
   switch (act) {
+    case "mode-draw": stopSim(); break;
+    case "import": $("#file-input").click(); break;
+    case "select-all": if (!sim) selectAll(); break;
+    case "issues": { const open = $("#issues-panel").hidden; closePopups(); showIssues(open); break; }
     case "projects": openProjects(); break;
     case "new": newDocument(); break;
     case "save": saveProject(); break;
@@ -2879,12 +2979,8 @@ $("#toolbar").addEventListener("click", (e) => {
     case "cut": cutSelection(); break;
     case "paste": pasteClip(); break;
     case "redo": redo(); break;
-    case "fit": fitView(); break;
     case "whats-new": openNews(); break;
-    case "sim": if (sim) stopSim(); else startSim(); break;
-    case "sim-play": togglePlay(); break;
-    case "sim-reset": resetSim(); break;
-    case "sim-diagram": showDiagram(!diagramOpen); break;
+    case "sim": startSim(); break;
   }
 });
 
@@ -2947,8 +3043,11 @@ function toast(msg: string) {
 
 // --- avvio -----------------------------------------------------------------------------
 
+window.addEventListener("resize", () => { positionSelbar(); renderDiagramPanel(); });
+
 async function init() {
   renderPalette();
+  $('#rail [data-rail="pneu"]').classList.add("on");
   renderLegend();
   renderViewFilter();
   applyView();
