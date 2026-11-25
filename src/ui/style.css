@@ -369,3 +369,10 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 .junction-grab { fill: transparent; cursor: move; }
 .line.target .stroke { stroke: var(--accent); stroke-width: 3.4; }
 #canvas.panning { cursor: grab; }
+
+/* descrizione dei campi al passaggio del mouse */
+.field.has-help > span { cursor: help; }
+.help-mark { display: inline-grid; place-items: center; width: 13px; height: 13px; border-radius: 50%;
+  border: 1px solid var(--muted); color: var(--muted); font-size: 9px; font-style: normal; font-weight: 700;
+  line-height: 1; vertical-align: 1px; }
+.field.has-help:hover .help-mark { border-color: var(--accent); color: var(--accent); }

@@ -535,6 +535,47 @@ s = await state();
 assert.equal(s.doc.components.length, nAll);
 assert.ok(s.doc.components.some((c) => c.id === gauge), "la sigla libera torna uguale");
 
+// 17. ogni campo da compilare ha una descrizione al passaggio del mouse
+const C = s.doc.components.find((c) => c.type === "double_acting_cylinder").id;
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.click(`[data-component="${C}"] .halo`, { force: true });
+// se fa parte di un blocco il primo clic seleziona il blocco, il secondo il cilindro
+if (!(await page.textContent("#properties h2")).startsWith("Cilindro")) {
+  await page.click(`[data-component="${C}"] .halo`, { force: true });
+}
+const fields = await page.locator("#properties label.field").evaluateAll((els) =>
+  els.map((e) => [e.querySelector("span").textContent.trim(), e.title]));
+assert.ok(fields.length >= 8, "campi del cilindro");
+for (const [label, title] of fields) assert.ok(title.length > 30, `descrizione del campo ${label}`);
+assert.match(fields.find(([l]) => l.startsWith("Alesaggio"))[1], /Unità: mm/);
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+const schemaFields = await page.locator("#properties label.field").evaluateAll((els) => els.map((e) => e.title));
+assert.ok(schemaFields.every((t) => t.length > 30), "campi dello schema e del foglio");
+
+// 18. specchia: le porte passano dall'altra parte, il simbolo resta al suo posto
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await dropFromPalette("double_acting_cylinder", 200, 640);
+await settled();
+s = await state();
+const cyl = s.doc.components.at(-1).id;
+const portX = async (p) => (await portCenter(`${cyl}.${p}`)).x;
+const portY = async (p) => (await portCenter(`${cyl}.${p}`)).y;
+assert.ok((await portX("A")) < (await portX("B")));
+const yA = await portY("A");
+await page.keyboard.press("h");
+await settled();
+s = await state();
+assert.equal(s.doc.layout[cyl].mirror, true);
+assert.ok((await portX("A")) > (await portX("B")), "A passa a destra");
+await page.click('#properties [data-act="mirror-v"]');
+await settled();
+assert.ok((await portY("A")) < yA, "le porte passano sopra");
+await page.keyboard.press("v");
+await page.keyboard.press("h");
+await settled();
+s = await state();
+assert.deepEqual({ ...s.doc.layout[cyl], x: 0, y: 0 }, { x: 0, y: 0, rot: 0 }, "due specchiature tornano all'originale");
+
 // circuito elettrico di comando: simboli, fili, riferimenti per sigla
 await page.evaluate(() => window.pneutrack.loadDoc({
   name: "Elettropneumatica",
@@ -561,7 +602,6 @@ await wire("G.+", "S1.13");
 await wire("S1.14", "Y1.A1");
 await wire("Y1.A2", "G.0V");
 await settled();
-if (shots) await page.screenshot({ path: `${shots}/elettrico.png` });
 assert.equal(await page.locator(".line.wire").count(), 3, "fili elettrici");
 if (shots) await page.screenshot({ path: `${shots}/elettrico.png` });
 assert.match(await page.textContent("#properties h2"), /Filo elettrico/);

@@ -4,6 +4,7 @@ import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import { mirrorComponents, type Axis } from "../model/mirror";
 import { dissolveJunction, isJunctionType, JUNCTION, splitConnection, WIRE_JUNCTION } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
@@ -25,6 +26,7 @@ import {
   type Orientation, type Rect, type SheetData, type SheetFormat,
 } from "../model/sheet";
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
+import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 
 const GRID = 10;
@@ -158,8 +160,9 @@ function portWorld(compId: string, portName: string): PortPoint | null {
   const p = geometry(comp).ports[portName];
   if (!p) return null;
   const l = layoutOf(compId);
-  const [rx, ry] = rotate([p.x, p.y], l.rot || 0);
-  return { x: l.x + rx, y: l.y + ry, dir: rotate(p.dir, l.rot || 0) };
+  const m = l.mirror ? -1 : 1;
+  const [rx, ry] = rotate([m * p.x, p.y], l.rot || 0);
+  return { x: l.x + rx, y: l.y + ry, dir: rotate([m * p.dir[0], p.dir[1]], l.rot || 0) };
 }
 
 type Pt = [number, number];
@@ -393,12 +396,20 @@ function render() {
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
     const grp = el("g", {
       class: cls, "data-component": comp.id,
-      transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})`,
+      transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})${l.mirror ? " scale(-1,1)" : ""}`,
     });
     const pad = 6;
     grp.append(el("rect", { class: "halo", x: -g.w / 2 - pad, y: -g.h / 2 - pad,
                             width: g.w + 2 * pad, height: g.h + 2 * pad, rx: 6 }));
-    grp.append(el("g", { class: "symbol" }, g.svg));
+    const sym = el("g", { class: "symbol" }, g.svg);
+    // nel simbolo specchiato le scritte restano leggibili: si specchiano di nuovo sul loro punto
+    if (l.mirror) {
+      sym.querySelectorAll("text").forEach((t) => {
+        const x = Number(t.getAttribute("x") ?? 0);
+        t.setAttribute("transform", `matrix(-1 0 0 1 ${2 * x} 0)`);
+      });
+    }
+    grp.append(sym);
     comps.append(grp);
 
     // etichetta (non ruotata), sopra l'ingombro ruotato
@@ -586,7 +597,7 @@ function renderSheetFields(panel: HTMLElement) {
     });
     fitView();
   });
-  panel.append(field("Formato", fmt));
+  panel.append(field("Formato", fmt, FIELD_HELP["sheet-format"]));
   if (!doc.sheet) {
     const auto = document.createElement("button");
     auto.textContent = "Scegli il formato adatto al disegno";
@@ -610,14 +621,14 @@ function renderSheetFields(panel: HTMLElement) {
     });
     fitView();
   });
-  panel.append(field("Orientamento", ori));
+  panel.append(field("Orientamento", ori, FIELD_HELP["sheet-orientation"]));
   for (const [key, label] of [["author", "Disegnato da"], ["number", "Numero disegno"], ["revision", "Revisione"]] as const) {
     const inp = document.createElement("input");
     inp.name = `sheet-${key}`; inp.value = doc.sheet[key] ?? "";
     inp.addEventListener("change", () => mutate(() => {
       if (inp.value.trim()) doc.sheet![key] = inp.value.trim(); else delete doc.sheet![key];
     }));
-    panel.append(field(label, inp));
+    panel.append(field(label, inp, FIELD_HELP[`sheet-${key}`]));
   }
   const box = contentBox(), area = drawingArea(currentSheet()!);
   if (box && (box.x < area.x || box.y < area.y || box.x + box.w > area.x + area.w || box.y + box.h > area.y + area.h)) {
@@ -830,12 +841,20 @@ function renderPalette() {
   });
 }
 
-function field(label: string, input: HTMLElement, hint?: string) {
+/** Campo con etichetta; `help` è la descrizione mostrata al passaggio del mouse. */
+function field(label: string, input: HTMLElement, help = "") {
   const wrap = document.createElement("label");
   wrap.className = "field";
-  if (hint) wrap.title = hint;
   const span = document.createElement("span");
   span.textContent = label;
+  if (help) {
+    wrap.title = help;
+    wrap.classList.add("has-help");
+    const i = document.createElement("i");
+    i.className = "help-mark"; i.textContent = "?"; i.setAttribute("aria-hidden", "true");
+    span.append(" ", i);
+    input.setAttribute("aria-description", help);
+  }
   wrap.append(span, input);
   return wrap;
 }
@@ -867,7 +886,7 @@ function camField(comp: ComponentData, side: "14" | "12") {
     const c = byId(comp.id)!;
     if (sel.value) c[key] = sel.value; else delete c[key];
   }));
-  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel);
+  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel, FIELD_HELP.cam);
   if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
   return f;
 }
@@ -903,25 +922,20 @@ function electricRefFields(comp: ComponentData): HTMLElement[] {
       const sides: [string, string][] = doc.components.filter((x) => x.type === "directional_valve").flatMap((v) =>
         (["14", "12"] as const).filter((s) => isElectric((v[`actuation_${s}`] ?? (s === "14" ? "solenoid" : "spring")) as Actuation))
           .map((s) => [`${v.id}.${s}`, `${v.id}, solenoide ${s}`] as [string, string]));
-      return [refField(comp, "drives", "Solenoide comandato", "La valvola e il lato (14 o 12) il cui solenoide è " +
-        "eccitato da questa bobina. Compaiono solo i lati con un comando elettrico.", sides,
+      return [refField(comp, "drives", "Solenoide comandato", FIELD_HELP.drives!, sides,
         ["INVALID_REFERENCE", "NOT_A_SOLENOID", "DUPLICATE_COIL", "UNLINKED_REFERENCE"])];
     }
     case "relay_contact": {
       const RELAYS: Record<string, string> = { relay_coil: "relè", timer_relay: "temporizzatore", pressure_switch: "pressostato" };
       const relays = doc.components.filter((x) => RELAYS[x.type])
         .map((r) => [r.id, `${r.id} (${RELAYS[r.type]})`] as [string, string]);
-      return [refField(comp, "relay", "Azionato da", "Il relè, il temporizzatore o il pressostato che commuta " +
-        "questo contatto. Un relè può avere quanti contatti servono.", relays, ["INVALID_REFERENCE", "UNLINKED_REFERENCE"])];
+      return [refField(comp, "relay", "Azionato da", FIELD_HELP.relay!, relays, ["INVALID_REFERENCE", "UNLINKED_REFERENCE"])];
     }
     case "limit_switch":
-      return [refField(comp, "cam", "Azionato da", "Il cilindro che preme il rullo a fine corsa: + quando lo stelo è " +
-        "tutto fuori, − quando è tutto dentro. Senza cilindro il finecorsa si aziona a mano in simulazione.", cams(),
+      return [refField(comp, "cam", "Azionato da", FIELD_HELP["switch-cam"]!, cams(),
         ["INVALID_CAM", "UNLINKED_REFERENCE"])];
     case "proximity_sensor":
-      return [refField(comp, "cam", "Cilindro rilevato", "Il cilindro di cui il sensore rileva il pistone: + a fine " +
-        "corsa in uscita, − in rientro. Con il parametro Posizione il sensore sta in un punto intermedio della corsa.",
-        cams(), ["INVALID_CAM", "UNLINKED_REFERENCE"])];
+      return [refField(comp, "cam", "Cilindro rilevato", FIELD_HELP["sensor-cam"]!, cams(), ["INVALID_CAM", "UNLINKED_REFERENCE"])];
     default:
       return [];
   }
@@ -955,7 +969,7 @@ function cylinderSizeField(comp: ComponentData) {
       c.params = { ...c.params, bore: `${bore} mm`, rod: `${rod} mm` };
     });
   });
-  return field("Misura standard", sel);
+  return field("Misura standard", sel, FIELD_HELP["cylinder-size"]);
 }
 
 function button(text: string, onClick: () => void, key = "", act = "", cls = "") {
@@ -977,7 +991,7 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
   nameIn.addEventListener("change", () => mutate(() => {
     doc.blocks!.find((x) => x.id === id)!.name = nameIn.value.trim() || id;
   }));
-  panel.append(field("Nome", nameIn));
+  panel.append(field("Nome", nameIn, FIELD_HELP["block-name"]));
   const desc = document.createElement("textarea");
   desc.name = "block-description"; desc.rows = 3; desc.value = b.description ?? "";
   desc.placeholder = "Che cosa fa questo blocco";
@@ -985,7 +999,7 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
     const x = doc.blocks!.find((y) => y.id === id)!;
     if (desc.value.trim()) x.description = desc.value.trim(); else delete x.description;
   }));
-  panel.append(field("Descrizione", desc));
+  panel.append(field("Descrizione", desc, FIELD_HELP["block-description"]));
   heading(panel, `Componenti (${b.components.length})`);
   const ul = document.createElement("ul");
   ul.className = "block-members";
@@ -1003,6 +1017,8 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
   actions.className = "actions";
   actions.append(
     button("Dividi", splitSelection, "Ctrl+Maiusc+G", "split"),
+    button("Specchia ↔", () => mirrorSelection("h"), "Specchia sinistra ↔ destra (H)", "mirror-h"),
+    button("Specchia ↕", () => mirrorSelection("v"), "Specchia alto ↕ basso (V)", "mirror-v"),
     button("Duplica", duplicateSelection, "Ctrl+D", "duplicate"),
     button("Salva nella libreria", () => saveBlockToLibrary(id), "", "library"),
     button("Elimina", deleteSelection, "Canc", "", "danger"),
@@ -1051,7 +1067,7 @@ function paramInput(comp: ComponentData, p: ParamSpec) {
     if (v) c.params[p.name] = /^[-+]?[\d.,]+$/.test(v) && unit ? `${v} ${unit}` : v;
     else delete c.params[p.name];
   }));
-  const f = field(p.label + (p.required ? " *" : ""), inp);
+  const f = field(p.label + (p.required ? " *" : ""), inp, paramHelp(comp.type, p));
   const bad = issuesFor(comp.id).find((i) => i.code === "INVALID_COMPONENT" && i.message.includes(`'${p.name}'`));
   if (bad) f.classList.add("invalid");
   return f;
@@ -1071,7 +1087,7 @@ function renderProperties() {
     const idIn = document.createElement("input");
     idIn.value = comp.id; idIn.name = "id"; idIn.spellcheck = false;
     idIn.addEventListener("change", () => renameComponent(comp.id, idIn.value.trim()));
-    panel.append(field("Sigla", idIn));
+    panel.append(field("Sigla", idIn, FIELD_HELP.id));
 
     const labIn = document.createElement("input");
     labIn.value = comp.label || ""; labIn.name = "label"; labIn.placeholder = "facoltativa";
@@ -1079,7 +1095,7 @@ function renderProperties() {
       const c = byId(comp.id)!;
       if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
     }));
-    panel.append(field("Descrizione", labIn));
+    panel.append(field("Descrizione", labIn, FIELD_HELP.label));
     const inBlock = blockOf(doc, comp.id);
     if (inBlock) {
       const p = document.createElement("p");
@@ -1107,7 +1123,7 @@ function renderProperties() {
         if (opt.name !== "function" && !isMechanical(sel.value as Actuation)) delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
         pruneConnections(comp.id);
       }));
-      panel.append(field(opt.label, sel));
+      panel.append(field(opt.label, sel, optionHelp(comp.type, opt)));
       // rullo: può essere premuto da un cilindro a fine corsa
       const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
       if (side && isMechanical((comp[opt.name] ?? opt.default) as Actuation)) panel.append(camField(comp, side));
@@ -1161,11 +1177,15 @@ function renderProperties() {
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.innerHTML = `<button data-act="rotate">Ruota (R)</button>
+      <button data-act="mirror-h" title="Specchia sinistra ↔ destra (H)">Specchia ↔</button>
+      <button data-act="mirror-v" title="Specchia alto ↕ basso (V)">Specchia ↕</button>
       <button data-act="duplicate">Duplica</button>
       <button data-act="delete" class="danger">Elimina</button>`;
     actions.addEventListener("click", (e) => {
       const act = (target(e).closest("button") as HTMLElement | null)?.dataset.act;
       if (act === "rotate") rotateSelection();
+      else if (act === "mirror-h") mirrorSelection("h");
+      else if (act === "mirror-v") mirrorSelection("v");
       if (act === "duplicate") duplicateSelection();
       if (act === "delete") deleteSelection();
     });
@@ -1182,6 +1202,8 @@ function renderProperties() {
     actions.className = "actions";
     actions.append(
       button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
+      button("Specchia ↔", () => mirrorSelection("h"), "Specchia sinistra ↔ destra (H)", "mirror-h"),
+      button("Specchia ↕", () => mirrorSelection("v"), "Specchia alto ↕ basso (V)", "mirror-v"),
       button("Duplica", duplicateSelection, "Ctrl+D"),
       button("Elimina", deleteSelection, "Canc", "", "danger"),
     );
@@ -1247,14 +1269,14 @@ function renderProperties() {
     const nameIn = document.createElement("input");
     nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
     nameIn.addEventListener("change", () => mutate(() => { doc.name = nameIn.value; }));
-    panel.append(field("Nome", nameIn));
+    panel.append(field("Nome", nameIn, FIELD_HELP["circuit-name"]));
     renderSheetFields(panel);
     const help = document.createElement("div");
     help.className = "help";
     help.innerHTML = `<p>Trascina un componente dalla palette sul foglio, oppure fai clic per inserirlo al centro.</p>
       <p>Per collegare due porte trascina da una porta all'altra. Per diramare una linea trascina una nuova linea sopra di essa: nasce un punto di connessione a cui collegarne altre.</p>
       <p>Con <b>Simula</b> lo schema si anima: azioni pulsanti e solenoidi facendo clic sui comandi delle valvole.</p>
-      <ul><li><kbd>R</kbd> ruota</li><li><kbd>Canc</kbd> elimina</li>
+      <ul><li><kbd>R</kbd> ruota · <kbd>H</kbd> / <kbd>V</kbd> specchia ↔ / ↕</li><li><kbd>Canc</kbd> elimina</li>
       <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulla / ripeti</li>
       <li><kbd>Ctrl</kbd>+<kbd>D</kbd> duplica</li><li><kbd>Ctrl</kbd>+<kbd>S</kbd> salva il progetto</li>
       <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> copia, taglia, incolla (sotto il puntatore)</li>
@@ -1299,7 +1321,7 @@ function renderTubeFields(panel: HTMLElement, index: number) {
       setTube({ outer_diameter: z.outer, inner_diameter: z.inner, length });
     }
   });
-  panel.append(field("Misura", size));
+  panel.append(field("Misura", size, FIELD_HELP["tube-size"]));
   if (!c.tube) return;
 
   const input = (name: keyof TubeData, label: string, unit: string, placeholder: string) => {
@@ -1315,7 +1337,7 @@ function renderTubeFields(panel: HTMLElement, index: number) {
       else delete tube[name];
       setTube(tube);
     });
-    const f = field(label, inp);
+    const f = field(label, inp, FIELD_HELP[`tube-${name}`]);
     const bad = analysis.issues.some((i) => i.code === "INVALID_TUBE" && i.ports.includes(c.from) &&
       i.ports.includes(c.to) && (i.message.includes(`'${name}'`) || i.message.includes(`.${name}:`)));
     if (bad) f.classList.add("invalid");
@@ -1486,6 +1508,13 @@ function deleteSelection() {
     pruneBlocks(doc);
   });
   select(null);
+}
+
+/** Specchia la selezione: un componente sul posto, più componenti attorno al centro del gruppo. */
+function mirrorSelection(axis: Axis) {
+  const ids = selectedIds();
+  if (!ids.length || sim) return;
+  mutate(() => mirrorComponents(doc, ids, axis));
 }
 
 function rotateSelection() {
@@ -2291,6 +2320,8 @@ document.addEventListener("keydown", (e) => {
   }
   else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); }
   else if (key === "r" && !mod) rotateSelection();
+  else if (key === "h" && !mod) mirrorSelection("h");
+  else if (key === "v" && !mod) mirrorSelection("v");
   else if (e.key === "Escape") select(null);
   else if (key === "f" && !mod) fitView();
 });

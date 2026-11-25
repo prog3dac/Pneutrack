@@ -218,7 +218,8 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 
 Gli schemi si salvano nel formato `pneutrack/circuit` versione 1 (`normalizeCircuit` controlla la forma
 generale di un file). La disposizione grafica dei componenti, usata dall'editor, è nella chiave
-facoltativa `layout` (`{"V1": {"x": 300, "y": 140, "rot": 0}}`) e viene ignorata dal modello.
+facoltativa `layout` (`{"V1": {"x": 300, "y": 140, "rot": 0}}`, con `"mirror": true` per un simbolo
+specchiato) e viene ignorata dal modello.
 
 Esempio: [`src/examples/doppio_effetto_bistabile.json`](../src/examples/doppio_effetto_bistabile.json).
 

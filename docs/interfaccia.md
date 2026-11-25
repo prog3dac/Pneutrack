@@ -97,6 +97,21 @@ connessione* della palette si può lasciare direttamente su una linea. Un tubo s
 in proporzione alla lunghezza disegnata. Eliminando un punto che unisce solo due linee, le due
 linee tornano una sola.
 
+## Descrizioni dei campi
+
+Passando il mouse su un campo del pannello a destra (le etichette con «?») compare una descrizione:
+a che cosa serve il dato, le unità accettate, se è obbligatorio e il valore usato se resta vuoto. I
+testi sono in `src/ui/help.ts`; un test controlla che ogni parametro e ogni opzione del catalogo ne
+abbia uno, quindi un componente nuovo va accompagnato dalle sue descrizioni.
+
+## Ruota e specchia
+
+*Ruota* (`R`) gira il simbolo di 90° in senso orario. *Specchia ↔* (`H`) lo ribalta da sinistra a
+destra, *Specchia ↕* (`V`) dall'alto in basso: le porte passano dall'altra parte e le linee le
+seguono, mentre le scritte restano leggibili. Con più componenti o un blocco si specchia il gruppo
+intero attorno al suo centro, con le pieghe delle linee interne. Nel file la specchiatura è
+`"mirror": true` nel `layout` del componente; il circuito pneumatico non cambia.
+
 ## Circuito elettrico di comando
 
 Pulsanti, relè, temporizzatori, bobine, finecorsa elettrici, sensori, pressostati e lampade sono nella categoria
@@ -133,7 +148,7 @@ Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una 
   nel browser: si inserisce con un clic o trascinandolo nello schema, in qualsiasi progetto.
 - Il filtro *Riquadri dei blocchi* in *Mostra* nasconde le cornici tratteggiate.
 
-Scorciatoie: `R` ruota, `Canc` elimina, `Ctrl+Z`/`Ctrl+Y` annulla/ripeti, `Ctrl+D` duplica,
+Scorciatoie: `R` ruota, `H`/`V` specchia sinistra↔destra / alto↕basso, `Canc` elimina, `Ctrl+Z`/`Ctrl+Y` annulla/ripeti, `Ctrl+D` duplica,
 `Ctrl+G`/`Ctrl+Maiusc+G` unisci/dividi, `Ctrl+A` seleziona tutto, `Ctrl+S` salva, `F` adatta la vista, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copia/taglia/incolla, rotella per lo zoom, `Spazio`+trascina o tasto
 centrale del mouse per spostare la vista.
 
