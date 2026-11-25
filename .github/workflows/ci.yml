@@ -1,0 +1,38 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  editor-e2e:
+    # Playwright 1.56 supporta i browser fino a Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Editor nel browser
+        run: |
+          npm run preview > preview.log 2>&1 &
+          npx --yes wait-on@8.0.3 -t 30000 http://127.0.0.1:4173/Pneutrack/
+          npm run e2e -- http://127.0.0.1:4173/Pneutrack/

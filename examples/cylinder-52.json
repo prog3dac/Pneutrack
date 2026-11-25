@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "nodeVolume_cm3": 0,
+  "components": [
+    { "id": "S1", "type": "supply", "params": { "pressure_bar_g": 6 } },
+    { "id": "V1", "type": "valve52" },
+    { "id": "A1", "type": "cylinderDA", "params": { "bore_mm": 32, "rod_mm": 12, "stroke_mm": 100 } }
+  ],
+  "connections": [
+    { "from": "S1.out", "to": "V1.1" },
+    { "from": "V1.4", "to": "A1.cap" },
+    { "from": "V1.2", "to": "A1.rod" }
+  ]
+}
