@@ -255,6 +255,24 @@ const saved = JSON.parse(await (await download.createReadStream()).toArray().the
 assert.equal(saved.format, "pneutrack/circuit");
 assert.equal(saved.components.length, 8);
 
+// 9b. foglio A3 con cartiglio ed esportazione PDF
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.selectOption('#properties select[name="sheet-format"]', "A3");
+await settled();
+s = await state();
+assert.equal(s.doc.sheet.format, "A3");
+assert.equal(s.doc.sheet.origin.length, 2);
+assert.equal(await page.locator("#sheet .paper").count(), 1);
+assert.match(await page.textContent("#sheet"), /Pneutrack v/);
+const [pdf] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click('[data-act="pdf"]')]);
+assert.match(pdf.suggestedFilename(), /\.pdf$/);
+const pdfBytes = Buffer.concat(await (await pdf.createReadStream()).toArray());
+assert.equal(pdfBytes.subarray(0, 5).toString(), "%PDF-");
+assert.ok(pdfBytes.length > 5000);
+await page.selectOption('#properties select[name="sheet-format"]', "");
+await settled();
+assert.equal((await state()).doc.sheet, undefined);
+
 // 10. progetti: salva, autosalvataggio, riapertura dopo ricarica
 const projects = () => page.evaluate(async () => {
   const r = [];

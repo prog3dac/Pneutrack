@@ -16,6 +16,7 @@
       <button data-act="save" title="Salva il progetto (Ctrl+S)">Salva</button>
       <button data-act="save-as" title="Salva una copia (Ctrl+Maiusc+S)">Salva copia</button>
       <button data-act="export" title="Scarica lo schema come file .pneu.json">Esporta</button>
+      <button data-act="pdf" title="Scarica il foglio di disegno in PDF">PDF</button>
       <select id="examples" aria-label="Esempi"><option value="">Esempi…</option></select>
     </div>
     <span id="save-state" class="save-state" role="status"></span>
@@ -58,6 +59,7 @@
       </defs>
       <rect width="100%" height="100%" fill="url(#grid-pattern)" class="sheet"/>
       <g id="viewport">
+        <g id="sheet"></g>
         <g id="lines"></g>
         <polyline id="temp-wire" class="temp-wire" style="display:none"/>
         <g id="components"></g>

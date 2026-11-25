@@ -104,6 +104,16 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 #canvas { width: 100%; height: 100%; display: block; background: var(--sheet); touch-action: none; user-select: none; }
 .grid-dot { fill: var(--grid); }
 
+/* foglio di disegno e cartiglio */
+#sheet .paper { fill: var(--sheet); stroke: var(--border); stroke-width: 1; filter: drop-shadow(0 1px 4px rgb(0 0 0 / .12)); }
+#sheet .frame { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+#sheet .cell { fill: none; stroke: var(--ink); stroke-width: .7; }
+#sheet text { fill: var(--ink); pointer-events: none; }
+#sheet .tb-caption { font-size: 6px; fill: var(--muted); }
+#sheet .tb-value { font-size: 10px; }
+#sheet .tb-title { font-size: 15px; font-weight: 650; }
+.sheet-warning { color: var(--warning); font-size: 12px; margin: 6px 0; }
+
 /* filtri di visualizzazione (menu Mostra) */
 #stage.hide-grid .grid-dot, #stage.hide-legend #legend, #stage.hide-ports .port-label,
 #stage.hide-cams .cam-label, #stage.hide-pilot .line.pilot, #stage.hide-exhaust .line.exhaust { display: none; }

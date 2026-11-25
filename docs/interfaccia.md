@@ -49,6 +49,12 @@ npm run build      # versione pubblicabile in dist/
 - **Mostra**: il menu nella barra in alto nasconde o mostra sigle, descrizioni, valori della
   simulazione, numeri delle porte, finecorsa, misure dei tubi, punti di collegamento, linee di
   pilotaggio e di scarico, griglia e legenda. La scelta resta salvata nel browser.
+- **Foglio e PDF**: nel pannello *Schema* (clic su un punto vuoto del foglio) si sceglie il formato
+  da A4 ad A0, l'orientamento e i dati del cartiglio (disegnato da, numero disegno, revisione).
+  *Formato adatto al disegno* sceglie il formato più piccolo che lo contiene; *Centra sul disegno*
+  sposta il foglio. Il pulsante *PDF* scarica il foglio in PDF vettoriale, in tema chiaro e senza
+  selezioni; senza un formato scelto usa il più piccolo adatto. Il menu *Mostra* vale anche per il
+  PDF.
 - **Versione**: il numero accanto al nome dell'app apre le novità di ogni versione
   ([CHANGELOG.md](../CHANGELOG.md)); dopo un aggiornamento si aprono da sole una volta.
 - **Validazione**: avviene a ogni modifica. I problemi compaiono nel pannello in basso a destra

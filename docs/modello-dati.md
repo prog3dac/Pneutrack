@@ -113,6 +113,18 @@ tubo 6×4 lungo 1 m dà circa 0,9 dm³/(s·bar).
 Il campo `points` di un collegamento (`[[x, y], ...]`) contiene i punti di piega disegnati
 nell'editor e, come `layout`, non conta per il modello.
 
+## Foglio
+
+La chiave facoltativa `sheet` descrive il foglio di disegno (`src/model/sheet.ts`):
+
+```json
+"sheet": {"format": "A3", "orientation": "landscape", "origin": [-120, -80],
+          "author": "A. Rossi", "number": "PN-001", "revision": "B"}
+```
+
+`format` va da `A4` ad `A0` (ISO 216); `origin` è l'angolo in alto a sinistra in unità dello
+schema, con 3 unità per millimetro di carta. Come `layout`, il foglio non conta per il modello.
+
 ## Unità da catalogo
 
 I parametri si scrivono come nei cataloghi: `"6 bar"`, `"32 mm"`, `"500 Nl/min"`, `"0,6 MPa"`,
