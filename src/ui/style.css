@@ -176,7 +176,7 @@ button.link:hover { text-decoration: underline; }
 .menu-list button { display: flex; justify-content: space-between; gap: 16px; width: 100%; margin: 0 !important;
   border: 0; background: none; text-align: left; padding: 7px 10px; }
 .menu-list button:hover:not(:disabled) { background: var(--accent-soft); }
-.menu-list .menu-link { display: block; padding: 6px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; }
+.menu-list .menu-link { display: block; padding: 7px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; }
 .menu-list .menu-link:hover { background: var(--accent-soft); }
 .menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
 .menu-list kbd { color: var(--muted); }
