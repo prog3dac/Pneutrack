@@ -291,6 +291,9 @@ button.link:hover { text-decoration: underline; }
 .derived dt { color: var(--muted); }
 .derived dd { margin: 0; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 6px; margin-top: 16px; flex-wrap: wrap; }
+#properties h4 { margin: 18px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.actions.align-grid { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 6px; }
+.actions.align-grid button { text-align: left; }
 .help { color: var(--muted); font-size: 12.5px; }
 .help ul { padding-left: 18px; }
 kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--bg); }
