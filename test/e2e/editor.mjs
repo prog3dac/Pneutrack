@@ -239,8 +239,13 @@ if (shots) await page.screenshot({ path: `${shots}/simulazione.png` });
 // durante la simulazione lo schema non si modifica
 // (in simulazione il disegno si rinnova a ogni fotogramma: si fa clic per coordinate)
 const at = async (sel) => {
-  const b = await page.locator(sel).boundingBox();
-  return [b.x + b.width / 2, b.y + b.height / 2];
+  for (let i = 0; i < 50; i++) {
+    // l'elemento può essere sostituito proprio mentre lo si misura: si riprova
+    const b = await page.locator(sel).boundingBox().catch(() => null);
+    if (b) return [b.x + b.width / 2, b.y + b.height / 2];
+    await page.waitForTimeout(20);
+  }
+  throw new Error(`elemento non trovato: ${sel}`);
 };
 await page.mouse.click(...(await at('[data-component="C1"] .halo')));
 await page.waitForSelector('#properties [data-live="port:C1.A"]');
