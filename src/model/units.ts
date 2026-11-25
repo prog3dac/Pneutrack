@@ -9,7 +9,7 @@
 
 export type Dimension =
   | "pressure" | "length" | "area" | "volume" | "force" | "flow" | "conductance"
-  | "mass" | "time" | "angle" | "dimensionless";
+  | "mass" | "time" | "angle" | "voltage" | "dimensionless";
 
 export class UnitError extends Error {
   override name = "UnitError";
@@ -29,6 +29,7 @@ const UNITS: Record<string, [Dimension, number]> = {
   kg: ["mass", 1], g: ["mass", 1e-3],
   s: ["time", 1], ms: ["time", 1e-3], min: ["time", 60],
   rad: ["angle", 1], deg: ["angle", Math.PI / 180],
+  V: ["voltage", 1], mV: ["voltage", 1e-3], kV: ["voltage", 1e3],
   "": ["dimensionless", 1],
 };
 
@@ -41,7 +42,7 @@ const ALIASES: Record<string, string> = {
 
 export const SI_UNIT: Record<Dimension, string> = {
   pressure: "Pa", length: "m", area: "m2", volume: "m3", force: "N", flow: "Nm3/s",
-  conductance: "m3/(s·Pa)", mass: "kg", time: "s", angle: "rad", dimensionless: "",
+  conductance: "m3/(s·Pa)", mass: "kg", time: "s", angle: "rad", voltage: "V", dimensionless: "",
 };
 
 const QTY_RE = /^\s*([-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?)\s*(.*?)\s*$/;

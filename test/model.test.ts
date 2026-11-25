@@ -6,7 +6,7 @@ import {
   buildComponent, cylinderInfo, internalPaths, ParameterError, typeList, type ComponentData,
 } from "../src/model/components";
 import { q, Quantity, UnitError } from "../src/model/units";
-import { allPorts, analyze, build } from "../src/model/validation";
+import { analyze, build, pneumaticPorts } from "../src/model/validation";
 
 // --- costruzione rapida degli schemi -------------------------------------------------
 
@@ -168,10 +168,10 @@ describe("schema", () => {
   it("un raccordo a T forma una sola rete, le reti coprono tutte le porte", () => {
     const tee = build(circuit([C.source("P", "6 bar"), C.silencer("A"), C.silencer("B")],
                               [["P.1", "A.1"], ["P.1", "B.1"]]));
-    expect(nets(allPorts(tee.components), tee.connections)).toEqual([["A.1", "B.1", "P.1"]]);
+    expect(nets(pneumaticPorts(tee.components), tee.connections)).toEqual([["A.1", "B.1", "P.1"]]);
     const b = build(basic());
-    const all = nets(allPorts(b.components), b.connections);
-    expect(all.flat().sort()).toEqual(allPorts(b.components).sort());
+    const all = nets(pneumaticPorts(b.components), b.connections);
+    expect(all.flat().sort()).toEqual(pneumaticPorts(b.components).sort());
     expect(all).toHaveLength(5);
   });
 

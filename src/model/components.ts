@@ -8,7 +8,8 @@
  */
 import { Quantity, UnitError, type Dimension } from "./units";
 
-export type PortKind = "supply" | "work" | "exhaust" | "pilot";
+/** "electric": morsetto di un componente elettrico; le sue linee sono fili, non tubi. */
+export type PortKind = "supply" | "work" | "exhaust" | "pilot" | "electric";
 export type Actuation =
   | "solenoid" | "solenoid_pilot" | "solenoid_pilot_ext"
   | "pilot"
@@ -44,8 +45,12 @@ export interface Preset {
   params?: Record<string, string>;
 }
 
+export type OptionName =
+  | "function" | "actuation_14" | "actuation_12" | "cushioning"
+  | "contact" | "operation" | "timer_mode" | "switch_actuation" | "sensor_kind" | "lamp_color";
+
 export interface OptionSpec {
-  name: "function" | "actuation_14" | "actuation_12" | "cushioning";
+  name: OptionName;
   label: string;
   choices: [string, string][];
   default: string;
@@ -65,6 +70,24 @@ export interface ComponentData {
   cam_12?: string;
   /** ammortizzo pneumatico regolabile: "none", "both", "cap" (fondello), "rod" (testata) */
   cushioning?: string;
+  // --- componenti elettrici ---
+  /** contatto: "no" (NA), "nc" (NC), "co" (scambio) */
+  contact?: string;
+  /** pulsante: "momentary" (a impulso) o "latching" (con ritenuta) */
+  operation?: string;
+  /** temporizzatore: "on_delay" (ritardato all'eccitazione) o "off_delay" (alla diseccitazione) */
+  timer_mode?: string;
+  /** finecorsa elettrico: "roller" o "roller_oneway" */
+  switch_actuation?: string;
+  /** sensore di prossimità: "reed", "inductive", "capacitive", "optical" */
+  sensor_kind?: string;
+  lamp_color?: string;
+  /** bobina di elettrovalvola: il solenoide che eccita, "V1.14" */
+  drives?: string;
+  /** contatto: il relè, temporizzatore o pressostato che lo aziona, "K1" */
+  relay?: string;
+  /** finecorsa elettrico o sensore: "C1+" (stelo fuori) o "C1-" (stelo dentro) */
+  cam?: string;
 }
 
 /** Componente validato, con parametri convertiti. */
@@ -79,8 +102,21 @@ export interface Component {
   cam_14?: Cam;
   cam_12?: Cam;
   cushioning?: Cushioning;
+  contact?: ContactKind;
+  operation?: "momentary" | "latching";
+  timer_mode?: "on_delay" | "off_delay";
+  switch_actuation?: "roller" | "roller_oneway";
+  sensor_kind?: string;
+  lamp_color?: string;
+  /** solenoide eccitato dalla bobina */
+  drives?: { valve: string; side: "14" | "12" };
+  relay?: string;
+  cam?: Cam;
   ports: PortSpec[];
 }
+
+/** Contatto normalmente aperto (NA), normalmente chiuso (NC) o in scambio. */
+export type ContactKind = "no" | "nc" | "co";
 
 /** Ammortizzo di fine corsa: su nessun lato, su entrambi, solo al fondello (rientro) o solo alla testata (uscita). */
 export type Cushioning = "none" | "both" | "cap" | "rod";
@@ -116,7 +152,11 @@ export interface TypeDef {
   /** voci della palette; senza, il tipo compare una volta con le opzioni predefinite */
   presets?: Preset[];
   actuator?: boolean;
-  ports(c: Pick<Component, "function" | "actuation_14" | "actuation_12">): PortSpec[];
+  /** dominio: pneumatico (predefinito) o elettrico */
+  domain?: "pneumatic" | "electric";
+  /** non ancora proposto nella palette dell'editor (manca il simbolo) */
+  hidden?: boolean;
+  ports(c: Pick<Component, "function" | "actuation_14" | "actuation_12" | "contact">): PortSpec[];
   paths?(c: Component): InternalPath[];
   sources?(c: Component): Record<string, Quantity>;
 }
@@ -213,6 +253,20 @@ const DIRECTIONAL = "Valvole distributrici";
 const LOGIC = "Valvole di blocco e logiche";
 const REGULATION = "Regolazione di portata e pressione";
 const ACTUATORS = "Attuatori";
+const ELECTRIC = "Elettrico";
+
+const eport = (name: string, mayBeOpen = false) => port(name, "electric", mayBeOpen);
+export const CONTACT_CHOICES: [ContactKind, string][] = [["no", "NA (normalmente aperto)"],
+  ["nc", "NC (normalmente chiuso)"], ["co", "In scambio"]];
+const contactOption: OptionSpec = { name: "contact", label: "Contatto", default: "no", choices: CONTACT_CHOICES };
+const operationOption: OptionSpec = { name: "operation", label: "Azionamento", default: "momentary",
+  choices: [["momentary", "A impulso"], ["latching", "Con ritenuta"]] };
+/** Morsetti di un contatto (CEI EN 60947): NA 13-14, NC 11-12, scambio 11 comune, 12 NC, 14 NA. */
+const contactPorts = (c: { contact?: ContactKind }): PortSpec[] =>
+  c.contact === "nc" ? [eport("11"), eport("12")]
+  : c.contact === "co" ? [eport("11"), eport("12", true), eport("14", true)]
+  : [eport("13"), eport("14")];
+const coilPorts = () => [eport("A1"), eport("A2")];
 const both = (a: string, b: string) => [{ src: a, dst: b, cap: Infinity }, { src: b, dst: a, cap: Infinity }];
 const oneWay = (a: string, b: string) => ({ src: a, dst: b, cap: Infinity });
 
@@ -504,6 +558,108 @@ const DEFS: TypeDef[] = [
     ports: () => [port("1", "work"), port("2", "work")],
     paths: () => both("1", "2"),
   },
+
+  // --- elettrico (comando elettropneumatico, 24 V c.c.) -------------------------------------
+  {
+    type: "electric_supply", label: "Alimentazione elettrica", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Alimentazione in corrente continua: morsetti + e 0V.",
+    params: [p("voltage", "Tensione", "voltage", { required: true })],
+    defaults: { voltage: "24 V" },
+    ports: () => [eport("+"), eport("0V")],
+  },
+  {
+    type: "pushbutton", label: "Pulsante", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Pulsante o interruttore: a impulso resta azionato finché si tiene premuto, con ritenuta resta dove lo si lascia.",
+    params: [], defaults: {},
+    options: [contactOption, operationOption],
+    presets: [
+      { label: "Pulsante NA", options: { contact: "no", operation: "momentary" } },
+      { label: "Pulsante NC", options: { contact: "nc", operation: "momentary" } },
+      { label: "Interruttore NA", options: { contact: "no", operation: "latching" } },
+      { label: "Pulsante di emergenza (NC con ritenuta)", options: { contact: "nc", operation: "latching" } },
+    ],
+    ports: contactPorts,
+  },
+  {
+    type: "relay_coil", label: "Bobina di relè", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Bobina di relè (K): eccitata, commuta tutti i contatti che la indicano.",
+    params: [p("pickup_time", "Tempo di attrazione", "time", { group: "sim", simDefault: "10 ms" })],
+    defaults: {},
+    ports: coilPorts,
+  },
+  {
+    type: "timer_relay", label: "Relè temporizzato", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Temporizzatore (KT): i suoi contatti commutano con ritardo dopo l'eccitazione o dopo la diseccitazione.",
+    params: [p("delay", "Ritardo", "time", { required: true })],
+    options: [{ name: "timer_mode", label: "Funzione", default: "on_delay", choices: [
+      ["on_delay", "Ritardato all'eccitazione"], ["off_delay", "Ritardato alla diseccitazione"]] }],
+    defaults: { delay: "2 s" },
+    presets: [
+      { label: "Temporizzatore ritardato all'eccitazione", options: { timer_mode: "on_delay" } },
+      { label: "Temporizzatore ritardato alla diseccitazione", options: { timer_mode: "off_delay" } },
+    ],
+    ports: coilPorts,
+  },
+  {
+    type: "relay_contact", label: "Contatto di relè", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Contatto azionato da un relè, da un temporizzatore o da un pressostato, indicato per sigla (relay: \"K1\").",
+    params: [], defaults: {},
+    options: [contactOption],
+    presets: [
+      { label: "Contatto NA", options: { contact: "no" } },
+      { label: "Contatto NC", options: { contact: "nc" } },
+      { label: "Contatto in scambio", options: { contact: "co" } },
+    ],
+    ports: contactPorts,
+  },
+  {
+    type: "valve_solenoid", label: "Bobina di elettrovalvola", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Bobina (Y) del solenoide di una valvola, indicato con valvola e lato (drives: \"V1.14\").",
+    params: [], defaults: {},
+    ports: coilPorts,
+  },
+  {
+    type: "limit_switch", label: "Finecorsa elettrico", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Microinterruttore a rullo azionato da un cilindro a fine corsa (cam: \"C1+\" stelo fuori, \"C1-\" dentro).",
+    params: [], defaults: {},
+    options: [contactOption, { name: "switch_actuation", label: "Azionamento", default: "roller", choices: [
+      ["roller", "Rullo"], ["roller_oneway", "Rullo unidirezionale (leva ribaltabile)"]] }],
+    presets: [
+      { label: "Finecorsa NA", options: { contact: "no" } },
+      { label: "Finecorsa NC", options: { contact: "nc" } },
+      { label: "Finecorsa in scambio", options: { contact: "co" } },
+      { label: "Finecorsa NA unidirezionale", options: { contact: "no", switch_actuation: "roller_oneway" } },
+    ],
+    ports: contactPorts,
+  },
+  {
+    type: "proximity_sensor", label: "Sensore di prossimità", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è " +
+      "nella posizione indicata (cam: \"C1+\", oppure il parametro posizione).",
+    params: [p("position", "Posizione dal fondello", "length"),
+             p("hysteresis", "Isteresi", "length", { group: "sim", simDefault: "2 mm" })],
+    options: [{ name: "sensor_kind", label: "Tipo", default: "reed", choices: [
+      ["reed", "Magnetico (reed)"], ["inductive", "Induttivo"], ["capacitive", "Capacitivo"], ["optical", "Ottico"]] }],
+    defaults: {},
+    ports: () => [eport("BN"), eport("BU"), eport("BK")],
+  },
+  {
+    type: "pressure_switch", label: "Pressostato", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Pressostato: si collega alla linea pneumatica con la porta 1 e aziona i contatti che lo indicano " +
+      "quando la pressione supera la taratura.",
+    params: [p("setpoint", "Pressione di intervento", "pressure", { required: true }), MAX_P,
+             p("hysteresis", "Isteresi", "pressure", { group: "sim", simDefault: "0.5 bar" })],
+    defaults: { setpoint: "4 bar", max_pressure: "10 bar" },
+    ports: () => [port("1", "pilot")],
+  },
+  {
+    type: "signal_lamp", label: "Lampada di segnalazione", category: ELECTRIC, domain: "electric", hidden: true,
+    doc: "Lampada (H): accesa quando ha tensione tra i morsetti X1 e X2.",
+    params: [], defaults: {},
+    options: [{ name: "lamp_color", label: "Colore", default: "green", choices: [
+      ["green", "Verde"], ["red", "Rossa"], ["yellow", "Gialla"], ["white", "Bianca"], ["blue", "Blu"]] }],
+    ports: () => [eport("X1"), eport("X2")],
+  },
 ];
 
 export const TYPES: ReadonlyMap<string, TypeDef> = new Map(DEFS.map((d) => [d.type, d]));
@@ -538,7 +694,7 @@ export function buildComponent(raw: ComponentData): Component {
     for (const side of ["14", "12"] as const) {
       const raw_cam = raw[`cam_${side}`];
       if (raw_cam == null || raw_cam === "") continue;
-      const m = /^([A-Za-z0-9_-]+)([+-])$/.exec(String(raw_cam));
+      const m = CAM_RE.exec(String(raw_cam));
       if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
       if (!isMechanical(comp[`actuation_${side}`])) {
         throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede un comando meccanico sul lato ${side}`);
@@ -592,9 +748,53 @@ export function buildComponent(raw: ComponentData): Component {
   } else if (raw.cushioning && raw.cushioning !== "none") {
     throw new ParameterError(`${id}: questo componente non ha l'ammortizzo`);
   }
+  buildElectric(def, raw, comp);
   comp.ports = def.ports(comp);
   return comp;
 }
+
+const ELECTRIC_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation", "sensor_kind", "lamp_color"] as const;
+const CAM_RE = /^([A-Za-z0-9_-]+)([+-])$/;
+
+/** Opzioni e riferimenti per sigla dei componenti elettrici (la loro esistenza la controlla la validazione). */
+function buildElectric(def: TypeDef, raw: ComponentData, comp: Component): void {
+  const id = comp.id;
+  for (const name of ELECTRIC_OPTIONS) {
+    const spec = def.options?.find((o) => o.name === name);
+    const value = raw[name];
+    if (!spec) {
+      if (value != null && value !== "") throw new ParameterError(`${id}: questo componente non ha l'opzione '${name}'`);
+      continue;
+    }
+    const v = value == null || value === "" ? spec.default : String(value);
+    if (!spec.choices.some(([c]) => c === v)) {
+      throw new ParameterError(`${id}: ${spec.label.toLowerCase()} '${v}' non valido; ammessi [${spec.choices.map(([c]) => `'${c}'`).join(", ")}]`);
+    }
+    (comp as unknown as Record<string, string>)[name] = v;
+  }
+  const refs = { drives: ["valve_solenoid"], relay: ["relay_contact"], cam: ["limit_switch", "proximity_sensor"] };
+  for (const [field, types] of Object.entries(refs) as [keyof typeof refs, string[]][]) {
+    const value = raw[field];
+    if (value == null || value === "") continue;
+    if (!types.includes(def.type)) throw new ParameterError(`${id}: questo componente non ha il riferimento '${field}'`);
+    const text = String(value).trim();
+    if (field === "drives") {
+      const m = /^(.+)\.(14|12)$/.exec(text);
+      if (!m) throw new ParameterError(`${id}: solenoide '${text}' non valido (atteso valvola e lato, per esempio 'V1.14')`);
+      comp.drives = { valve: m[1]!, side: m[2] as "14" | "12" };
+    } else if (field === "cam") {
+      const m = CAM_RE.exec(text);
+      if (!m) throw new ParameterError(`${id}: finecorsa '${text}' non valido (atteso per esempio 'C1+' o 'C1-')`);
+      comp.cam = { cylinder: m[1]!, end: m[2] as "+" | "-" };
+    } else {
+      if (!/^[A-Za-z0-9_-]+$/.test(text)) throw new ParameterError(`${id}: sigla del relè '${text}' non valida`);
+      comp.relay = text;
+    }
+  }
+}
+
+/** Il componente è elettrico (fa parte del circuito di comando). */
+export const isElectricType = (type: string): boolean => TYPES.get(type)?.domain === "electric";
 
 /** Lunghezza dell'ammortizzo [m]: quella indicata o una stima dall'alesaggio (circa 0,6 × alesaggio, 10–40 mm). */
 export function cushionLength(c: Component): number {

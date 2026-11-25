@@ -11,7 +11,7 @@ import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
 import { cushionLength, hasPilotPort, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
-import { allPorts, analyze, build } from "../model/validation";
+import { analyze, build, pneumaticPorts } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
 
 /** Posizione di una valvola: casella lato 14, lato 12, o centrale (5/3). */
@@ -136,7 +136,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   for (const c of built.components.values()) {
     if (c.type === "air_reservoir") ideal.push([`${c.id}.1`, `${c.id}.2`]);
   }
-  const groups = nets(allPorts(built.components), ideal);
+  const groups = nets(pneumaticPorts(built.components), ideal);
   const portNode: Record<string, number> = {};
   groups.forEach((g, i) => g.forEach((r) => (portNode[r] = i)));
   let nodeCount = groups.length;
