@@ -637,7 +637,7 @@ const DEFS: TypeDef[] = [
     doc: "Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è " +
       "nella posizione indicata (cam: \"C1+\", oppure il parametro posizione).",
     params: [p("position", "Posizione dal fondello", "length"),
-             p("hysteresis", "Isteresi", "length", { group: "sim", simDefault: "2 mm" })],
+             p("range", "Campo di rilevamento (±)", "length", { group: "sim", simDefault: "3 mm" })],
     options: [{ name: "sensor_kind", label: "Tipo", default: "reed", choices: [
       ["reed", "Magnetico (reed)"], ["inductive", "Induttivo"], ["capacitive", "Capacitivo"], ["optical", "Ottico"]] }],
     defaults: {},

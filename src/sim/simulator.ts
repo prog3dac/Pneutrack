@@ -10,6 +10,7 @@ import { BAR, KAPPA, P_ATM, R_AIR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { Position, SimNetwork, ValveSpec } from "./network";
+import { ElectricState, type ElectricSnapshot } from "./electric";
 import { isMechanical, isReturn } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
@@ -18,6 +19,8 @@ const ONEWAY_ZONE = 0.005;
 const ONEWAY_MIN_SPEED = 1e-3;
 
 export const DT = 2e-5;
+/** il circuito elettrico si aggiorna ogni millisecondo simulato */
+export const ELECTRIC_EVERY = 50;
 
 export interface CylinderState {
   /** corsa percorsa [m] */
@@ -39,6 +42,9 @@ export class Simulator {
   readonly positions: Position[];
   /** comandi esterni (pulsante premuto, solenoide eccitato) per lato */
   private readonly commands = new Map<string, boolean>();
+  /** circuito elettrico di comando (null se lo schema non ne ha) */
+  readonly electric: ElectricState | null;
+  private stepCount = 0;
 
   constructor(readonly net: SimNetwork) {
     this.RT = R_AIR * net.temperature;
@@ -53,7 +59,41 @@ export class Simulator {
     this.y = new Array<number>(this.cylOffset + 2 * net.cylinders.length).fill(0);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
     this.positions = net.valves.map((v) => v.initial);
+    this.electric = net.electric ? new ElectricState(net.electric) : null;
+    this.updateElectric();
     this.updateValves();
+  }
+
+  /** Aziona a mano un pulsante, un interruttore o un finecorsa elettrico (premuto o rilasciato). */
+  setSwitch(id: string, on: boolean): void {
+    if (!this.electric) return;
+    this.electric.setManual(id, on);
+    this.updateElectric();
+    this.updateValves();
+  }
+
+  switchState(id: string): boolean {
+    return this.electric?.manualState(id) ?? false;
+  }
+
+  /** Stato del circuito elettrico (bobine eccitate, contatti, potenziali), o null. */
+  electricState(): ElectricSnapshot | null {
+    return this.electric?.snapshot ?? null;
+  }
+
+  /** Il solenoide è comandato da una bobina del circuito elettrico (e non si aziona a clic). */
+  isDriven(valveId: string, side: "14" | "12"): boolean {
+    return this.electric?.drive(`${valveId}.${side}`) !== undefined;
+  }
+
+  private updateElectric(): void {
+    if (!this.electric) return;
+    const P = this.pressures();
+    this.electric.update({
+      t: this.t,
+      cylinder: (id) => this.cylinder(id),
+      gauge: (n) => P[n]! - P_ATM,
+    });
   }
 
   /** Imposta un comando esterno: lato "14" o "12" di una valvola, attivo o no. */
@@ -130,7 +170,7 @@ export class Simulator {
       const tol = 0.002 / stroke;
       return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
     }
-    const on = this.command(v.id, side);
+    const on = this.electric?.drive(`${v.id}.${side}`) ?? this.command(v.id, side);
     if (act === "solenoid_pilot" || act === "solenoid_pilot_ext") {
       // la valvola pilota commuta solo se la sua alimentazione ha pressione sufficiente
       const n = side === "14" ? v.pilot14 : v.pilot12;
@@ -238,6 +278,7 @@ export class Simulator {
       else if (y[xi]! >= c.stroke) { y[xi] = c.stroke; if (y[xi + 1]! > 0) y[xi + 1] = 0; }
     });
     for (let i = 0; i < this.cylOffset; i++) y[i] = Math.max(y[i]!, 1e3);
+    if (this.electric && ++this.stepCount % ELECTRIC_EVERY === 0) this.updateElectric();
     this.updateValves();
   }
 }
