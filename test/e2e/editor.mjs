@@ -83,6 +83,64 @@ assert.equal(await page.textContent("#status"), "Schema valido");
 assert.equal(s.analysis.pressures["C1.A"].text, "6 bar");
 if (shots) await page.screenshot({ path: `${shots}/costruito.png` });
 
+// 2b. tubi: misura standard, lunghezza, pieghe trascinate
+const lineMid = async (i) => {
+  const pts = (await page.getAttribute(`[data-connection="${i}"] .hit`, "points")).split(" ").map((p) => p.split(",").map(Number));
+  // centro del tratto più lungo, in coordinate dello schermo
+  let best = 0, k = 0;
+  for (let j = 0; j + 1 < pts.length; j++) {
+    const d = Math.abs(pts[j + 1][0] - pts[j][0]) + Math.abs(pts[j + 1][1] - pts[j][1]);
+    if (d > best) { best = d; k = j; }
+  }
+  const [x, y] = [(pts[k][0] + pts[k + 1][0]) / 2, (pts[k][1] + pts[k + 1][1]) / 2];
+  return page.evaluate(([x, y]) => {
+    const m = document.querySelector("#viewport").getScreenCTM();
+    return [m.a * x + m.e, m.d * y + m.f];
+  }, [x, y]);
+};
+await page.mouse.click(...(await lineMid(1)));
+await page.waitForSelector('#properties select[name="tube-size"]');
+await page.selectOption('#properties select[name="tube-size"]', { label: "Ø6 × 4" });
+await page.fill('#properties input[name="tube-length"]', "2");
+await page.press('#properties input[name="tube-length"]', "Enter");
+await settled();
+s = await state();
+assert.deepEqual(s.doc.connections[1].tube, { outer_diameter: "6 mm", inner_diameter: "4 mm", length: "2 m" });
+assert.match(await page.textContent("#properties .tube-info"), /Volume 25 cm³/);
+assert.equal(s.analysis.errors, 0);
+
+// trascinando la linea nasce una piega; doppio clic sul punto la toglie
+const [mx, my] = await lineMid(1);
+await page.mouse.move(mx, my);
+await page.mouse.down();
+await page.mouse.move(mx + 30, my + 10, { steps: 3 });
+await page.mouse.move(mx + 80, my + 20, { steps: 5 });
+await page.mouse.up();
+s = await state();
+assert.equal(s.doc.connections[1].points.length, 1, "piega aggiunta");
+if (shots) await page.screenshot({ path: `${shots}/tubi.png` });
+await page.dblclick(".bend-handle");
+s = await state();
+assert.equal(s.doc.connections[1].points, undefined, "piega tolta");
+await page.keyboard.press("Control+z");
+s = await state();
+assert.equal(s.doc.connections[1].points.length, 1, "annulla riporta la piega");
+await page.click('#properties button:has-text("Raddrizza linea")');
+s = await state();
+assert.equal(s.doc.connections[1].points, undefined);
+
+// tubo non valido: errore sulla linea
+await page.fill('#properties input[name="tube-inner_diameter"]', "8");
+await page.press('#properties input[name="tube-inner_diameter"]', "Enter");
+await settled();
+s = await state();
+assert.deepEqual(s.analysis.issues.map((i) => i.code), ["INVALID_TUBE"]);
+await page.keyboard.press("Control+z");
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await settled();
+s = await state();
+assert.equal(s.analysis.errors, 0);
+
 // 3. sovrapressione: cilindro da 4 bar
 await page.click('[data-component="C1"] .halo', { force: true });
 await page.fill('#properties input[name="param-max_pressure"]', "4");

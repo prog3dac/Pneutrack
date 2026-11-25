@@ -4,6 +4,7 @@ import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/cir
 import {
   buildComponent, cylinderInfo, typeList, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
+import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
 import { Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
 import { compileSim } from "../sim/network";
@@ -120,25 +121,72 @@ function portWorld(compId: string, portName: string): PortPoint | null {
   return { x: l.x + rx, y: l.y + ry, dir: rotate(p.dir, l.rot || 0) };
 }
 
-function route(a: PortPoint, b: { x: number; y: number; dir?: Dir }) {
-  const s1 = { x: a.x + a.dir[0] * 15, y: a.y + a.dir[1] * 15 };
-  const s2 = b.dir ? { x: b.x + b.dir[0] * 15, y: b.y + b.dir[1] * 15 } : { x: b.x, y: b.y };
-  const v1 = a.dir[0] === 0, v2 = b.dir ? b.dir[0] === 0 : !v1;
-  const pts: [number, number][] = [[a.x, a.y], [s1.x, s1.y]];
-  if (v1 && v2) {
-    const my = (s1.y + s2.y) / 2;
-    pts.push([s1.x, my], [s2.x, my]);
-  } else if (!v1 && !v2) {
-    const mx = (s1.x + s2.x) / 2;
-    pts.push([mx, s1.y], [mx, s2.y]);
-  } else if (v1) {
-    pts.push([s1.x, s2.y]);
+type Pt = [number, number];
+
+/**
+ * Percorso ortogonale di una linea: tratto d'uscita dalla porta, poi i punti di piega
+ * scelti dall'utente (se ci sono), poi il tratto d'ingresso nell'altra porta.
+ * `bendAt[k]` è l'indice in `pts` del k-esimo punto di piega.
+ */
+function routePoints(a: PortPoint, b: { x: number; y: number; dir?: Dir }, bends: Pt[] = []) {
+  const s1: Pt = [a.x + a.dir[0] * 15, a.y + a.dir[1] * 15];
+  const s2: Pt = b.dir ? [b.x + b.dir[0] * 15, b.y + b.dir[1] * 15] : [b.x, b.y];
+  const pts: Pt[] = [[a.x, a.y], s1];
+  const bendAt: number[] = [];
+  if (!bends.length) {
+    const v1 = a.dir[0] === 0, v2 = b.dir ? b.dir[0] === 0 : !v1;
+    if (v1 && v2) {
+      const my = (s1[1] + s2[1]) / 2;
+      pts.push([s1[0], my], [s2[0], my]);
+    } else if (!v1 && !v2) {
+      const mx = (s1[0] + s2[0]) / 2;
+      pts.push([mx, s1[1]], [mx, s2[1]]);
+    } else if (v1) {
+      pts.push([s1[0], s2[1]]);
+    } else {
+      pts.push([s2[0], s1[1]]);
+    }
   } else {
-    pts.push([s2.x, s1.y]);
+    let vertical = a.dir[0] === 0; // asse dell'ultimo tratto
+    const goTo = (q: Pt) => {
+      const p = pts[pts.length - 1]!;
+      if (p[0] !== q[0] && p[1] !== q[1]) {
+        // gira: prima perpendicolare all'ultimo tratto, poi di nuovo parallelo
+        pts.push(vertical ? [q[0], p[1]] : [p[0], q[1]]);
+      } else if (p[0] !== q[0] || p[1] !== q[1]) {
+        vertical = p[0] === q[0];
+      }
+      pts.push(q);
+    };
+    for (const w of bends) { goTo(w); bendAt.push(pts.length - 1); }
+    goTo(s2);
   }
-  pts.push([s2.x, s2.y], [b.x, b.y]);
-  return pts.map((p) => p.join(",")).join(" ");
+  pts.push(s2, [b.x, b.y]);
+  return { pts, bendAt };
 }
+const ptsAttr = (pts: Pt[]) => pts.map((p) => p.join(",")).join(" ");
+const route = (a: PortPoint, b: { x: number; y: number; dir?: Dir }, bends?: Pt[]) =>
+  ptsAttr(routePoints(a, b, bends).pts);
+
+/** Indice del tratto di `pts` più vicino al punto (x, y). */
+function nearestSegment(pts: Pt[], x: number, y: number) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x1, y1] = pts[i]!, [x2, y2] = pts[i + 1]!;
+    const dx = x2 - x1, dy = y2 - y1, len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / len2)) : 0;
+    const d = Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy));
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/** Tubo valido di un collegamento, o null. */
+function tubeOf(c: ConnectionData): Tube | null {
+  try { return parseTube(c.tube, "linea"); } catch { return null; }
+}
+/** ultimo tubo scelto: lo ricevono le nuove linee */
+let lastTube: TubeData | null = null;
 
 // --- disegno -----------------------------------------------------------------
 
@@ -213,20 +261,48 @@ function render() {
     const kinds = [portKind(ca, pa), portKind(cb, pb)];
     const pilot = kinds.includes("pilot");
     const exhaust = kinds.includes("exhaust"); // linea di scarico: sfoga in atmosfera
-    const live = livePressure(c.from);
+    const lf = livePressure(c.from), lt = livePressure(c.to);
+    const live = lf === null || lt === null ? null : (lf + lt) / 2;
     const pr = analysis.pressures[c.from] || analysis.pressures[c.to];
     const pressurized = live !== null ? live > 0.2 : !!pr && !exhaust;
     const cls = ["line", pressurized ? "pressurized" : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "",
                  selection?.kind === "connection" && selection.index === index ? "selected" : ""]
       .filter(Boolean).join(" ");
-    const pts = route(a, b);
+    const { pts: path, bendAt } = routePoints(a, b, c.points);
+    const pts = ptsAttr(path);
+    const tube = tubeOf(c);
+    const selected = selection?.kind === "connection" && selection.index === index;
     const g = el("g", { class: cls, "data-connection": index });
     g.append(el("polyline", { points: pts, class: "hit" }));
     const stroke = el("polyline", { points: pts, class: "stroke" });
     if (live !== null && pressurized) stroke.setAttribute("stroke-opacity", (0.35 + 0.65 * Math.min(1, live / maxBar)).toFixed(2));
+    // lo spessore segue il diametro esterno del tubo
+    if (tube) stroke.style.strokeWidth = String(1.3 + 0.2 * (tube.outer ?? tube.inner * 1.4) * 1000);
     g.append(stroke);
-    g.append(svgTitle(`${c.from} — ${c.to}` + (live !== null ? ` · ${fmtBar(live)}` : pr ? ` · ${pr.text}` : "")));
+    g.append(svgTitle(`${c.from} — ${c.to}` + (tube ? ` · ${tubeLabel(tube)}` : "") +
+      (live !== null ? ` · ${fmtBar(live)}` : pr ? ` · ${pr.text}` : "")));
     lines.append(g);
+    if (selected && !sim) {
+      if (tube) {
+        // etichetta sul tratto più lungo
+        let k = 1, best = -1;
+        for (let i = 1; i + 2 < path.length; i++) {
+          const d = Math.abs(path[i + 1]![0] - path[i]![0]) + Math.abs(path[i + 1]![1] - path[i]![1]);
+          if (d > best) { best = d; k = i; }
+        }
+        const [x1, y1] = path[k]!, [x2, y2] = path[k + 1]!;
+        const t = el("text", { x: (x1 + x2) / 2 + (x1 === x2 ? 6 : 0), y: (y1 + y2) / 2 - (y1 === y2 ? 6 : 0),
+                               class: "tube-label", "text-anchor": x1 === x2 ? "start" : "middle" });
+        t.textContent = tubeLabel(tube);
+        labels.append(t);
+      }
+      bendAt.forEach((at, k) => {
+        const [x, y] = path[at]!;
+        const h = el("circle", { cx: x, cy: y, r: 5, class: "bend-handle", "data-bend": k, "data-connection": index });
+        h.append(svgTitle("Trascina per spostare la piega · doppio clic per toglierla"));
+        ports.append(h);
+      });
+    }
   });
 
   const connected = connectedPorts();
@@ -453,10 +529,25 @@ function renderProperties() {
     codes[0]!.textContent = c.from;
     codes[1]!.textContent = c.to;
     panel.append(p);
+    renderTubeFields(panel, selection.index);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    if (c.points?.length) {
+      const straight = document.createElement("button");
+      straight.textContent = "Raddrizza linea";
+      straight.title = "Toglie i punti di piega";
+      straight.addEventListener("click", () => mutate(() => { delete doc.connections[(selection as { index: number }).index]!.points; }));
+      actions.append(straight);
+    }
     const del = document.createElement("button");
     del.className = "danger"; del.textContent = "Elimina collegamento";
     del.addEventListener("click", deleteSelection);
-    panel.append(del);
+    actions.append(del);
+    panel.append(actions);
+    const help = document.createElement("p");
+    help.className = "help";
+    help.textContent = "Trascina la linea per aggiungere una piega, trascina i punti per spostarle, doppio clic su un punto per toglierlo.";
+    panel.append(help);
   } else {
     title.textContent = "Schema";
     const nameIn = document.createElement("input");
@@ -475,6 +566,87 @@ function renderProperties() {
     panel.append(help);
   }
 }
+
+const sameLength = (a?: string, b?: string) => {
+  try { return !!a && !!b && Quantity.parse(a).equals(Quantity.parse(b)); } catch { return false; }
+};
+const presetOf = (t?: TubeData) =>
+  t ? TUBE_SIZES.findIndex((z) => sameLength(z.outer, t.outer_diameter) && sameLength(z.inner, t.inner_diameter)) : -1;
+
+/** Scelta del tubo di un collegamento: misura standard, personalizzata o nessuna. */
+function renderTubeFields(panel: HTMLElement, index: number) {
+  const c = doc.connections[index]!;
+  heading(panel, "Tubo");
+  const setTube = (tube: TubeData | null) => mutate(() => {
+    const conn = doc.connections[index]!;
+    if (tube) { conn.tube = tube; lastTube = { ...tube }; } else { delete conn.tube; }
+  });
+
+  const size = document.createElement("select");
+  size.name = "tube-size";
+  const options: [string, string][] = [["", "Non specificato (linea ideale)"],
+    ...TUBE_SIZES.map((z, i): [string, string] => [String(i), z.label]), ["custom", "Personalizzato"]];
+  for (const [value, text] of options) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = text;
+    size.append(o);
+  }
+  const preset = presetOf(c.tube);
+  size.value = !c.tube ? "" : preset >= 0 ? String(preset) : "custom";
+  size.addEventListener("change", () => {
+    const length = c.tube?.length || lastTube?.length || "1 m";
+    if (size.value === "") setTube(null);
+    else if (size.value === "custom") setTube({ ...(c.tube ?? { outer_diameter: "6 mm", inner_diameter: "4 mm" }), length });
+    else {
+      const z = TUBE_SIZES[Number(size.value)]!;
+      setTube({ outer_diameter: z.outer, inner_diameter: z.inner, length });
+    }
+  });
+  panel.append(field("Misura", size));
+  if (!c.tube) return;
+
+  const input = (name: keyof TubeData, label: string, unit: string, placeholder: string) => {
+    const inp = document.createElement("input");
+    inp.name = `tube-${name}`;
+    inp.value = c.tube?.[name] ?? "";
+    inp.placeholder = placeholder;
+    inp.spellcheck = false;
+    inp.addEventListener("change", () => {
+      const v = inp.value.trim();
+      const tube: TubeData = { ...doc.connections[index]!.tube };
+      if (v) tube[name] = /^[-+]?[\d.,]+$/.test(v) ? `${v} ${unit}` : v;
+      else delete tube[name];
+      setTube(tube);
+    });
+    const f = field(label, inp);
+    const bad = analysis.issues.some((i) => i.code === "INVALID_TUBE" && i.ports.includes(c.from) &&
+      i.ports.includes(c.to) && (i.message.includes(`'${name}'`) || i.message.includes(`.${name}:`)));
+    if (bad) f.classList.add("invalid");
+    return f;
+  };
+  panel.append(input("outer_diameter", "Ø esterno", "mm", "facoltativo, es. 6 mm"));
+  panel.append(input("inner_diameter", "Ø interno *", "mm", "es. 4 mm"));
+  panel.append(input("length", "Lunghezza *", "m", "es. 1.5 m"));
+
+  const tube = tubeOf(c);
+  if (tube) {
+    const info = document.createElement("p");
+    info.className = "tube-info";
+    const vol = tubeVolume(tube) * 1e6, C = tubeConductance(tube) / 1e-8;
+    info.textContent = `Volume ${vol.toFixed(vol < 10 ? 1 : 0).replace(".", ",")} cm³ · ` +
+      `conduttanza ≈ ${C.toFixed(2).replace(".", ",")} dm³/(s·bar)`;
+    panel.append(info);
+    const all = document.createElement("button");
+    all.textContent = "Usa questo tubo per tutte le linee";
+    all.addEventListener("click", () => {
+      const t = doc.connections[index]!.tube!;
+      mutate(() => { for (const conn of doc.connections) if (!isPilotLine(conn)) conn.tube = { ...t }; });
+      toast("Tubo applicato a tutte le linee di potenza (i pilotaggi restano come sono)");
+    });
+    panel.append(all);
+  }
+}
+const isPilotLine = (c: ConnectionData) => [c.from, c.to].some((r) => { const [cid, p] = splitRef(r); return portKind(cid, p) === "pilot"; });
 
 function renderIssues() {
   const list = $("#issues");
@@ -495,7 +667,12 @@ function renderIssues() {
       <span class="msg"></span><code>${i.code}</code>`;
     li.querySelector(".msg")!.textContent = i.message;
     const cid = i.component;
-    if (cid && byId(cid)) {
+    const wire = i.code === "INVALID_TUBE"
+      ? doc.connections.findIndex((c) => i.ports.includes(c.from) && i.ports.includes(c.to)) : -1;
+    if (wire >= 0) {
+      li.classList.add("clickable");
+      li.addEventListener("click", () => select({ kind: "connection", index: wire }));
+    } else if (cid && byId(cid)) {
       li.classList.add("clickable");
       li.addEventListener("click", () => { select({ kind: "component", id: cid }); centerOn(cid); });
     }
@@ -568,7 +745,7 @@ function connect(a: string, b: string) {
     toast("Collegamento già presente");
     return;
   }
-  mutate(() => doc.connections.push({ from: a, to: b }));
+  mutate(() => doc.connections.push(lastTube ? { from: a, to: b, tube: { ...lastTube } } : { from: a, to: b }));
   select({ kind: "connection", index: doc.connections.length - 1 });
 }
 
@@ -877,7 +1054,9 @@ function fitView() {
 type Drag =
   | { mode: "wire"; from: string; start: PortPoint }
   | { mode: "move"; id: string; dx: number; dy: number; before: string; moved: boolean }
-  | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean };
+  | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
+  /** piega di una linea: `bend` è l'indice del punto, -1 finché non si è mosso il puntatore */
+  | { mode: "bend"; index: number; bend: number; sx: number; sy: number; before: string; moved: boolean };
 let drag: Drag | null = null;
 
 svg.addEventListener("pointerdown", (e) => {
@@ -900,7 +1079,11 @@ svg.addEventListener("pointerdown", (e) => {
   }
   svg.setPointerCapture(e.pointerId);
 
-  if (!sim && port && e.button === 0) {
+  const bend = t.closest<SVGElement>("[data-bend]");
+  if (!sim && bend && e.button === 0) {
+    drag = { mode: "bend", index: Number(bend.dataset.connection), bend: Number(bend.dataset.bend),
+             sx: e.clientX, sy: e.clientY, before: snapshot(), moved: false };
+  } else if (!sim && port && e.button === 0) {
     const ref = port.dataset.port!;
     const [cid, p] = splitRef(ref);
     drag = { mode: "wire", from: ref, start: portWorld(cid, p)! };
@@ -910,7 +1093,9 @@ svg.addEventListener("pointerdown", (e) => {
     drag = { mode: "move", id, dx: w.x - l.x, dy: w.y - l.y, before: snapshot(), moved: false };
     if (selection?.kind !== "component" || selection.id !== id) select({ kind: "component", id });
   } else if (!sim && line && e.button === 0) {
-    select({ kind: "connection", index: Number(line.dataset.connection) });
+    const index = Number(line.dataset.connection);
+    if (selection?.kind !== "connection" || selection.index !== index) select({ kind: "connection", index });
+    drag = { mode: "bend", index, bend: -1, sx: e.clientX, sy: e.clientY, before: snapshot(), moved: false };
   } else {
     drag = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
   }
@@ -928,6 +1113,29 @@ svg.addEventListener("pointermove", (e) => {
     view.y = drag.vy + e.clientY - drag.sy;
     drag.moved = true;
     render();
+  } else if (drag.mode === "bend") {
+    const c = doc.connections[drag.index];
+    if (!c) return;
+    if (drag.bend < 0) {
+      if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+      // nuova piega nel tratto più vicino al punto in cui si è cominciato a trascinare
+      const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
+      const a = portWorld(ca, pa), b = portWorld(cb, pb);
+      if (!a || !b) return;
+      const { pts, bendAt } = routePoints(a, b, c.points);
+      const start = toWorld({ clientX: drag.sx, clientY: drag.sy });
+      const seg = nearestSegment(pts, start.x, start.y);
+      drag.bend = bendAt.filter((k) => k <= seg).length;
+      c.points = [...(c.points ?? [])];
+      c.points.splice(drag.bend, 0, [snap(w.x), snap(w.y)]);
+    }
+    const pt: Pt = [snap(w.x), snap(w.y)];
+    const cur = c.points![drag.bend]!;
+    if (!drag.moved || cur[0] !== pt[0] || cur[1] !== pt[1]) {
+      c.points![drag.bend] = pt;
+      drag.moved = true;
+      render();
+    }
   } else if (drag.mode === "wire") {
     const temp = $("#temp-wire");
     temp.setAttribute("points", route(drag.start, { x: w.x, y: w.y }));
@@ -942,8 +1150,9 @@ svg.addEventListener("pointerup", (e) => {
   if (!drag) return;
   const d = drag;
   drag = null;
-  if (d.mode === "move") {
+  if (d.mode === "move" || d.mode === "bend") {
     if (d.moved) commit(d.before);
+    else if (d.mode === "bend" && d.bend >= 0) bendClicked(d.index, d.bend);
   } else if (d.mode === "pan") {
     if (!d.moved) select(null);
   } else if (d.mode === "wire") {
@@ -957,6 +1166,20 @@ svg.addEventListener("pointerup", (e) => {
     }
   }
 });
+
+// doppio clic su un punto di piega: lo toglie (la cattura del puntatore assorbe "dblclick")
+let lastBendClick = { key: "", at: 0 };
+function bendClicked(index: number, k: number) {
+  const key = `${index}:${k}`, now = performance.now();
+  const double = lastBendClick.key === key && now - lastBendClick.at < 450;
+  lastBendClick = double ? { key: "", at: 0 } : { key, at: now };
+  if (!double) return;
+  mutate(() => {
+    const c = doc.connections[index]!;
+    c.points = (c.points ?? []).filter((_, i) => i !== k);
+    if (!c.points.length) delete c.points;
+  });
+}
 
 svg.addEventListener("wheel", (e) => {
   e.preventDefault();

@@ -6,6 +6,7 @@
  * Formato file: `pneutrack/circuit` versione 1.
  */
 import type { ComponentData } from "./components";
+import type { TubeData } from "./tubes";
 
 export const FORMAT = "pneutrack/circuit";
 
@@ -13,6 +14,10 @@ export interface ConnectionData {
   from: string;
   to: string;
   id?: string;
+  /** dimensioni del tubo; senza, il collegamento è ideale */
+  tube?: TubeData;
+  /** punti di piega della linea [x, y], usati solo dall'editor */
+  points?: [number, number][];
 }
 
 export interface Placement {
