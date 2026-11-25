@@ -2935,12 +2935,29 @@ $("#view-tools").addEventListener("click", (e) => {
     case "fit": fitView(); break;
   }
 });
-// barra laterale: porta alla sezione della palette, o al pannello del foglio
+let railScrollUntil = 0;
+const PALETTE_HIDDEN_KEY = "pneutrack.palette-hidden.v1";
+const paletteHidden = () => $("#app").classList.contains("palette-hidden");
+function setPaletteHidden(hidden: boolean) {
+  $("#app").classList.toggle("palette-hidden", hidden);
+  for (const b of document.querySelectorAll<HTMLElement>("#rail button[data-rail]:not([data-rail=sheet])")) {
+    b.setAttribute("aria-expanded", String(!hidden));
+    b.title = (b.title.split(" · ")[0] ?? "") + (hidden ? " · clic per aprire la palette" : " · clic di nuovo per nasconderla");
+  }
+  try { localStorage.setItem(PALETTE_HIDDEN_KEY, hidden ? "1" : "0"); } catch { /* nessuna memoria */ }
+  render();
+}
+// barra laterale: porta alla sezione della palette (o la nasconde), o al pannello del foglio
 $("#rail").addEventListener("click", (e) => {
   const where = target(e).closest<HTMLElement>("button")?.dataset.rail;
   if (!where || sim) return;
-  for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
   if (where === "sheet") { select(null); $("#properties").scrollTop = 0; return; }
+  // clic sulla sezione già attiva: la palette si nasconde; con la palette nascosta si riapre
+  const active = document.querySelector<HTMLElement>("#rail button.on")?.dataset.rail === where;
+  if (!paletteHidden() && active) { setPaletteHidden(true); return; }
+  if (paletteHidden()) setPaletteHidden(false);
+  for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
+  railScrollUntil = performance.now() + 900; // lo scorrimento che segue non cambia la sezione scelta
   const cat = where === "elec" ? "Elettrico" : where === "blocks" ? "Blocchi salvati" : null;
   const pal = $("#palette");
   const search = $<HTMLInputElement>("#palette-search");
@@ -2951,6 +2968,7 @@ $("#rail").addEventListener("click", (e) => {
 });
 // rail attiva seguendo lo scorrimento della palette
 $("#palette").addEventListener("scroll", () => {
+  if (performance.now() < railScrollUntil) return;
   const pal = $("#palette");
   let where = "pneu";
   for (const g of pal.querySelectorAll<HTMLElement>(".palette-group")) {
@@ -3048,6 +3066,9 @@ window.addEventListener("resize", () => { positionSelbar(); renderDiagramPanel()
 async function init() {
   renderPalette();
   $('#rail [data-rail="pneu"]').classList.add("on");
+  let palHidden = false;
+  try { palHidden = localStorage.getItem(PALETTE_HIDDEN_KEY) === "1"; } catch { /* */ }
+  setPaletteHidden(palHidden);
   renderLegend();
   renderViewFilter();
   applyView();
