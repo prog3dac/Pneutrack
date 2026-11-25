@@ -533,6 +533,7 @@ function renderSheet() {
   const u = UNITS_PER_MM;
   const r = sheetRect(sheet);
   g.append(el("rect", { x: r.x, y: r.y, width: r.w, height: r.h, class: "paper" }));
+  g.append(el("rect", { x: r.x, y: r.y, width: r.w, height: r.h, class: "paper-grid", fill: "url(#grid-pattern-sheet)" }));
   const fx = r.x + FRAME.left * u, fy = r.y + FRAME.top * u;
   const fw = r.w - (FRAME.left + FRAME.right) * u, fh = r.h - (FRAME.top + FRAME.bottom) * u;
   g.append(el("rect", { x: fx, y: fy, width: fw, height: fh, class: "frame" }));

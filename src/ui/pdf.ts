@@ -9,7 +9,7 @@ import type { Rect } from "../model/sheet";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** elementi che servono solo all'interazione nell'editor */
-const INTERACTIVE = ".halo, .port-hit, .hit, .bend-handle, title, #temp-wire, .port.open .port-dot";
+const INTERACTIVE = ".paper-grid, .halo, .port-hit, .hit, .bend-handle, title, #temp-wire, .port.open .port-dot";
 const STYLE_PROPS = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linejoin", "stroke-linecap",
   "fill-opacity", "stroke-opacity", "opacity", "font-size", "font-weight", "font-family", "text-anchor",
   "dominant-baseline", "paint-order"];
