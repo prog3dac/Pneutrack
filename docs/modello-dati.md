@@ -125,6 +125,18 @@ La chiave facoltativa `sheet` descrive il foglio di disegno (`src/model/sheet.ts
 `format` va da `A4` ad `A0` (ISO 216); `origin` è l'angolo in alto a sinistra in unità dello
 schema, con 3 unità per millimetro di carta. Come `layout`, il foglio non conta per il modello.
 
+## Blocchi
+
+La chiave facoltativa `blocks` elenca i gruppi di componenti (`src/model/blocks.ts`):
+
+```json
+"blocks": [{"id": "B1", "name": "Comando C1", "description": "Avanzamento e ritorno",
+            "components": ["V1", "C1", "SL3"]}]
+```
+
+Ogni componente appartiene al massimo a un blocco; gli id inesistenti vengono scartati alla
+lettura. Come `layout`, i blocchi non contano per il modello.
+
 ## Unità da catalogo
 
 I parametri si scrivono come nei cataloghi: `"6 bar"`, `"32 mm"`, `"500 Nl/min"`, `"0,6 MPa"`,

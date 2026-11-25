@@ -69,11 +69,11 @@ assert.ok(await page.locator("#legend").isVisible());
 await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
-const types = await page.locator(".palette-item").evaluateAll((els) => els.map((e) => e.dataset.type));
+const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
 assert.equal(new Set(types).size, 25, `tipi in palette: ${[...new Set(types)]}`);
 assert.ok(types.length >= 37, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
-const visible = () => page.locator(".palette-item:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
+const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
 assert.deepEqual(await visible(), ["Valvola di non ritorno", "Non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
 await page.fill("#palette-search", "5/2 bistabile");
 assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica", "5/2 bistabile elettropneumatica"]);
@@ -385,6 +385,57 @@ await waitLive("cyl:C1", "Number(v) < 0.01");
 
 await page.click('[data-act="sim"]');
 await page.waitForFunction(() => document.body.dataset.sim === undefined);
+
+// 14. blocchi: Maiusc+clic, Unisci, nome e descrizione, sposta, duplica, libreria, Dividi
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.click('[data-component="V1"] .halo', { force: true });
+await page.click('[data-component="C1"] .halo', { force: true, modifiers: ["Shift"] });
+await page.click('[data-component="SL3"] .halo', { force: true, modifiers: ["Shift"] });
+assert.match(await page.textContent("#properties h2"), /3 componenti selezionati/);
+await page.keyboard.press("Control+g");
+await settled();
+s = await state();
+assert.deepEqual(s.doc.blocks, [{ id: "B1", name: "Blocco 1", components: ["V1", "C1", "SL3"] }]);
+await page.fill('#properties input[name="block-name"]', "Comando C1");
+await page.press('#properties input[name="block-name"]', "Enter");
+await page.fill('#properties textarea[name="block-description"]', "Valvola 5/2 con il suo cilindro");
+await page.locator('#properties textarea[name="block-description"]').blur();
+await settled();
+assert.equal(await page.textContent("#blocks .block-label"), "Comando C1");
+// trascinando un componente del blocco si sposta tutto il blocco
+const before = (await state()).doc.layout;
+const [bx, by] = await at('[data-component="C1"] .halo');
+await page.mouse.move(bx, by); await page.mouse.down();
+await page.mouse.move(bx + 40, by + 20, { steps: 4 }); await page.mouse.move(bx + 80, by + 40, { steps: 4 });
+await page.mouse.up();
+s = await state();
+for (const id of ["V1", "C1", "SL3"]) assert.ok(s.doc.layout[id].x > before[id].x, `${id} spostato con il blocco`);
+assert.equal(s.doc.layout.P.x, before.P.x, "P resta dov'era");
+// duplica: nuove sigle, linee interne copiate, nuovo blocco
+await page.keyboard.press("Control+d");
+await settled();
+s = await state();
+assert.equal(s.doc.components.length, 11);
+assert.equal(s.doc.blocks.length, 2);
+assert.equal(s.doc.blocks[1].name, "Comando C1 (copia)");
+const copyIds = s.doc.blocks[1].components;
+assert.ok(s.doc.connections.some((c) => c.from === `${copyIds[1]}.A` && c.to === `${copyIds[0]}.4`));
+// libreria: salva e reinserisce da palette
+await page.click('#properties [data-block-act="library"]');
+await page.waitForSelector('.library-item');
+await page.click(".library-item");
+await settled();
+s = await state();
+assert.equal(s.doc.components.length, 14);
+assert.equal(s.doc.blocks.length, 3);
+// Dividi: il blocco sparisce, i componenti restano
+await page.keyboard.press("Control+Shift+g");
+await settled();
+s = await state();
+assert.equal(s.doc.blocks.length, 2);
+assert.equal(s.doc.components.length, 14);
+await page.click('.library-item .remove');
+assert.equal(await page.locator(".library-item").count(), 0);
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();
