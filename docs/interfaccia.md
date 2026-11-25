@@ -36,7 +36,9 @@ dei problemi.
 - **Inserire** un componente: trascinalo dalla palette sul foglio, oppure fai clic per metterlo al centro.
   La palette è divisa in categorie richiudibili (alimentazione e trattamento aria, valvole
   distributrici, valvole di blocco e logiche, regolazione, attuatori, elettrico) e ha una casella di ricerca;
-  la barra delle sezioni porta direttamente ai componenti elettrici o ai blocchi salvati.
+  la barra delle sezioni porta direttamente ai componenti elettrici o ai blocchi salvati. Un clic sulla
+  sezione già attiva nasconde la palette per lasciare più spazio al foglio, un altro clic la riapre; la
+  scelta resta salvata nel browser.
   Le valvole distributrici più comuni e i serbatoi di varie taglie sono già configurati.
 - **Collegare**: trascina da una porta a un'altra. Più linee sulla stessa porta formano un raccordo a T.
 - **Linee**: trascina una linea per piegarla dove vuoi (nasce un punto di piega, agganciato alla

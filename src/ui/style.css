@@ -59,6 +59,9 @@ html, body { height: 100%; }
 }
 #app.simulating { grid-template-columns: 0 0 minmax(0, 1fr) 320px; }
 #app.simulating #rail, #app.simulating #palette { display: none; }
+#app.palette-hidden:not(.simulating) { grid-template-columns: 60px 0 minmax(0, 1fr) 320px; }
+#app.palette-hidden #palette { display: none; }
+#app.palette-hidden #rail button.on:not([data-rail=sheet]) { background: none; color: var(--accent); }
 
 /* barra in alto */
 #toolbar {
@@ -311,6 +314,7 @@ code { font: 11.5px ui-monospace, monospace; }
 
 @media (max-width: 1100px) {
   #app { grid-template-columns: 56px 190px minmax(0, 1fr) 280px; }
+  #app.palette-hidden:not(.simulating) { grid-template-columns: 56px 0 minmax(0, 1fr) 280px; }
   .doc { display: none; }
   select#examples { width: 110px; }
 }
@@ -318,6 +322,7 @@ code { font: 11.5px ui-monospace, monospace; }
   #app { grid-template-columns: 56px 170px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) 260px auto;
          grid-template-areas: "bar bar bar" "rail pal stage" "side side side" "dock dock dock"; }
   #app.simulating { grid-template-columns: 0 0 minmax(0, 1fr); }
+  #app.palette-hidden:not(.simulating) { grid-template-columns: 56px 0 minmax(0, 1fr); }
   #side { border-left: 0; border-top: 1px solid var(--border); }
   #toolbar { flex-wrap: wrap; }
 }

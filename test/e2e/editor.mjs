@@ -85,6 +85,11 @@ await page.fill("#palette-search", "5/2 bistabile");
 assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica", "5/2 bistabile elettropneumatica"]);
 await page.fill("#palette-search", "");
 assert.equal((await visible()).length, types.length);
+// la barra a sinistra nasconde e riapre la palette con un clic sulla sezione attiva
+await page.click('#rail [data-rail="pneu"]');
+assert.ok(await page.locator("#palette").isHidden(), "palette nascosta");
+await page.click('#rail [data-rail="pneu"]');
+assert.ok(await page.locator("#palette").isVisible(), "palette riaperta");
 
 // 2. costruzione di uno schema: sorgente -> 3/2 -> cilindro semplice effetto
 await dropFromPalette("pressure_source", 300, 520);
