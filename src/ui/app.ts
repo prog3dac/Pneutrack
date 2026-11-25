@@ -4,6 +4,7 @@ import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import { mirrorComponents, type Axis } from "../model/mirror";
 import { dissolveJunction, JUNCTION, splitConnection } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
@@ -155,8 +156,9 @@ function portWorld(compId: string, portName: string): PortPoint | null {
   const p = geometry(comp).ports[portName];
   if (!p) return null;
   const l = layoutOf(compId);
-  const [rx, ry] = rotate([p.x, p.y], l.rot || 0);
-  return { x: l.x + rx, y: l.y + ry, dir: rotate(p.dir, l.rot || 0) };
+  const m = l.mirror ? -1 : 1;
+  const [rx, ry] = rotate([m * p.x, p.y], l.rot || 0);
+  return { x: l.x + rx, y: l.y + ry, dir: rotate([m * p.dir[0], p.dir[1]], l.rot || 0) };
 }
 
 type Pt = [number, number];
@@ -379,12 +381,20 @@ function render() {
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
     const grp = el("g", {
       class: cls, "data-component": comp.id,
-      transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})`,
+      transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})${l.mirror ? " scale(-1,1)" : ""}`,
     });
     const pad = 6;
     grp.append(el("rect", { class: "halo", x: -g.w / 2 - pad, y: -g.h / 2 - pad,
                             width: g.w + 2 * pad, height: g.h + 2 * pad, rx: 6 }));
-    grp.append(el("g", { class: "symbol" }, g.svg));
+    const sym = el("g", { class: "symbol" }, g.svg);
+    // nel simbolo specchiato le scritte restano leggibili: si specchiano di nuovo sul loro punto
+    if (l.mirror) {
+      sym.querySelectorAll("text").forEach((t) => {
+        const x = Number(t.getAttribute("x") ?? 0);
+        t.setAttribute("transform", `matrix(-1 0 0 1 ${2 * x} 0)`);
+      });
+    }
+    grp.append(sym);
     comps.append(grp);
 
     // etichetta (non ruotata), sopra l'ingombro ruotato
@@ -942,6 +952,8 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
   actions.className = "actions";
   actions.append(
     button("Dividi", splitSelection, "Ctrl+Maiusc+G", "split"),
+    button("Specchia ↔", () => mirrorSelection("h"), "Specchia sinistra ↔ destra (H)", "mirror-h"),
+    button("Specchia ↕", () => mirrorSelection("v"), "Specchia alto ↕ basso (V)", "mirror-v"),
     button("Duplica", duplicateSelection, "Ctrl+D", "duplicate"),
     button("Salva nella libreria", () => saveBlockToLibrary(id), "", "library"),
     button("Elimina", deleteSelection, "Canc", "", "danger"),
@@ -1098,11 +1110,15 @@ function renderProperties() {
     const actions = document.createElement("div");
     actions.className = "actions";
     actions.innerHTML = `<button data-act="rotate">Ruota (R)</button>
+      <button data-act="mirror-h" title="Specchia sinistra ↔ destra (H)">Specchia ↔</button>
+      <button data-act="mirror-v" title="Specchia alto ↕ basso (V)">Specchia ↕</button>
       <button data-act="duplicate">Duplica</button>
       <button data-act="delete" class="danger">Elimina</button>`;
     actions.addEventListener("click", (e) => {
       const act = (target(e).closest("button") as HTMLElement | null)?.dataset.act;
       if (act === "rotate") rotateSelection();
+      else if (act === "mirror-h") mirrorSelection("h");
+      else if (act === "mirror-v") mirrorSelection("v");
       if (act === "duplicate") duplicateSelection();
       if (act === "delete") deleteSelection();
     });
@@ -1119,6 +1135,8 @@ function renderProperties() {
     actions.className = "actions";
     actions.append(
       button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
+      button("Specchia ↔", () => mirrorSelection("h"), "Specchia sinistra ↔ destra (H)", "mirror-h"),
+      button("Specchia ↕", () => mirrorSelection("v"), "Specchia alto ↕ basso (V)", "mirror-v"),
       button("Duplica", duplicateSelection, "Ctrl+D"),
       button("Elimina", deleteSelection, "Canc", "", "danger"),
     );
@@ -1190,7 +1208,7 @@ function renderProperties() {
     help.innerHTML = `<p>Trascina un componente dalla palette sul foglio, oppure fai clic per inserirlo al centro.</p>
       <p>Per collegare due porte trascina da una porta all'altra. Per diramare una linea trascina una nuova linea sopra di essa: nasce un punto di connessione a cui collegarne altre.</p>
       <p>Con <b>Simula</b> lo schema si anima: azioni pulsanti e solenoidi facendo clic sui comandi delle valvole.</p>
-      <ul><li><kbd>R</kbd> ruota</li><li><kbd>Canc</kbd> elimina</li>
+      <ul><li><kbd>R</kbd> ruota · <kbd>H</kbd> / <kbd>V</kbd> specchia ↔ / ↕</li><li><kbd>Canc</kbd> elimina</li>
       <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulla / ripeti</li>
       <li><kbd>Ctrl</kbd>+<kbd>D</kbd> duplica</li><li><kbd>Ctrl</kbd>+<kbd>S</kbd> salva il progetto</li>
       <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> copia, taglia, incolla (sotto il puntatore)</li>
@@ -1412,6 +1430,13 @@ function deleteSelection() {
     pruneBlocks(doc);
   });
   select(null);
+}
+
+/** Specchia la selezione: un componente sul posto, più componenti attorno al centro del gruppo. */
+function mirrorSelection(axis: Axis) {
+  const ids = selectedIds();
+  if (!ids.length || sim) return;
+  mutate(() => mirrorComponents(doc, ids, axis));
 }
 
 function rotateSelection() {
@@ -2214,6 +2239,8 @@ document.addEventListener("keydown", (e) => {
   }
   else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); }
   else if (key === "r" && !mod) rotateSelection();
+  else if (key === "h" && !mod) mirrorSelection("h");
+  else if (key === "v" && !mod) mirrorSelection("v");
   else if (e.key === "Escape") select(null);
   else if (key === "f" && !mod) fitView();
 });

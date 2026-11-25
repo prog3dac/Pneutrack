@@ -27,6 +27,8 @@ export interface Placement {
   y: number;
   /** rotazione in quarti di giro, senso orario */
   rot: number;
+  /** simbolo specchiato (x → −x nel riferimento del simbolo, prima della rotazione) */
+  mirror?: boolean;
 }
 
 export interface CircuitDoc {

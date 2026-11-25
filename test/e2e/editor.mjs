@@ -552,6 +552,30 @@ await page.click("#canvas", { position: { x: 40, y: 40 } });
 const schemaFields = await page.locator("#properties label.field").evaluateAll((els) => els.map((e) => e.title));
 assert.ok(schemaFields.every((t) => t.length > 30), "campi dello schema e del foglio");
 
+// 18. specchia: le porte passano dall'altra parte, il simbolo resta al suo posto
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await dropFromPalette("double_acting_cylinder", 200, 640);
+await settled();
+s = await state();
+const cyl = s.doc.components.at(-1).id;
+const portX = async (p) => (await portCenter(`${cyl}.${p}`)).x;
+const portY = async (p) => (await portCenter(`${cyl}.${p}`)).y;
+assert.ok((await portX("A")) < (await portX("B")));
+const yA = await portY("A");
+await page.keyboard.press("h");
+await settled();
+s = await state();
+assert.equal(s.doc.layout[cyl].mirror, true);
+assert.ok((await portX("A")) > (await portX("B")), "A passa a destra");
+await page.click('#properties [data-act="mirror-v"]');
+await settled();
+assert.ok((await portY("A")) < yA, "le porte passano sopra");
+await page.keyboard.press("v");
+await page.keyboard.press("h");
+await settled();
+s = await state();
+assert.deepEqual({ ...s.doc.layout[cyl], x: 0, y: 0 }, { x: 0, y: 0, rot: 0 }, "due specchiature tornano all'originale");
+
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();
 console.log("e2e ok");

@@ -100,7 +100,7 @@ export function extractFragment(doc: CircuitDoc, ids: string[], name = "Blocco",
   const places = components.map((c) => doc.layout[c.id] ?? { x: 0, y: 0, rot: 0 });
   const x0 = Math.min(...places.map((p) => p.x)), y0 = Math.min(...places.map((p) => p.y));
   const layout: Record<string, Placement> = {};
-  components.forEach((c, i) => { const p = places[i]!; layout[c.id] = { x: p.x - x0, y: p.y - y0, rot: p.rot || 0 }; });
+  components.forEach((c, i) => { const p = places[i]!; layout[c.id] = { x: p.x - x0, y: p.y - y0, rot: p.rot || 0, ...(p.mirror ? { mirror: true } : {}) }; });
   for (const c of connections) if (c.points) c.points = c.points.map(([x, y]) => [x - x0, y - y0]);
   return { name, ...(description ? { description } : {}), components, connections, layout };
 }
@@ -129,7 +129,7 @@ export function insertFragment(doc: CircuitDoc, frag: Fragment, at: { x: number;
     }
     doc.components.push(copy);
     const p = frag.layout[c.id] ?? { x: 0, y: 0, rot: 0 };
-    doc.layout[copy.id] = { x: at.x + p.x, y: at.y + p.y, rot: p.rot || 0 };
+    doc.layout[copy.id] = { x: at.x + p.x, y: at.y + p.y, rot: p.rot || 0, ...(p.mirror ? { mirror: true } : {}) };
   }
   for (const c of frag.connections) {
     const copy = structuredClone(c);
