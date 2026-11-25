@@ -86,6 +86,17 @@ npm run build      # versione pubblicabile in dist/
 
 Un progetto è `{"id", "name", "createdAt", "updatedAt", "circuit"}`, dove `circuit` è lo schema.
 
+## Punti di connessione
+
+Per diramare una linea si trascina una nuova linea da una porta fin sopra la linea esistente: la
+linea si illumina e, al rilascio, nasce un punto di connessione (pallino pieno, ISO 1219) che la
+spezza in due. Allo stesso punto si possono collegare altre linee trascinandole dall'anello
+attorno al pallino; trascinando il centro si sposta il punto. Il pulsante *Aggiungi punto di
+connessione* nel pannello di una linea fa lo stesso a metà del tratto più lungo, e il *Punto di
+connessione* della palette si può lasciare direttamente su una linea. Un tubo spezzato si divide
+in proporzione alla lunghezza disegnata. Eliminando un punto che unisce solo due linee, le due
+linee tornano una sola.
+
 ## Blocchi
 
 Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una descrizione.

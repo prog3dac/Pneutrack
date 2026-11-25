@@ -29,7 +29,8 @@ Tutti i tipi accettano `max_pressure`; i parametri di simulazione (`conductance`
 | | `frl_unit` | Gruppo FRL | 1 → 2 | `setpoint` |
 | | `pressure_regulator` | Riduttore di pressione | 1 → 2 | `setpoint` |
 | | `pressure_gauge` | Manometro | 1 | |
-| | `silencer`, `plug` | Silenziatore, tappo | 1 | |
+| | `silencer`, `exhaust`, `plug` | Silenziatore, scarico in atmosfera, tappo | 1 | |
+| | `junction` | Punto di connessione: più linee unite nello stesso punto (raccordo a T o a croce) | 1 | può restare scollegata |
 | Valvole distributrici | `directional_valve` | 2/2, 3/2, 4/2, 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`? |
 | Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure` |
 | | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |

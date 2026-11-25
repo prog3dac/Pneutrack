@@ -190,9 +190,11 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         fixed.set(node(c, "1"), P_ATM + c.params.pressure!.si);
         break;
       case "silencer":
+      case "exhaust":
         fixed.set(node(c, "1"), P_ATM);
         break;
       case "plug":
+      case "junction":
       case "pressure_gauge":
         break;
       case "air_reservoir":
