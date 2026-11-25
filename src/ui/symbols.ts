@@ -157,10 +157,11 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
     }
     case "air_return":
     case "air_return_ext":
-      // ritorno pneumatico: pilotaggio sul lato di ritorno (triangolo pieno); interno: linea verso la porta 1
-      body = line(o(9), 0, o(16), 0, "dash") + path(`M${o(2)},0 L${o(9)},-4 L${o(9)},4 Z`, "body");
-      if (kind === "air_return") body += line(o(14), 0, o(14), 18, "dash") + line(o(14), 18, o(6), 18, "dash");
-      else body += line(o(5), 0, o(5), 32, "dash");
+      // molla pneumatica (ISO 1219-1, come in ISO 1219-3 all. D): riquadro con triangolo vuoto verso la valvola;
+      // alimentazione interna: tratteggio verso il corpo valvola; esterna: tratteggio verso la porta di pilotaggio
+      body = rect(Math.min(o(0), o(10)), -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body");
+      if (kind === "air_return") body += line(o(5), 8, o(5), 16, "dash") + line(o(5), 16, o(-4), 16, "dash");
+      else body += line(o(5), 8, o(5), 32, "dash");
       break;
     case "spring":
       body = zigzag(o(0), 0, o(18), 0, 6, 6);
@@ -259,22 +260,23 @@ const reservoirGeometry = (): Geometry => ({
 
 const filterGeometry = (): Geometry => ({
   w: 56, h: 44, ports: { 1: { x: -26, y: 0, dir: left }, 2: { x: 26, y: 0, dir: right } },
-  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(0, -16, 0, 16, "dash") +
-    line(0, 16, 0, 21) + path("M-4,21 L4,21 L0,26 Z", "nofill"),
+  // cartuccia (tratteggio perpendicolare al flusso) e separatore con scarico manuale (ISO 1219-2, all. C)
+  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(0, -16, 0, 9, "dash") +
+    line(-7, 9, 7, 9) + line(0, 16, 0, 24),
 });
 
 const lubricatorGeometry = (): Geometry => ({
   w: 56, h: 44, ports: { 1: { x: -26, y: 0, dir: left }, 2: { x: 26, y: 0, dir: right } },
-  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(-9, 0, 9, 0) +
-    line(0, 0, 0, 10) + path("M0,2 L-3,8 Q0,12 3,8 Z", "fill"),
+  // tubo di pescaggio: tratto dal vertice superiore verso l'interno (ISO 1219-2, all. C)
+  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(0, -16, 0, -6),
 });
 
 function frlGeometry(): Geometry {
   const box = `<rect x="-46" y="-20" width="92" height="40" class="nofill dashdot"/>`;
-  const filter = diamond(-28, 2, 10) + line(-28, -8, -28, 12, "dash");
+  const filter = diamond(-28, 2, 10) + line(-28, -8, -28, 7, "dash") + line(-32, 7, -24, 7);
   const reg = rect(-9, -8, 18, 20, "box") + arrow(0, 10, 0, -6) + zigzag(9, 6, 16, 6, 4, 3) + adjustArrow(9, 12, 16, 0);
   const gauge = circle(0, -15, 5, "body") + line(0, -15, 3, -18);
-  const lub = diamond(28, 2, 10) + line(22, 2, 34, 2);
+  const lub = diamond(28, 2, 10) + line(28, -8, 28, -2);
   const flow = line(-56, 2, -38, 2) + line(-18, 2, -9, 2) + line(9, 2, 18, 2) + line(38, 2, 56, 2);
   return {
     w: 116, h: 48, ports: { 1: { x: -56, y: 2, dir: left }, 2: { x: 56, y: 2, dir: right } },
@@ -329,7 +331,7 @@ const quickExhaustGeometry = (): Geometry => ({
   w: 64, h: 52,
   ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -24, dir: up }, 3: { x: 0, y: 24, dir: down } },
   svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -24) + line(0, 12, 0, 24) +
-    path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-5,18 L5,18 L0,12 Z", "nofill"),
+    path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-6,5 L0,12 L6,5", "nofill"),
 });
 
 // --- regolazione -------------------------------------------------------------------
@@ -339,9 +341,10 @@ function oneWayFlowGeometry(): Geometry {
   const bypass = line(0, -18, 22, -18) + line(22, -18, 22, -6) + line(22, 7, 22, 18) + line(22, 18, 0, 18) +
     checkElement(22, 2, -1);
   return {
-    w: 60, h: 50,
+    w: 76, h: 50,
     ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
-    svg: line(0, -24, 0, 24) + throttle + bypass,
+    // strozzatore e non ritorno nello stesso corpo: cornice a tratto e punto (ISO 1219-1, 5.10)
+    svg: line(0, -24, 0, 24) + throttle + bypass + rect(-16, -22, 52, 44, "nofill dashdot"),
   };
 }
 
@@ -387,7 +390,8 @@ const motorGeometry = (): Geometry => ({
 
 const sourceGeometry = (): Geometry => ({
   w: 30, h: 50, ports: { 1: { x: 0, y: -24, dir: up } },
-  svg: circle(0, 0, 14, "body") + path("M0,-8 L7,5 L-7,5 Z", "nofill") + line(0, -14, 0, -24),
+  // sorgente di energia pneumatica (ISO 1219-1 F071V1; esempi in ISO 1219-2 e 1219-3): triangolo vuoto con la punta sulla linea
+  svg: path("M0,-10 L-9,6 L9,6 Z", "body") + line(0, -10, 0, -24),
 });
 
 const silencerGeometry = (): Geometry => ({
@@ -457,8 +461,9 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false,
     svg += line(50, 15, 50, 25);
     ports.B = { x: 50, y: 25, dir: down };
   } else {
-    // camera stelo in comunicazione con l'atmosfera: nessuna porta disegnata (ISO 1219)
-    svg += zigzag(pistonX + 4, -9, 58, -9, 9, 4);
+    // molla a tutta altezza nella camera stelo e sfiato senza raccordo (triangolo) come in ISO 1219-3, all. C
+    svg += zigzag(pistonX + 2, 0, 58, 0, 8, 13);
+    svg += path("M46,15 L54,15 L50,22 Z", "body");
   }
   return { w: through ? 250 : 152, h: 52, ports, svg };
 }

@@ -10,15 +10,15 @@ import { geometry } from "./symbols";
 
 /** Come si legge il simbolo (pneumatici: ISO 1219-1; elettrici: CEI EN 60617). */
 export const SYMBOL_NOTES: Record<string, string> = {
-  pressure_source: "Cerchio con triangolo vuoto: sorgente di pressione pneumatica (il triangolo vuoto indica l'aria, quello pieno l'olio).",
+  pressure_source: "Triangolo vuoto con la punta sulla linea: sorgente di energia pneumatica (il triangolo vuoto indica l'aria, quello pieno l'olio).",
   air_reservoir: "Rettangolo con i lati corti arrotondati, disteso: serbatoio d'aria.",
-  air_filter: "Rombo (elemento di trattamento) con linea tratteggiata perpendicolare al flusso: cartuccia filtrante; sotto, lo scarico della condensa.",
-  lubricator: "Rombo attraversato dalla linea di flusso con la goccia d'olio sotto: lubrificatore.",
+  air_filter: "Rombo (elemento di trattamento) con il tratteggio della cartuccia perpendicolare al flusso; in basso il separatore di condensa con scarico manuale.",
+  lubricator: "Rombo attraversato dalla linea di flusso, con il tubo di pescaggio che scende dal vertice superiore.",
   frl_unit: "Filtro, riduttore con manometro e lubrificatore racchiusi da una linea a tratto e punto, che delimita un gruppo montato come unità unica.",
   pressure_regulator: "Casella con freccia in linea con le porte (valvola normalmente aperta), molla regolabile (freccia obliqua) e pilotaggio tratteggiato dall'uscita sul lato opposto alla molla.",
   pressure_gauge: "Cerchio con freccia obliqua: strumento di misura della pressione.",
   silencer: "Triangolo di scarico con l'elemento silenziatore.",
-  exhaust: "Triangolo vuoto sulla linea: scarico diretto in atmosfera, senza raccordo.",
+  exhaust: "Triangolo vuoto con la punta sulla linea: uscita d'aria in atmosfera, senza raccordo.",
   junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
   plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
   directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione.",
@@ -26,13 +26,13 @@ export const SYMBOL_NOTES: Record<string, string> = {
   pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
   shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
   and_valve: "Casella con un otturatore tra due sedi: l'uscita è in pressione solo se lo sono entrambi gli ingressi (funzione E).",
-  quick_exhaust_valve: "Casella con sfera e sede sul lato di alimentazione e lo scarico 3 sotto, col triangolo: quando 1 si svuota, 2 scarica direttamente da 3.",
+  quick_exhaust_valve: "Casella con la sfera appoggiata alla sede dell'alimentazione 1 e una seconda sede verso lo scarico 3: quando 1 si svuota, 2 scarica direttamente da 3.",
   flow_control_valve: "Due archi che restringono la linea (strozzamento) attraversati dalla freccia obliqua di regolazione.",
-  one_way_flow_control: "Strozzatore regolabile in parallelo a un non ritorno: strozza in un verso, nell'altro l'aria passa libera dalla valvola di ritegno.",
+  one_way_flow_control: "Strozzatore regolabile in parallelo a un non ritorno, racchiusi da una cornice a tratto e punto perché stanno nello stesso corpo: strozza in un verso, nell'altro l'aria passa libera dalla valvola di ritegno.",
   relief_valve: "Casella con freccia spostata rispetto alle porte (normalmente chiusa), molla regolabile e pilotaggio dall'ingresso sul lato opposto alla molla.",
   sequence_valve: "Valvola 3/2 normalmente chiusa comandata da un pilotaggio che agisce contro una molla tarabile: commuta alla pressione impostata.",
   time_delay_valve: "Valvola 3/2 normalmente chiusa pilotata attraverso uno strozzatore e un piccolo serbatoio: commuta con ritardo.",
-  single_acting_cylinder: "Rettangolo (camicia), linea spessa (pistone) e stelo; la molla nella camera stelo riporta indietro il pistone. Una sola porta, la camera stelo comunica con l'atmosfera.",
+  single_acting_cylinder: "Rettangolo (camicia), linea spessa (pistone) e stelo; la molla occupa la camera stelo e riporta indietro il pistone. Una sola porta; il triangolo sotto la camera stelo è lo sfiato in atmosfera senza raccordo.",
   double_acting_cylinder: "Camicia, pistone e stelo, con una porta per camera. Con l'ammortizzo: tampone sul pistone e freccia obliqua di regolazione sulla testata.",
   double_rod_cylinder: "Cilindro a doppio effetto con lo stelo che esce dai due lati.",
   rotary_actuator: "Cerchio con freccia curva a due punte: attuatore rotante ad angolo limitato, nei due versi.",
@@ -64,8 +64,8 @@ export const ACTUATION_NOTES: Record<string, string> = {
   plunger: "Tastatore: asta a testa arrotondata.",
   roller_oneway: "Rullo su leva ribaltabile: aziona la valvola in un solo verso di passaggio.",
   spring: "Molla di ritorno.",
-  air_return: "Ritorno pneumatico: pilotaggio interno sul lato opposto al comando.",
-  air_return_ext: "Ritorno pneumatico con alimentazione esterna.",
+  air_return: "Molla pneumatica: riquadro con triangolo vuoto, alimentata dall'interno della valvola.",
+  air_return_ext: "Molla pneumatica con la linea tratteggiata dell'alimentazione esterna.",
 };
 
 const PORT_KIND: Record<PortKind, string> = {
