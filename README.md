@@ -8,8 +8,24 @@ comportamento. Prende ispirazione dal tipo di lavoro che si fa con strumenti com
 come FluidSim o Automation Studio, ma è un progetto originale: codice, simboli e interfaccia
 sono sviluppati da zero.
 
-> Stato: progetto agli inizi. Questo documento descrive gli obiettivi e l'architettura
-> di riferimento; il codice arriverà per passi successivi.
+**Prova l'editor: <https://prog3dac.github.io/Pneutrack/>** (gira tutto nel browser, nessuna
+installazione). Disegna lo schema, guarda la validazione in tempo reale e premi *Simula* per
+animarlo.
+
+> Stato: prima versione. Editor, archivio dei progetti, validazione e simulazione di valvole,
+> riduttori, strozzatori e cilindri. Dettagli in [docs/interfaccia.md](docs/interfaccia.md),
+> [docs/modello-dati.md](docs/modello-dati.md) e [docs/PIANO.md](docs/PIANO.md).
+
+## Sviluppo
+
+Pneutrack è scritto in TypeScript e richiede Node.js 22.
+
+```bash
+npm install
+npm run dev     # editor su http://localhost:5173/Pneutrack/
+npm test        # test del modello e della simulazione
+npm run build   # versione pubblicabile in dist/
+```
 
 ## Obiettivi
 
@@ -97,7 +113,8 @@ ma il risultato potrebbe non essere quello atteso). Esempi di controlli:
 - **Unità**: valori con unità non compatibili con la grandezza richiesta.
 
 I controlli lavorano sul grafo, quindi sono indipendenti dalla parte grafica e si
-possono eseguire anche da riga di comando o nei test automatici.
+possono eseguire anche da riga di comando o nei test automatici. Quelli già attivi sono
+elencati in [docs/modello-dati.md](docs/modello-dati.md#validazione).
 
 ## Contribuire
 

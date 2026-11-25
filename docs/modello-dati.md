@@ -1,36 +1,39 @@
 # Modello dati a grafo
 
-Il pacchetto `pneutrack.model` rappresenta uno schema pneumatico come grafo.
+I moduli in `src/model` rappresentano uno schema pneumatico come grafo. Lo schema è un oggetto
+JSON (`CircuitDoc`): il modello lo legge, lo valida e lo trasforma; non ci sono classi da
+istanziare a mano.
 
-| Elemento | Classe | Note |
+| Elemento | Dove | Note |
 |---|---|---|
-| Nodo | `Component` e sottoclassi | ha un `id`, porte e parametri |
-| Porta | `PortSpec` / `PortRef` | `PortRef("V1", "14")`, o la stringa `"V1.14"` |
-| Arco | `Connection` | linea non orientata tra due porte |
-| Rete | `Circuit.nets()` | insieme di porte unite da linee, tutte alla stessa pressione |
+| Nodo | `ComponentData` (file) → `Component` (validato) in `components.ts` | ha un `id`, porte e parametri |
+| Porta | `PortSpec`, riferimento `"V1.14"` (`parseRef`) | nome e ruolo: `supply`, `work`, `exhaust`, `pilot` |
+| Arco | `ConnectionData` in `circuit.ts` | linea non orientata `{from, to}` tra due porte |
+| Rete | `nets()` in `circuit.ts` | insieme di porte unite da linee, tutte alla stessa pressione |
 
 Una porta può avere più linee: equivale a un raccordo a T.
 
 ## Componenti
 
-| Tipo (`type`) | Classe | Porte | Parametri |
+| Tipo (`type`) | Porte | Parametri da catalogo | Parametri di simulazione (predefinito) |
 |---|---|---|---|
-| `pressure_source` | `PressureSource` | 1 | `pressure`, `flow`? |
-| `pressure_regulator` | `PressureRegulator` | 1 → 2 | `setpoint`, `max_pressure`? |
-| `directional_valve` | `DirectionalValve` | ISO 5599: 1, 2, 3, 4, 5, 12/14 se pilotata | `max_pressure`?, `min_pressure`?, `flow`? |
-| `flow_control_valve` | `FlowControlValve` | 1, 2 | `max_pressure`? |
-| `single_acting_cylinder` | `SingleActingCylinder` | A | `bore`, `stroke`, `rod`?, `max_pressure`?, `min_pressure`? |
-| `double_acting_cylinder` | `DoubleActingCylinder` | A (fondello), B (stelo) | come sopra |
-| `rotary_actuator` | `RotaryActuator` | A, B | `angle`, `max_pressure`?, `min_pressure`? |
-| `silencer` | `Silencer` | 1 | `max_pressure`? |
-| `plug` | `Plug` | 1 | `max_pressure`? |
+| `pressure_source` | 1 | `pressure`, `flow`? | |
+| `pressure_regulator` | 1 → 2 | `setpoint`, `max_pressure`? | `conductance` (1 dm³/(s·bar)), `critical_ratio` (0,35) |
+| `directional_valve` | ISO 5599: 1, 2, 3, 4, 5, 12/14 se pilotata | `max_pressure`?, `min_pressure`?, `flow`? | `conductance` (1,5), `critical_ratio` (0,35) |
+| `flow_control_valve` | 1, 2 | `max_pressure`? | `conductance` (0,3), `critical_ratio` (0,5) |
+| `single_acting_cylinder` | A | `bore`, `stroke`, `rod`?, `max_pressure`?, `min_pressure`? | `mass` (1 kg), `load` (0 N), `friction` (5 N), `spring_force` (15 N) |
+| `double_acting_cylinder` | A (fondello), B (stelo) | come sopra | `mass`, `load`, `friction` |
+| `rotary_actuator` | A, B | `angle`, `max_pressure`?, `min_pressure`? | non ancora simulato |
+| `silencer` | 1 | `max_pressure`? | |
+| `plug` | 1 | `max_pressure`? | |
 
 Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`) e un comando per
 lato (`actuation_14`, `actuation_12`: `solenoid`, `pilot`, `manual`, `mechanical`, `spring`).
 Un comando `pilot` aggiunge la porta di pilotaggio. Gli scarichi 3 e 5 possono restare liberi.
 
-Nuovi tipi: si deriva `Component`, si dichiarano `TYPE`, `PARAMS`, `_build_ports()` ed
-eventualmente `internal_paths()`, e si decora la classe con `@register`.
+Nuovi tipi: una voce in `DEFS` (`src/model/components.ts`) con porte, parametri ed eventualmente
+`paths` (percorsi interni della pressione) e `sources`; poi il simbolo in `src/ui/symbols.ts` e,
+se va simulato, il comportamento in `src/sim/network.ts`.
 
 ## Unità da catalogo
 
@@ -40,15 +43,18 @@ SI per i calcoli; il confronto tra unità diverse è automatico. Le pressioni so
 
 ## Validazione
 
-`validate(circuit)` restituisce un `ValidationReport` con `issues`, `errors`, `warnings`, `ok`
-e `pressure_at(porta)`. La pressione viene propagata dalle sorgenti lungo le reti e attraverso i
+`analyze(doc)` (`src/model/validation.ts`) restituisce `{ok, errors, warnings, issues, ports, pressures}`.
+È tollerante: un componente o un collegamento non valido diventa un problema
+(`INVALID_COMPONENT`, `INVALID_CONNECTION`) invece di fermare l'analisi. La pressione viene propagata dalle sorgenti lungo le reti e attraverso i
 percorsi interni dei componenti, prendendo per ogni rete il **massimo raggiungibile in una
 qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano al `setpoint`.
 
 | Codice | Gravità | Quando |
 |---|---|---|
+| `INVALID_COMPONENT` | error | tipo sconosciuto o parametri non validi |
+| `INVALID_CONNECTION` | error | collegamento verso una porta inesistente, su se stessa o duplicato |
 | `NO_SOURCE` | warning | nessuna sorgente nello schema |
-| `UNCONNECTED_PORT` | error | porta scollegata che non può restare aperta (usare `Plug` per chiuderla) |
+| `UNCONNECTED_PORT` | error | porta scollegata che non può restare aperta (chiuderla con un tappo, `plug`) |
 | `SOURCE_CONFLICT` | error | due sorgenti a pressione diversa sulla stessa rete |
 | `SUPPLY_VENTED` | error | sorgente collegata direttamente a uno scarico |
 | `OVERPRESSURE` | error | pressione raggiungibile oltre `max_pressure` del componente |
@@ -58,21 +64,31 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 
 ## Formato file
 
-`Circuit.to_json()` / `Circuit.from_json()` usano il formato `pneutrack/circuit` versione 1.
-La disposizione grafica dei componenti, usata dall'editor, è nella chiave facoltativa `layout`
-(`{"V1": {"x": 300, "y": 140, "rot": 0}}`) e viene ignorata dal modello.
+Gli schemi si salvano nel formato `pneutrack/circuit` versione 1 (`normalizeCircuit` controlla la forma
+generale di un file). La disposizione grafica dei componenti, usata dall'editor, è nella chiave
+facoltativa `layout` (`{"V1": {"x": 300, "y": 140, "rot": 0}}`) e viene ignorata dal modello.
 
-Esempio: [`src/pneutrack/examples/doppio_effetto_bistabile.json`](../src/pneutrack/examples/doppio_effetto_bistabile.json).
+Esempio: [`src/examples/doppio_effetto_bistabile.json`](../src/examples/doppio_effetto_bistabile.json).
 
-```python
-from pneutrack.model import *
+```ts
+import { analyze } from "./src/model/validation";
 
-c = Circuit("esempio")
-c.add(PressureSource("P", pressure="6 bar"))
-c.add(DirectionalValve("V1", function="5/2", max_pressure="10 bar"))
-c.add(DoubleActingCylinder("C1", bore="32 mm", stroke="100 mm", max_pressure="10 bar"))
-c.connect("P.1", "V1.1")
-c.connect("V1.4", "C1.A")
-c.connect("V1.2", "C1.B")
-print(validate(c))  # schema valido
+const report = analyze({
+  components: [
+    { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+    { id: "V1", type: "directional_valve", function: "5/2", params: { max_pressure: "10 bar" } },
+    { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", stroke: "100 mm" } },
+  ],
+  connections: [{ from: "P.1", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" }],
+});
+console.log(report.ok, report.pressures["C1.A"]?.text); // true "6 bar"
 ```
+
+## Simulazione
+
+`compileSim(doc)` (`src/sim/network.ts`) trasforma uno schema valido in una rete a parametri
+concentrati: ogni rete di porte è un volume con una pressione, valvole, riduttori e strozzatori sono
+orifizi ISO 6358 (conduttanza C, rapporto critico b), i cilindri sono masse con attrito.
+`Simulator` (`src/sim/simulator.ts`) la integra con passi RK4 fissi (20 µs) e lascia cambiare i
+comandi delle valvole mentre gira. Le equazioni sono quelle del solutore di riferimento in
+`src/solver`, con cui `test/sim.test.ts` confronta i risultati.
