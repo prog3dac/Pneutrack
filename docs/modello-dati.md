@@ -59,7 +59,10 @@ qualunque posizione delle valvole** (analisi conservativa); i riduttori limitano
 ## Formato file
 
 `Circuit.to_json()` / `Circuit.from_json()` usano il formato `pneutrack/circuit` versione 1.
-Esempio: [`examples/doppio_effetto_bistabile.json`](../examples/doppio_effetto_bistabile.json).
+La disposizione grafica dei componenti, usata dall'editor, è nella chiave facoltativa `layout`
+(`{"V1": {"x": 300, "y": 140, "rot": 0}}`) e viene ignorata dal modello.
+
+Esempio: [`src/pneutrack/examples/doppio_effetto_bistabile.json`](../src/pneutrack/examples/doppio_effetto_bistabile.json).
 
 ```python
 from pneutrack.model import *

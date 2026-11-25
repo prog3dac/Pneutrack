@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pneutrack</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%232563eb' stroke-width='3'/%3E%3Cpath d='M16 9 L22 20 H10 Z' fill='none' stroke='%232563eb' stroke-width='2.5'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="toolbar">
+    <div class="brand">Pneutrack <span id="doc-name"></span></div>
+    <div class="group">
+      <button data-act="projects" class="primary" title="Apri, rinomina, duplica o elimina i progetti">Progetti</button>
+      <button data-act="new" title="Nuovo schema">Nuovo</button>
+      <button data-act="save" title="Salva il progetto (Ctrl+S)">Salva</button>
+      <button data-act="save-as" title="Salva una copia (Ctrl+Maiusc+S)">Salva copia</button>
+      <button data-act="export" title="Scarica lo schema come file .pneu.json">Esporta</button>
+      <select id="examples" aria-label="Esempi"><option value="">Esempi…</option></select>
+    </div>
+    <span id="save-state" class="save-state" role="status"></span>
+    <div class="group">
+      <button id="btn-undo" data-act="undo" title="Annulla (Ctrl+Z)">↶ Annulla</button>
+      <button id="btn-redo" data-act="redo" title="Ripeti (Ctrl+Y)">↷ Ripeti</button>
+      <button data-act="fit" title="Adatta la vista (F)">Adatta vista</button>
+    </div>
+    <div id="status" class="status ok" role="status">…</div>
+    <input type="file" id="file-input" accept=".json,application/json" hidden>
+  </header>
+
+  <aside id="palette" aria-label="Componenti"></aside>
+
+  <main id="stage">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="Foglio dello schema">
+      <defs>
+        <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+          <circle cx="0" cy="0" r="0.9" class="grid-dot"/>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#grid-pattern)" class="sheet"/>
+      <g id="viewport">
+        <g id="lines"></g>
+        <polyline id="temp-wire" class="temp-wire" style="display:none"/>
+        <g id="components"></g>
+        <g id="labels"></g>
+        <g id="ports"></g>
+      </g>
+    </svg>
+  </main>
+
+  <aside id="side">
+    <section id="properties" aria-label="Proprietà"></section>
+    <section id="issues-panel" aria-label="Validazione">
+      <h2>Validazione</h2>
+      <ul id="issues"></ul>
+    </section>
+  </aside>
+  <div id="projects-dialog" class="overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="projects-title">
+      <header>
+        <h2 id="projects-title">Progetti</h2>
+        <button data-dact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <p id="projects-store" class="store-label"></p>
+      <div class="dialog-bar">
+        <input id="projects-search" type="search" placeholder="Cerca per nome" aria-label="Cerca progetti">
+        <button data-dact="save-current">Salva lo schema aperto</button>
+        <button data-dact="new">Nuovo progetto</button>
+        <button data-dact="import">Importa file…</button>
+      </div>
+      <ul id="projects-list"></ul>
+    </div>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

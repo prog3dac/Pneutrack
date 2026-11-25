@@ -94,7 +94,7 @@ def test_example_file_loads_and_is_valid():
 
     from pneutrack.model import validate
 
-    path = Path(__file__).parent.parent / "examples" / "doppio_effetto_bistabile.json"
+    path = Path(__file__).parent.parent / "src" / "pneutrack" / "examples" / "doppio_effetto_bistabile.json"
     circuit = Circuit.from_json(path.read_text(encoding="utf-8"))
     assert len(circuit) == 8
     assert validate(circuit).issues == []
