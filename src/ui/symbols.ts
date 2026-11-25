@@ -140,6 +140,13 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
       if (kind === "solenoid_pilot_ext") body += line(o(5), 8, o(5), 32, "dash");
       break;
     }
+    case "air_return":
+    case "air_return_ext":
+      // ritorno pneumatico: pilotaggio sul lato di ritorno (triangolo pieno); interno: linea verso la porta 1
+      body = line(o(0), 0, o(16), 0, "dash") + fillPath(`M${o(2)},0 L${o(9)},-4 L${o(9)},4 Z`);
+      if (kind === "air_return") body += line(o(14), 0, o(14), 18, "dash") + line(o(14), 18, o(6), 18, "dash");
+      else body += line(o(5), 0, o(5), 32, "dash");
+      break;
     case "spring":
       body = zigzag(o(0), 0, o(18), 0, 6, 6);
       break;
@@ -209,11 +216,11 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
     if (shift < 0) fixedPart += line(-x0 + 20 + shift, 0, -x0 + 20, 0, "dash");
   }
   // alimentazione esterna della valvola pilota: porta sotto il comando
-  if (a14 === "solenoid_pilot_ext") {
+  if (a14 === "solenoid_pilot_ext" || a14 === "air_return_ext") {
     ports["14"] = { x: x0 - 5, y: 32, dir: down };
     if (shift) fixedPart += line(x0 - 5, 32, x0 - 5 + shift, 32, "dash");
   }
-  if (a12 === "solenoid_pilot_ext") {
+  if (a12 === "solenoid_pilot_ext" || a12 === "air_return_ext") {
     ports["12"] = { x: -x0 + 5, y: 32, dir: down };
     if (shift) fixedPart += line(-x0 + 5 + shift, 32, -x0 + 5, 32, "dash");
   }
@@ -392,7 +399,14 @@ const flowControlGeometry = (): Geometry => ({
     arrow(-12, 12, 12, -12),
 });
 
-function cylinderGeometry(double: boolean, state?: SymbolState, through = false): Geometry {
+/** Ammortizzo regolabile (ISO 1219): tampone sul pistone che entra nella testata, con freccia di regolazione. */
+function cushionMark(pistonX: number, end: "cap" | "rod") {
+  const plug = end === "cap" ? rect(pistonX - 10, -6, 10, 12, "body") : rect(pistonX + 2, -6, 10, 12, "body");
+  const cx = end === "cap" ? -54 : 54;
+  return plug + line(cx - 9, 13, cx + 9, -13) + arrowHead(cx - 9, 13, cx + 9, -13, 5);
+}
+
+function cylinderGeometry(double: boolean, state?: SymbolState, through = false, cushioning = "none"): Geometry {
   // senza simulazione il pistone è disegnato a un quarto di corsa
   const frac = state?.stroke ?? 0.35;
   const pistonX = -56 + frac * 80;
@@ -400,6 +414,8 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false)
     rect(pistonX, -3, 115, 6, "rod") +
     (through ? rect(pistonX - 75, -3, 75, 6, "rod") : "") +
     line(pistonX, -15, pistonX, 15, "thick");
+  if (cushioning === "cap" || cushioning === "both") svg += cushionMark(pistonX, "cap");
+  if (cushioning === "rod" || cushioning === "both") svg += cushionMark(pistonX, "rod");
   const ports: Record<string, PortGeom> = { A: { x: -50, y: 25, dir: down } };
   svg += line(-50, 15, -50, 25);
   if (double) {
@@ -428,8 +444,8 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "pressure_regulator": return regulatorGeometry();
     case "flow_control_valve": return flowControlGeometry();
     case "single_acting_cylinder": return cylinderGeometry(false, state);
-    case "double_acting_cylinder": return cylinderGeometry(true, state);
-    case "double_rod_cylinder": return cylinderGeometry(true, state, true);
+    case "double_acting_cylinder": return cylinderGeometry(true, state, false, comp.cushioning);
+    case "double_rod_cylinder": return cylinderGeometry(true, state, true, comp.cushioning);
     case "rotary_actuator": return rotaryGeometry();
     case "air_reservoir": return reservoirGeometry();
     case "air_filter": return filterGeometry();

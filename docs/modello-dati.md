@@ -61,6 +61,8 @@ comando per lato (`actuation_14`, `actuation_12`), con i comandi di ISO 1219-1:
 | Rullo, tastatore | `mechanical`, `plunger` | a mano, o da un cilindro a fine corsa (finecorsa) |
 | Rullo unidirezionale (leva ribaltabile) | `roller_oneway` | con un finecorsa dà un impulso solo mentre lo stelo arriva verso la camma (ultimi 5 mm), non quando torna indietro né da fermo |
 | Molla | `spring` | ritorno |
+| Ritorno pneumatico, alimentazione interna | `air_return` | ritorno con l'aria della porta 1; senza pressione la valvola resta dov'è |
+| Ritorno pneumatico, alimentazione esterna | `air_return_ext` | aggiunge la porta 12 (o 14) che alimenta il ritorno |
 
 Gli scarichi lasciati liberi scaricano in atmosfera. La palette propone valvole già configurate (`presets`), per esempio
 "3/2 NC a rullo" o "5/2 bistabile pneumatica", e serbatoi di volume diverso.
@@ -73,6 +75,15 @@ finecorsa").
 Nuovi tipi: una voce in `DEFS` (`src/model/components.ts`) con porte, parametri ed eventualmente
 `paths` (percorsi interni della pressione) e `sources`; poi il simbolo in `src/ui/symbols.ts` e,
 se va simulato, il comportamento in `src/sim/network.ts`.
+
+### Ammortizzo dei cilindri
+
+I cilindri a doppio effetto e a doppio stelo hanno l'opzione `cushioning`: `none`, `both`,
+`cap` (fine corsa in rientro) o `rod` (fine corsa in uscita). `cushion_length` è il tratto
+ammortizzato (se manca, circa 0,6 × alesaggio, tra 10 e 40 mm); `cushion_opening` è l'apertura
+della vite di regolazione, da 0 (chiusa) a 1 (tutta aperta, 0,3 dm³/(s·bar)), predefinita 0,3.
+In simulazione, negli ultimi millimetri di corsa l'aria che esce dalla camera passa solo dalla
+vite; quella che entra passa libera.
 
 ### Misure normalizzate dei cilindri
 

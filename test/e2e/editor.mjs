@@ -52,6 +52,22 @@ await page.waitForSelector(".palette-item");
 await page.waitForFunction(() => document.body.dataset.ready === "1");
 assert.equal(await page.evaluate(() => window.pneutrack.store), expectedStore);
 
+// 0. versione dell'app, novità e legenda delle linee
+assert.match(await page.textContent("#app-version"), /^v\d+\.\d+\.\d+$/);
+await page.click("#app-version");
+assert.match(await page.textContent("#news-body"), /\(in uso\)/);
+await page.keyboard.press("Escape");
+assert.ok(await page.locator("#news-dialog").isHidden());
+assert.equal(await page.locator("#legend li").count(), 9);
+
+// menu Mostra: nasconde la legenda e la ripristina
+await page.click("#view-filter summary");
+await page.uncheck('#view-filter input[name="show-legend"]');
+assert.ok(await page.locator("#legend").isHidden());
+await page.check('#view-filter input[name="show-legend"]');
+assert.ok(await page.locator("#legend").isVisible());
+await page.click("#view-filter summary");
+
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item").evaluateAll((els) => els.map((e) => e.dataset.type));
 assert.equal(new Set(types).size, 25, `tipi in palette: ${[...new Set(types)]}`);
@@ -108,6 +124,9 @@ const lineMid = async (i) => {
 };
 await page.mouse.click(...(await lineMid(1)));
 await page.waitForSelector('#properties select[name="tube-size"]');
+// la linea selezionata passa sopra ai simboli, le altre si attenuano
+assert.equal(await page.locator('#lines-top [data-connection="1"].selected').count(), 1);
+assert.ok(await page.locator("#lines.dimmed").count());
 await page.selectOption('#properties select[name="tube-size"]', { label: "Ø6 × 4" });
 await page.fill('#properties input[name="tube-length"]', "2");
 await page.press('#properties input[name="tube-length"]', "Enter");
@@ -217,6 +236,17 @@ s = await state();
 assert.equal(s.doc.components.length, 8);
 assert.equal(s.analysis.issues.length, 0);
 if (shots) await page.screenshot({ path: `${shots}/esempio.png` });
+// senza sigle e numeri di porta le etichette restano solo con le descrizioni
+const labelTexts = () => page.locator("#labels .label").evaluateAll((els) => els.map((e) => e.textContent));
+assert.ok((await labelTexts()).some((t) => t.startsWith("V1")));
+await page.click("#view-filter summary");
+await page.uncheck('#view-filter input[name="show-ids"]');
+await page.uncheck('#view-filter input[name="show-ports"]');
+assert.ok(!(await labelTexts()).some((t) => /^V1\b/.test(t)));
+assert.ok(await page.locator(".port-label").first().isHidden());
+await page.click('#view-filter button:has-text("Mostra tutto")');
+await page.click("#view-filter summary");
+assert.ok((await labelTexts()).some((t) => t.startsWith("V1")));
 
 // 9. esportazione: scarica un file che il modello sa rileggere
 const [download] = await Promise.all([page.waitForEvent("download"), page.click('[data-act="export"]')]);
