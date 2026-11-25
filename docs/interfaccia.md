@@ -34,7 +34,12 @@ npm run build      # versione pubblicabile in dist/
 - **Proprietà**: seleziona un componente per cambiarne sigla, descrizione, funzione della valvola,
   comandi, parametri da catalogo (`6 bar`, `32 mm`, `0,6 MPa`...; un numero senza unità prende
   l'unità tipica del parametro) e parametri di simulazione (conduttanza, massa, carico, attrito).
-  Per i cilindri vengono mostrate aree e forze teoriche. Per una valvola con comando meccanico
+  Per i cilindri si può scegliere una **misura standard** (ISO 6432, ISO 21287, ISO 15552), che
+  imposta alesaggio e stelo; i campi di alesaggio, stelo e corsa suggeriscono i valori
+  normalizzati ma accettano qualunque valore. Vengono mostrate aree e forze teoriche. I comandi
+  delle valvole seguono ISO 1219: solenoide diretto o con valvola pilota (alimentazione interna o
+  esterna), pilotaggio, pulsante, leva, leva con arresto, pedale, rullo, tastatore, rullo
+  unidirezionale e molla. Per una valvola con comando meccanico
   si può scegliere il **finecorsa** (cilindro e posizione, per esempio C1+) che la aziona.
 - **Validazione**: avviene a ogni modifica. I problemi compaiono nel pannello in basso a destra
   (clic per andare al componente), i componenti con errori sono bordati di rosso, le porte

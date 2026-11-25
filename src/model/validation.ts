@@ -23,7 +23,7 @@
  */
 import { CircuitError, nets, parseRef, refCmp, refStr, type CircuitDoc } from "./circuit";
 import {
-  buildComponent, internalPaths, isActuator, isCylinder, ParameterError, sourcePressures,
+  buildComponent, hasPilotPort, internalPaths, isActuator, isCylinder, ParameterError, sourcePressures,
   type Component, type PortSpec,
 } from "./components";
 import { parseTube, type Tube } from "./tubes";
@@ -244,7 +244,7 @@ export function analyze(data: Pick<CircuitDoc, "components" | "connections">): A
       let names = c.ports.map((p) => p.name);
       if (c.type === "directional_valve") {
         const pilots = ([["14", c.actuation_14], ["12", c.actuation_12]] as const)
-          .filter(([, a]) => a === "pilot").map(([s]) => s);
+          .filter(([, a]) => hasPilotPort(a)).map(([s]) => s);
         names = pilots.length ? pilots : ["1"];
       }
       const avail = Math.max(0, ...names.map((n) => pAt(`${c.id}.${n}`)));

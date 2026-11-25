@@ -37,7 +37,8 @@ describe("catalogo", () => {
   it("finecorsa: deve indicare un cilindro esistente e un lato a rullo", () => {
     const roller = (cam: string, act = "mechanical"): C =>
       ({ id: "S1", type: "directional_valve", function: "3/2", actuation_14: act, actuation_12: "spring", cam_14: cam });
-    expect(() => buildComponent(roller("C1+", "manual"))).toThrow(/rullo/);
+    expect(() => buildComponent(roller("C1+", "manual"))).toThrow(/meccanico/);
+    expect(() => buildComponent(roller("C1+", "plunger"))).not.toThrow();
     expect(() => buildComponent(roller("C1*"))).toThrow(/non valido/);
     const codes = (cam: string) => analyze({ components: [src(), roller(cam), single()],
       connections: [{ from: "P.1", to: "S1.1" }, { from: "S1.2", to: "C1.A" }] }).issues.map((i) => i.code);
@@ -233,5 +234,66 @@ describe("attuatori e finecorsa", () => {
     s.advance(0.2);
     expect(s.gauge("MP.1")).toBeGreaterThan(3);
     expect(s.gauge("MP.1")).toBeLessThan(6); // l'aria passa attraverso il motore verso lo scarico
+  });
+});
+
+describe("comandi delle valvole (ISO 1219)", () => {
+  const valve = (a14: string, a12 = "spring", fn = "5/2"): C =>
+    ({ id: "V1", type: "directional_valve", function: fn, actuation_14: a14, actuation_12: a12 });
+
+  it("elettropneumatica con pilota interno: commuta solo se l'alimentazione supera la pressione minima", () => {
+    const run = (pressure: string) => {
+      const s = sim([src("P", pressure), valve("solenoid_pilot"), double()], [["P.1", "V1.1"], ["V1.4", "C1.A"], ["V1.2", "C1.B"]]);
+      s.advance(0.05);
+      press(s, "V1");
+      s.advance(0.5);
+      return s.valvePosition("V1");
+    };
+    expect(run("6 bar")).toBe("14");
+    expect(run("1 bar")).toBe("12");
+  });
+
+  it("elettropneumatica con pilota esterno: serve la pressione sulla porta 14", () => {
+    const parts = [src(), src("PP", "3 bar"), valve("solenoid_pilot_ext"), double()];
+    const ports = buildComponent(parts[2]!).ports.map((p) => `${p.name}:${p.kind}`);
+    expect(ports).toContain("14:pilot");
+    const s = sim(parts, [["P.1", "V1.1"], ["PP.1", "V1.14"], ["V1.4", "C1.A"], ["V1.2", "C1.B"]]);
+    press(s, "V1");
+    s.advance(0.5);
+    expect(frac(s)).toBe(1);
+    // senza alimentazione del pilota la valvola non è valida (porta 14 scollegata)
+    const codes = analyze({ components: [src(), valve("solenoid_pilot_ext"), double()],
+      connections: [{ from: "P.1", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" }] })
+      .issues.map((i) => i.code);
+    expect(codes).toContain("UNCONNECTED_PORT");
+  });
+
+  it("leva, pedale, leva con arresto e tastatore si azionano come comandi manuali", () => {
+    for (const a of ["lever", "lever_detent", "pedal", "plunger"]) {
+      const s = sim([src(), valve(a, "spring", "3/2"), single()], [["P.1", "V1.1"], ["V1.2", "C1.A"]]);
+      press(s, "V1");
+      s.advance(0.4);
+      expect(frac(s), a).toBe(1);
+      press(s, "V1", false);
+      s.advance(0.6);
+      expect(frac(s), a).toBe(0);
+    }
+  });
+
+  it("rullo unidirezionale: dà un impulso solo quando lo stelo arriva andando verso la camma", () => {
+    const v = valve("solenoid");
+    const r: C = { id: "S1", type: "directional_valve", function: "3/2", actuation_14: "roller_oneway", actuation_12: "spring", cam_14: "C1+" };
+    const s = sim([src(), v, double(), r, { id: "M", type: "pressure_gauge" }],
+      [["P.1", "V1.1"], ["V1.4", "C1.A"], ["V1.2", "C1.B"], ["P.1", "S1.1"], ["S1.2", "M.1"]]);
+    press(s, "V1");
+    let pulse = false;
+    for (let i = 0; i < 300; i++) { s.advance(0.002); if (s.valvePosition("S1") === "14") pulse = true; }
+    expect(frac(s)).toBe(1);
+    expect(pulse).toBe(true);
+    expect(s.valvePosition("S1")).toBe("12"); // fermo a fine corsa: la leva è ribaltata
+    press(s, "V1", false);
+    let back = false;
+    for (let i = 0; i < 300; i++) { s.advance(0.002); if (s.valvePosition("S1") === "14") back = true; }
+    expect(back).toBe(false);
   });
 });
