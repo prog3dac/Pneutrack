@@ -29,6 +29,8 @@ export interface Placement {
   rot: number;
   /** simbolo specchiato (x → −x nel riferimento del simbolo, prima della rotazione) */
   mirror?: boolean;
+  /** sigla e descrizione spostate a mano: scostamento dal centro del componente; senza, posizione automatica */
+  label?: [number, number];
 }
 
 export interface CircuitDoc {

@@ -7,7 +7,11 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 // BASE=./ produce una build con percorsi relativi (pagina pubblicata altrove).
 export default defineConfig({
   base: process.env.BASE ?? "/Pneutrack/",
-  build: { outDir: "dist" },
+  build: {
+    outDir: "dist",
+    // editor e catalogo dei simboli
+    rollupOptions: { input: { main: "index.html", simboli: "simboli.html" } },
+  },
   // numero di versione dell'app, mostrato nell'intestazione
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
 });

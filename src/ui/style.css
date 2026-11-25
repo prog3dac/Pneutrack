@@ -176,6 +176,8 @@ button.link:hover { text-decoration: underline; }
 .menu-list button { display: flex; justify-content: space-between; gap: 16px; width: 100%; margin: 0 !important;
   border: 0; background: none; text-align: left; padding: 7px 10px; }
 .menu-list button:hover:not(:disabled) { background: var(--accent-soft); }
+.menu-list .menu-link { display: block; padding: 7px 10px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 13px; }
+.menu-list .menu-link:hover { background: var(--accent-soft); }
 .menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
 .menu-list kbd { color: var(--muted); }
 .menu-body { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 270px;
@@ -193,6 +195,7 @@ button.link:hover { text-decoration: underline; }
 .symbol .rod { fill: var(--sheet); }
 .symbol .thick { stroke-width: 3; }
 .symbol .dash { stroke-dasharray: 4 3; }
+.symbol .dashdot { stroke-dasharray: 9 3 2 3; }
 .symbol .hatch { fill: var(--grid); }
 .symbol text { fill: var(--ink); font-size: 14px; text-anchor: middle; }
 
@@ -205,6 +208,8 @@ button.link:hover { text-decoration: underline; }
 
 .label { font-size: 12px; font-weight: 600; fill: var(--text); text-anchor: middle; pointer-events: none;
   paint-order: stroke; stroke: var(--sheet); stroke-width: 4px; stroke-linejoin: round; }
+/* fuori dalla simulazione sigla e descrizione si trascinano */
+#app:not(.simulating) .label { pointer-events: auto; cursor: move; }
 
 .port { cursor: crosshair; }
 .port-hit { fill: transparent; }

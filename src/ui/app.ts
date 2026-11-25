@@ -30,6 +30,7 @@ import {
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
+import { labelSpot } from "./labels";
 
 const GRID = 10;
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -421,9 +422,9 @@ function render() {
     grp.append(sym);
     comps.append(grp);
 
-    // etichetta (non ruotata), sopra l'ingombro ruotato
-    const hh = (l.rot || 0) % 2 ? g.w / 2 : g.h / 2;
-    const text = el("text", { x: l.x, y: l.y - hh - 10, class: "label" });
+    // etichetta (non ruotata): sul lato senza porte, o dove l'utente l'ha trascinata
+    const text = el("text", { class: l.label ? "label moved" : "label", "data-label-for": comp.id });
+    if (!sim) text.append(svgTitle("Trascina per spostare il testo · doppio clic per rimetterlo al suo posto"));
     const parts: string[] = [];
     if (show.ids) parts.push(comp.id);
     if (show.desc && comp.label) parts.push(comp.label);
@@ -440,6 +441,10 @@ function render() {
     // i punti di connessione mostrano solo la descrizione, se c'è
     if (junction && !(show.desc && comp.label)) parts.length = 0;
     else if (junction) text.textContent = comp.label!;
+    const spot = labelSpot(g, l, text.textContent ?? "");
+    text.setAttribute("x", String(l.x + spot.dx));
+    text.setAttribute("y", String(l.y + spot.dy));
+    text.setAttribute("style", `text-anchor: ${spot.anchor}`);
     if (parts.length) labels.append(text);
 
     // porte
@@ -1559,7 +1564,8 @@ function mirrorSelection(axis: Axis) {
 function rotateSelection() {
   const sel = selection;
   if (sel?.kind !== "component") return;
-  mutate(() => { const l = layoutOf(sel.id); l.rot = ((l.rot || 0) + 1) % 4; });
+  // ruotando cambiano i lati delle porte: il testo torna nella posizione automatica
+  mutate(() => { const l = layoutOf(sel.id); l.rot = ((l.rot || 0) + 1) % 4; delete l.label; });
 }
 
 /** Sigla libera per un tipo, saltando anche quelle già scelte in questa operazione. */
@@ -2160,6 +2166,8 @@ function fitView() {
 type Drag =
   | { mode: "wire"; from: string; start: PortPoint }
   | { mode: "move"; id: string; dx: number; dy: number; before: string; moved: boolean }
+  /** sigla e descrizione di un componente, trascinate rispetto al simbolo */
+  | { mode: "label"; id: string; dx: number; dy: number; before: string; moved: boolean }
   /** più componenti insieme (selezione multipla o blocco), con le pieghe delle linee tra loro */
   | { mode: "group"; ids: string[]; sx: number; sy: number; start: Record<string, [number, number]>;
       points: Map<number, Pt[]>; before: string; moved: boolean; clicked?: string }
@@ -2200,7 +2208,15 @@ svg.addEventListener("pointerdown", (e) => {
   svg.setPointerCapture(e.pointerId);
 
   const bend = t.closest<SVGElement>("[data-bend]");
-  if (!sim && bend && e.button === 0) {
+  const labelEl = t.closest<SVGTextElement>("[data-label-for]");
+  if (!sim && labelEl && e.button === 0) {
+    const id = labelEl.dataset.labelFor!;
+    if (labelClicked(id)) { drag = null; return; }
+    // il testo trascinato è centrato sul punto: si parte dal centro di quello che si vede
+    const bb = labelEl.getBBox();
+    const y = Number(labelEl.getAttribute("y"));
+    drag = { mode: "label", id, dx: w.x - (bb.x + bb.width / 2), dy: w.y - y, before: snapshot(), moved: false };
+  } else if (!sim && bend && e.button === 0) {
     drag = { mode: "bend", index: Number(bend.dataset.connection), bend: Number(bend.dataset.bend),
              sx: e.clientX, sy: e.clientY, before: snapshot(), moved: false };
   } else if (!sim && port && e.button === 0) {
@@ -2271,6 +2287,12 @@ svg.addEventListener("pointermove", (e) => {
     m.setAttribute("x", String(Math.min(drag.sx, w.x))); m.setAttribute("y", String(Math.min(drag.sy, w.y)));
     m.setAttribute("width", String(Math.abs(w.x - drag.sx))); m.setAttribute("height", String(Math.abs(w.y - drag.sy)));
     m.style.display = "";
+  } else if (drag.mode === "label") {
+    const l = layoutOf(drag.id);
+    // passo fine (metà griglia): i testi si allineano senza restare legati alla griglia dei simboli
+    const half = GRID / 2;
+    const nx = Math.round((w.x - drag.dx - l.x) / half) * half, ny = Math.round((w.y - drag.dy - l.y) / half) * half;
+    if (!l.label || l.label[0] !== nx || l.label[1] !== ny) { l.label = [nx, ny]; drag.moved = true; render(); }
   } else if (drag.mode === "move") {
     const l = layoutOf(drag.id);
     const nx = snap(w.x - drag.dx), ny = snap(w.y - drag.dy);
@@ -2337,7 +2359,7 @@ svg.addEventListener("pointerup", (e) => {
     select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
     return;
   }
-  if (d.mode === "move" || d.mode === "bend") {
+  if (d.mode === "move" || d.mode === "bend" || d.mode === "label") {
     if (d.moved) commit(d.before);
     else if (d.mode === "bend" && d.bend >= 0) bendClicked(d.index, d.bend);
   } else if (d.mode === "pan") {
@@ -2416,6 +2438,17 @@ function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string)
     if (c.points && set.has(splitRef(c.from)[0]) && set.has(splitRef(c.to)[0])) points.set(i, c.points.map((p) => [...p] as Pt));
   });
   return { mode: "group", ids, sx: w.x, sy: w.y, start, points, before: snapshot(), moved: false, clicked };
+}
+
+// doppio clic sul testo di un componente: lo rimette nella posizione automatica
+let lastLabelClick = { id: "", at: 0 };
+function labelClicked(id: string): boolean {
+  const now = performance.now();
+  const double = lastLabelClick.id === id && now - lastLabelClick.at < 450;
+  lastLabelClick = double ? { id: "", at: 0 } : { id, at: now };
+  if (!double || !doc.layout[id]?.label) return false;
+  mutate(() => { delete layoutOf(id).label; });
+  return true;
 }
 
 // doppio clic su un punto di piega: lo toglie (la cattura del puntatore assorbe "dblclick")
