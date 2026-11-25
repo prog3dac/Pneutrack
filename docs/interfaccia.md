@@ -86,8 +86,22 @@ npm run build      # versione pubblicabile in dist/
 
 Un progetto è `{"id", "name", "createdAt", "updatedAt", "circuit"}`, dove `circuit` è lo schema.
 
+## Blocchi
+
+Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una descrizione.
+
+- **Selezione multipla**: `Maiusc`+clic aggiunge o toglie un componente; `Maiusc`+trascinamento
+  su un'area vuota disegna un riquadro di selezione; `Ctrl+A` seleziona tutto.
+- **Unisci** (`Ctrl+G`) crea un blocco dai componenti selezionati; **Dividi** (`Ctrl+Maiusc+G`)
+  lo scioglie lasciando i componenti dove sono.
+- Un clic su un componente del blocco seleziona il blocco intero, che si sposta, duplica ed
+  elimina insieme ai suoi condotti interni; un secondo clic seleziona il singolo componente.
+- **Salva nella libreria** copia il blocco nel gruppo *Blocchi salvati* della palette, conservato
+  nel browser: si inserisce con un clic o trascinandolo nello schema, in qualsiasi progetto.
+- Il filtro *Riquadri dei blocchi* in *Mostra* nasconde le cornici tratteggiate.
+
 Scorciatoie: `R` ruota, `Canc` elimina, `Ctrl+Z`/`Ctrl+Y` annulla/ripeti, `Ctrl+D` duplica,
-`Ctrl+S` salva, `F` adatta la vista, rotella per lo zoom, trascina il foglio per spostare la vista.
+`Ctrl+G`/`Ctrl+Maiusc+G` unisci/dividi, `Ctrl+A` seleziona tutto, `Ctrl+S` salva, `F` adatta la vista, rotella per lo zoom, trascina il foglio per spostare la vista.
 
 ## Struttura
 

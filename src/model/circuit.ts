@@ -6,6 +6,7 @@
  * Formato file: `pneutrack/circuit` versione 1.
  */
 import type { ComponentData } from "./components";
+import { normalizeBlocks, type BlockData } from "./blocks";
 import { parseSheet, type SheetData } from "./sheet";
 import type { TubeData } from "./tubes";
 
@@ -38,6 +39,8 @@ export interface CircuitDoc {
   layout: Record<string, Placement>;
   /** foglio di disegno e cartiglio (facoltativo) */
   sheet?: SheetData;
+  /** blocchi: gruppi di componenti con nome e descrizione (facoltativo) */
+  blocks?: BlockData[];
 }
 
 export const emptyCircuit = (name = "Nuovo schema"): CircuitDoc =>
@@ -89,6 +92,12 @@ export function nets(ports: string[], connections: [string, string][]): string[]
   return [...groups.values()].map(sortRefs).sort((a, b) => refCmp(parseRef(a[0]!), parseRef(b[0]!)));
 }
 
+function blocksOf(d: Partial<CircuitDoc>) {
+  const ids = (d.components ?? []).map((c) => c?.id).filter((x): x is string => typeof x === "string");
+  const blocks = normalizeBlocks(d.blocks, ids);
+  return blocks.length ? { blocks } : {};
+}
+
 /** Controlla la forma generale di un file e lo normalizza. Lancia {@link CircuitError}. */
 export function normalizeCircuit(data: unknown): CircuitDoc {
   if (!data || typeof data !== "object") throw new CircuitError("il file non contiene uno schema");
@@ -103,5 +112,6 @@ export function normalizeCircuit(data: unknown): CircuitDoc {
     connections: Array.isArray(d.connections) ? d.connections : [],
     layout: d.layout && typeof d.layout === "object" ? d.layout : {},
     ...(parseSheet(d.sheet) ? { sheet: parseSheet(d.sheet)! } : {}),
+    ...blocksOf(d),
   };
 }

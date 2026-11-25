@@ -1,5 +1,8 @@
 // Editor di schemi pneumatici: stato, disegno SVG, interazioni e simulazione.
 // Tutto gira nel browser: modello, validazione e solutore sono moduli TypeScript.
+import {
+  blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
+} from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
@@ -53,7 +56,13 @@ const EXAMPLES = Object.entries(
   import.meta.glob<CircuitDoc>("../examples/*.json", { eager: true, import: "default" }),
 ).map(([path, data]) => ({ id: path.replace(/^.*\/|\.json$/g, ""), name: data.name || path, data }));
 
-type Selection = { kind: "component"; id: string } | { kind: "connection"; index: number } | null;
+type Selection =
+  | { kind: "component"; id: string }
+  | { kind: "connection"; index: number }
+  /** più componenti scelti con Maiusc+clic o con un riquadro (Maiusc+trascina) */
+  | { kind: "multi"; ids: string[] }
+  | { kind: "block"; id: string }
+  | null;
 type Doc = CircuitDoc;
 
 // --- stato -------------------------------------------------------------------
@@ -111,6 +120,22 @@ function redo() {
 function fixSelection() {
   if (selection?.kind === "component" && !byId(selection.id)) selection = null;
   if (selection?.kind === "connection" && !doc.connections[selection.index]) selection = null;
+  if (selection?.kind === "block") {
+    const id = selection.id;
+    if (!doc.blocks?.some((b) => b.id === id)) selection = null;
+  }
+  if (selection?.kind === "multi") {
+    const ids = selection.ids.filter((id) => byId(id));
+    selection = ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null;
+  }
+}
+
+/** Componenti selezionati (uno, più o quelli del blocco). */
+function selectedIds(): string[] {
+  if (selection?.kind === "component") return [selection.id];
+  if (selection?.kind === "multi") return selection.ids;
+  if (selection?.kind === "block") return doc.blocks?.find((b) => b.id === (selection as { id: string }).id)?.components ?? [];
+  return [];
 }
 
 // --- coordinate ----------------------------------------------------------------
@@ -323,7 +348,7 @@ function render() {
     const g = geometry(comp, symbolState(comp));
     const iss = issuesFor(comp.id);
     const cls = ["component",
-      selection?.kind === "component" && selection.id === comp.id ? "selected" : "",
+      selectedIds().includes(comp.id) ? "selected" : "",
       iss.some((i) => i.severity === "error") ? "has-error" :
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
     const grp = el("g", {
@@ -375,7 +400,36 @@ function render() {
       ports.append(pg);
     }
   }
+  renderBlocks();
   renderStatus();
+}
+
+/** Ingombro di un componente sul foglio (con l'etichetta sopra). */
+function compBox(id: string): Rect {
+  const c = byId(id)!, l = layoutOf(id), g = geometry(c);
+  const [hw, hh] = (l.rot || 0) % 2 ? [g.h / 2, g.w / 2] : [g.w / 2, g.h / 2];
+  return { x: l.x - hw, y: l.y - hh - 22, w: 2 * hw, h: 2 * hh + 22 };
+}
+
+/** Riquadri tratteggiati dei blocchi, con nome (e descrizione nel suggerimento). */
+function renderBlocks() {
+  const g = $("#blocks");
+  g.replaceChildren();
+  for (const b of doc.blocks ?? []) {
+    const boxes = b.components.filter((id) => byId(id)).map(compBox);
+    if (!boxes.length) continue;
+    const pad = 12;
+    const x0 = Math.min(...boxes.map((r) => r.x)) - pad, y0 = Math.min(...boxes.map((r) => r.y)) - pad;
+    const x1 = Math.max(...boxes.map((r) => r.x + r.w)) + pad, y1 = Math.max(...boxes.map((r) => r.y + r.h)) + pad;
+    const sel = selection?.kind === "block" && selection.id === b.id;
+    const grp = el("g", { class: `block${sel ? " selected" : ""}`, "data-block": b.id });
+    grp.append(el("rect", { x: x0, y: y0, width: x1 - x0, height: y1 - y0, rx: 8, class: "block-frame" }));
+    const t = el("text", { x: x0 + 6, y: y0 - 6, class: "block-label" });
+    t.textContent = b.name;
+    grp.append(t);
+    grp.append(svgTitle(b.description ? `${b.name}\n${b.description}` : b.name));
+    g.append(grp);
+  }
 }
 
 // --- pannelli ------------------------------------------------------------------
@@ -557,6 +611,7 @@ const VIEW_OPTIONS = [
   { key: "cams", label: "Sigle dei finecorsa", group: "Testi", def: true },
   { key: "tubes", label: "Misure di tutti i tubi", group: "Testi", def: false },
   { key: "dots", label: "Punti di collegamento", group: "Elementi", def: true },
+  { key: "blocks", label: "Riquadri dei blocchi", group: "Elementi", def: true },
   { key: "pilot", label: "Linee di pilotaggio", group: "Elementi", def: true },
   { key: "exhaust", label: "Linee di scarico", group: "Elementi", def: true },
   { key: "grid", label: "Griglia", group: "Elementi", def: true },
@@ -625,13 +680,14 @@ function renderPalette() {
   for (const cat of [...new Set(catalog.map((t) => t.category))]) {
     const det = document.createElement("details");
     det.className = "palette-group";
+    det.dataset.cat = cat;
     det.open = !closed.includes(cat);
     const sum = document.createElement("summary");
     sum.textContent = cat;
     det.append(sum);
     det.addEventListener("toggle", () => {
       if (search.value) return; // durante la ricerca i gruppi si aprono da soli
-      const now = groups.filter((g) => !g.open).map((g) => g.querySelector("summary")!.textContent!);
+      const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
       try { localStorage.setItem(PALETTE_KEY, JSON.stringify(now)); } catch { /* non disponibile */ }
     });
     for (const it of items.filter((x) => x.type.category === cat)) {
@@ -654,6 +710,56 @@ function renderPalette() {
     groups.push(det);
     pal.append(det);
   }
+  // blocchi salvati nella libreria del browser
+  const lib = blockLibrary();
+  {
+    const det = document.createElement("details");
+    det.className = "palette-group";
+    const cat = "Blocchi salvati";
+    det.dataset.cat = cat;
+    det.open = !closed.includes(cat);
+    const sum = document.createElement("summary");
+    sum.textContent = `${cat} (${lib.length})`;
+    det.append(sum);
+    det.addEventListener("toggle", () => {
+      if (search.value) return;
+      const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
+      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(now)); } catch { /* non disponibile */ }
+    });
+    if (!lib.length) {
+      const p = document.createElement("p");
+      p.className = "palette-empty";
+      p.textContent = "Seleziona un blocco e usa «Salva nella libreria» per riusarlo qui.";
+      det.append(p);
+    }
+    lib.forEach((f, i) => {
+      const b = document.createElement("button");
+      b.className = "palette-item library-item";
+      b.draggable = true;
+      b.dataset.library = String(i);
+      b.dataset.search = `${f.name} ${f.description ?? ""} blocco`.toLowerCase();
+      b.title = `${f.name}${f.description ? `\n${f.description}` : ""}\n${f.components.length} componenti`;
+      b.innerHTML = `<svg class="thumb" viewBox="0 0 40 30" aria-hidden="true"><rect x="3" y="3" width="34" height="24" rx="4"
+        fill="none" stroke="currentColor" stroke-dasharray="4 3"/><rect x="9" y="9" width="9" height="12" fill="none"
+        stroke="currentColor"/><rect x="22" y="9" width="9" height="12" fill="none" stroke="currentColor"/></svg><span></span>`;
+      b.querySelector("span")!.textContent = `${f.name} (${f.components.length})`;
+      b.addEventListener("click", (e) => {
+        if ((e.target as Element).closest(".remove")) return;
+        insertLibraryBlock(i, viewCenter());
+      });
+      b.addEventListener("dragstart", (e) => {
+        e.dataTransfer!.setData("application/x-pneutrack-block", String(i));
+        e.dataTransfer!.effectAllowed = "copy";
+      });
+      const rm = document.createElement("span");
+      rm.className = "remove"; rm.textContent = "×"; rm.title = "Togli dalla libreria"; rm.setAttribute("role", "button");
+      rm.addEventListener("click", (e) => { e.stopPropagation(); removeLibraryBlock(i); });
+      b.append(rm);
+      det.append(b);
+    });
+    groups.push(det);
+    pal.append(det);
+  }
   const wasOpen = new Map<HTMLDetailsElement, boolean>();
   search.addEventListener("input", () => {
     const q = search.value.trim().toLowerCase();
@@ -665,7 +771,7 @@ function renderPalette() {
         b.hidden = !show;
         any ||= show;
       }
-      g.hidden = !any;
+      g.hidden = !!q && !any;
       if (q) g.open = true;
     }
     if (!q) { wasOpen.forEach((open, g) => (g.open = open)); wasOpen.clear(); }
@@ -744,6 +850,63 @@ function cylinderSizeField(comp: ComponentData) {
   return field("Misura standard", sel);
 }
 
+function button(text: string, onClick: () => void, key = "", act = "", cls = "") {
+  const b = document.createElement("button");
+  b.textContent = text;
+  if (key) b.title = key;
+  if (act) b.dataset.blockAct = act;
+  if (cls) b.className = cls;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+/** Pannello di un blocco: nome, descrizione, componenti e comandi. */
+function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
+  const b = doc.blocks!.find((x) => x.id === id)!;
+  title.textContent = `Blocco ${b.name}`;
+  const nameIn = document.createElement("input");
+  nameIn.name = "block-name"; nameIn.value = b.name;
+  nameIn.addEventListener("change", () => mutate(() => {
+    doc.blocks!.find((x) => x.id === id)!.name = nameIn.value.trim() || id;
+  }));
+  panel.append(field("Nome", nameIn));
+  const desc = document.createElement("textarea");
+  desc.name = "block-description"; desc.rows = 3; desc.value = b.description ?? "";
+  desc.placeholder = "Che cosa fa questo blocco";
+  desc.addEventListener("change", () => mutate(() => {
+    const x = doc.blocks!.find((y) => y.id === id)!;
+    if (desc.value.trim()) x.description = desc.value.trim(); else delete x.description;
+  }));
+  panel.append(field("Descrizione", desc));
+  heading(panel, `Componenti (${b.components.length})`);
+  const ul = document.createElement("ul");
+  ul.className = "block-members";
+  for (const cid of b.components) {
+    const li = document.createElement("li");
+    const a = document.createElement("button");
+    a.className = "link";
+    a.textContent = cid + (byId(cid)?.label ? ` · ${byId(cid)!.label}` : "");
+    a.addEventListener("click", () => select({ kind: "component", id: cid }));
+    li.append(a);
+    ul.append(li);
+  }
+  panel.append(ul);
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  actions.append(
+    button("Dividi", splitSelection, "Ctrl+Maiusc+G", "split"),
+    button("Duplica", duplicateSelection, "Ctrl+D", "duplicate"),
+    button("Salva nella libreria", () => saveBlockToLibrary(id), "", "library"),
+    button("Elimina", deleteSelection, "Canc", "", "danger"),
+  );
+  panel.append(actions);
+  const help = document.createElement("p");
+  help.className = "help";
+  help.textContent = "Trascina il blocco per spostarlo con le sue linee. Un secondo clic su un componente lo " +
+    "seleziona da solo. La libreria rende il blocco disponibile nella palette in tutti i progetti di questo browser.";
+  panel.append(help);
+}
+
 /** Suggerimenti per i campi di alesaggio, stelo e corsa (si può sempre scrivere un altro valore). */
 const STANDARD_LISTS: Record<string, number[]> = { bore: STANDARD_BORES, rod: STANDARD_RODS, stroke: STANDARD_STROKES };
 function standardList(name: string): string | null {
@@ -809,6 +972,17 @@ function renderProperties() {
       if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
     }));
     panel.append(field("Descrizione", labIn));
+    const inBlock = blockOf(doc, comp.id);
+    if (inBlock) {
+      const p = document.createElement("p");
+      p.className = "help";
+      p.append(`Fa parte del blocco «${inBlock.name}». `);
+      const a = document.createElement("button");
+      a.className = "link"; a.textContent = "Seleziona il blocco";
+      a.addEventListener("click", () => select({ kind: "block", id: inBlock.id }));
+      p.append(a);
+      panel.append(p);
+    }
 
     for (const opt of meta?.options ?? []) {
       const sel = document.createElement("select");
@@ -886,6 +1060,27 @@ function renderProperties() {
       if (act === "delete") deleteSelection();
     });
     panel.append(actions);
+  } else if (selection?.kind === "block" && doc.blocks?.some((b) => b.id === (selection as { id: string }).id)) {
+    renderBlockPanel(panel, title, selection.id);
+  } else if (selection?.kind === "multi") {
+    title.textContent = `${selection.ids.length} componenti selezionati`;
+    const p = document.createElement("p");
+    p.className = "help";
+    p.textContent = selection.ids.join(", ");
+    panel.append(p);
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(
+      button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
+      button("Duplica", duplicateSelection, "Ctrl+D"),
+      button("Elimina", deleteSelection, "Canc", "", "danger"),
+    );
+    panel.append(actions);
+    const help = document.createElement("p");
+    help.className = "help";
+    help.textContent = "Trascina uno dei componenti per spostarli tutti. Maiusc+clic aggiunge o toglie un componente, " +
+      "Maiusc+trascina sul vuoto seleziona con un riquadro.";
+    panel.append(help);
   } else if (selection?.kind === "connection" && doc.connections[selection.index]) {
     const c = doc.connections[selection.index]!;
     title.textContent = "Collegamento";
@@ -1091,6 +1286,7 @@ function renameComponent(oldId: string, newId: string) {
   if (byId(newId)) { toast(`La sigla ${newId} è già usata`); return renderProperties(); }
   mutate(() => {
     byId(oldId)!.id = newId;
+    for (const b of doc.blocks ?? []) b.components = b.components.map((c) => (c === oldId ? newId : c));
     doc.layout[newId] = layoutOf(oldId);
     delete doc.layout[oldId];
     const fix = (ref: string) => { const [c, p] = splitRef(ref); return c === oldId ? `${newId}.${p}` : ref; };
@@ -1129,15 +1325,15 @@ function deleteSelection() {
   const sel = selection;
   if (!sel || sim) return;
   mutate(() => {
-    if (sel.kind === "component") {
-      const id = sel.id;
-      doc.components = doc.components.filter((c) => c.id !== id);
-      delete doc.layout[id];
-      doc.connections = doc.connections.filter((c) =>
-        splitRef(c.from)[0] !== id && splitRef(c.to)[0] !== id);
-    } else {
+    if (sel.kind === "connection") {
       doc.connections.splice(sel.index, 1);
+      return;
     }
+    const ids = new Set(selectedIds());
+    doc.components = doc.components.filter((c) => !ids.has(c.id));
+    for (const id of ids) delete doc.layout[id];
+    doc.connections = doc.connections.filter((c) => !ids.has(splitRef(c.from)[0]) && !ids.has(splitRef(c.to)[0]));
+    pruneBlocks(doc);
   });
   select(null);
 }
@@ -1148,17 +1344,85 @@ function rotateSelection() {
   mutate(() => { const l = layoutOf(sel.id); l.rot = ((l.rot || 0) + 1) % 4; });
 }
 
+/** Sigla libera per un tipo, saltando anche quelle già scelte in questa operazione. */
+function freeId(type: string, taken: Set<string>) {
+  const prefix = PREFIX[type] || "X";
+  let n = 1;
+  while (taken.has(`${prefix}${n}`) || byId(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
+
+/** Duplica la selezione: componenti, linee tra loro e, per un blocco, il blocco stesso. */
 function duplicateSelection() {
-  if (selection?.kind !== "component" || sim) return;
-  const src = byId(selection.id)!;
-  const l = layoutOf(src.id);
-  const copy: ComponentData = JSON.parse(JSON.stringify(src));
-  copy.id = nextId(src.type);
+  const ids = selectedIds();
+  if (!ids.length || sim) return;
+  const block = selection?.kind === "block" ? doc.blocks?.find((b) => b.id === (selection as { id: string }).id) : undefined;
+  const frag = extractFragment(doc, ids, block?.name, block?.description);
+  const x0 = Math.min(...ids.map((id) => layoutOf(id).x)), y0 = Math.min(...ids.map((id) => layoutOf(id).y));
+  let added: string[] = [];
+  let newBlock: string | undefined;
   mutate(() => {
-    doc.components.push(copy);
-    doc.layout[copy.id] = { x: l.x + 40, y: l.y + 40, rot: l.rot || 0 };
+    added = insertFragment(doc, frag, { x: x0 + 40, y: y0 + 40 }, freeId);
+    if (block) newBlock = mergeBlock(doc, added, `${block.name} (copia)`, block.description).id;
   });
-  select({ kind: "component", id: copy.id });
+  if (newBlock) select({ kind: "block", id: newBlock });
+  else select(added.length > 1 ? { kind: "multi", ids: added } : { kind: "component", id: added[0]! });
+}
+
+/** Unisci: i componenti selezionati diventano un blocco. */
+function mergeSelection() {
+  const ids = selectedIds();
+  if (ids.length < 1 || sim) return;
+  let id = "";
+  mutate(() => { id = mergeBlock(doc, ids).id; });
+  select({ kind: "block", id });
+  toast("Blocco creato: dagli un nome e una descrizione nel pannello a destra");
+}
+
+/** Dividi: il blocco selezionato torna a essere un gruppo di componenti singoli. */
+function splitSelection() {
+  if (selection?.kind !== "block" || sim) return;
+  const id = selection.id;
+  let ids: string[] = [];
+  mutate(() => { ids = splitBlock(doc, id); });
+  select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+}
+
+// --- libreria dei blocchi (nel browser, per riusarli in ogni progetto) ------------
+const LIBRARY_KEY = "pneutrack.blocks.v1";
+function blockLibrary(): Fragment[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LIBRARY_KEY) || "[]");
+    return Array.isArray(raw) ? raw.map(parseFragment).filter((f): f is Fragment => !!f) : [];
+  } catch { return []; }
+}
+function saveLibrary(list: Fragment[]) {
+  try { localStorage.setItem(LIBRARY_KEY, JSON.stringify(list)); return true; } catch { return false; }
+}
+function saveBlockToLibrary(blockId: string) {
+  const b = doc.blocks?.find((x) => x.id === blockId);
+  if (!b) return;
+  const list = blockLibrary().filter((f) => f.name !== b.name);
+  list.push(extractFragment(doc, b.components, b.name, b.description));
+  if (saveLibrary(list)) { toast(`"${b.name}" salvato nella libreria dei blocchi`); renderPalette(); }
+  else toast("Questo browser non permette di salvare la libreria");
+}
+function insertLibraryBlock(index: number, at: { x: number; y: number }) {
+  const frag = blockLibrary()[index];
+  if (!frag || sim) return;
+  let id = "";
+  mutate(() => {
+    const ids = insertFragment(doc, frag, { x: snap(at.x), y: snap(at.y) }, freeId);
+    id = mergeBlock(doc, ids, frag.name, frag.description).id;
+  });
+  select({ kind: "block", id });
+}
+function removeLibraryBlock(index: number) {
+  const list = blockLibrary();
+  const [gone] = list.splice(index, 1);
+  saveLibrary(list);
+  renderPalette();
+  if (gone) toast(`"${gone.name}" tolto dalla libreria`);
 }
 
 function select(sel: Selection) {
@@ -1467,6 +1731,10 @@ function fitView() {
 type Drag =
   | { mode: "wire"; from: string; start: PortPoint }
   | { mode: "move"; id: string; dx: number; dy: number; before: string; moved: boolean }
+  /** più componenti insieme (selezione multipla o blocco), con le pieghe delle linee tra loro */
+  | { mode: "group"; ids: string[]; sx: number; sy: number; start: Record<string, [number, number]>;
+      points: Map<number, Pt[]>; before: string; moved: boolean; clicked?: string }
+  | { mode: "marquee"; sx: number; sy: number; add: string[] }
   | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
   /** piega di una linea: `bend` è l'indice del punto, -1 finché non si è mosso il puntatore */
   | { mode: "bend"; index: number; bend: number; sx: number; sy: number; before: string; moved: boolean };
@@ -1478,6 +1746,7 @@ svg.addEventListener("pointerdown", (e) => {
   const port = t.closest<SVGElement>("[data-port]");
   const comp = t.closest<SVGElement>("[data-component]");
   const line = t.closest<SVGElement>("[data-connection]");
+  const blockEl = t.closest<SVGElement>("[data-block]");
   const w = toWorld(e);
 
   if (sim && e.button === 0) {
@@ -1500,11 +1769,39 @@ svg.addEventListener("pointerdown", (e) => {
     const ref = port.dataset.port!;
     const [cid, p] = splitRef(ref);
     drag = { mode: "wire", from: ref, start: portWorld(cid, p)! };
+  } else if (!sim && comp && e.button === 0 && e.shiftKey) {
+    // Maiusc+clic: aggiunge o toglie il componente dalla selezione
+    const id = comp.dataset.component!;
+    const cur = selectedIds();
+    const ids = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
   } else if (!sim && comp && e.button === 0) {
     const id = comp.dataset.component!;
-    const l = layoutOf(id);
-    drag = { mode: "move", id, dx: w.x - l.x, dy: w.y - l.y, before: snapshot(), moved: false };
-    if (selection?.kind !== "component" || selection.id !== id) select({ kind: "component", id });
+    const block = blockOf(doc, id);
+    const group = selectedIds();
+    let clicked: string | undefined;
+    if (group.length > 1 && group.includes(id)) {
+      // clic su un componente già nel gruppo: si trascina tutto; al rilascio senza movimento, se è
+      // un blocco, si entra nel blocco e si seleziona solo quel componente
+      if (selection?.kind === "block") clicked = id;
+    } else if (block && block.components.length > 1 && !(selection?.kind === "component" && selection.id === id)) {
+      select({ kind: "block", id: block.id });
+    } else if (selection?.kind !== "component" || selection.id !== id) {
+      select({ kind: "component", id });
+    }
+    const ids = selectedIds();
+    if (ids.length > 1) drag = groupDrag(ids, w, clicked);
+    else {
+      const l = layoutOf(id);
+      drag = { mode: "move", id, dx: w.x - l.x, dy: w.y - l.y, before: snapshot(), moved: false };
+    }
+  } else if (!sim && blockEl && e.button === 0) {
+    const id = blockEl.dataset.block!;
+    if (selection?.kind !== "block" || selection.id !== id) select({ kind: "block", id });
+    drag = groupDrag(selectedIds(), w);
+  } else if (!sim && e.button === 0 && e.shiftKey && !line) {
+    // Maiusc+trascina sul vuoto: riquadro di selezione
+    drag = { mode: "marquee", sx: w.x, sy: w.y, add: selectedIds() };
   } else if (!sim && line && e.button === 0) {
     const index = Number(line.dataset.connection);
     if (selection?.kind !== "connection" || selection.index !== index) select({ kind: "connection", index });
@@ -1517,7 +1814,25 @@ svg.addEventListener("pointerdown", (e) => {
 svg.addEventListener("pointermove", (e) => {
   if (!drag) return;
   const w = toWorld(e);
-  if (drag.mode === "move") {
+  if (drag.mode === "group") {
+    const dx = snap(w.x - drag.sx), dy = snap(w.y - drag.sy);
+    const [fx, fy] = drag.start[drag.ids[0]!]!;
+    const l0 = layoutOf(drag.ids[0]!);
+    if (l0.x === fx + dx && l0.y === fy + dy) return;
+    for (const id of drag.ids) {
+      const [x, y] = drag.start[id]!;
+      const l = layoutOf(id);
+      l.x = x + dx; l.y = y + dy;
+    }
+    drag.points.forEach((pts, i) => { doc.connections[i]!.points = pts.map(([x, y]) => [x + dx, y + dy]); });
+    drag.moved = true;
+    render();
+  } else if (drag.mode === "marquee") {
+    const m = $("#marquee");
+    m.setAttribute("x", String(Math.min(drag.sx, w.x))); m.setAttribute("y", String(Math.min(drag.sy, w.y)));
+    m.setAttribute("width", String(Math.abs(w.x - drag.sx))); m.setAttribute("height", String(Math.abs(w.y - drag.sy)));
+    m.style.display = "";
+  } else if (drag.mode === "move") {
     const l = layoutOf(drag.id);
     const nx = snap(w.x - drag.dx), ny = snap(w.y - drag.dy);
     if (nx !== l.x || ny !== l.y) { l.x = nx; l.y = ny; drag.moved = true; render(); }
@@ -1563,6 +1878,23 @@ svg.addEventListener("pointerup", (e) => {
   if (!drag) return;
   const d = drag;
   drag = null;
+  if (d.mode === "group") {
+    if (d.moved) commit(d.before);
+    else if (d.clicked) select({ kind: "component", id: d.clicked });
+    return;
+  }
+  if (d.mode === "marquee") {
+    $("#marquee").style.display = "none";
+    const w = toWorld(e);
+    const x0 = Math.min(d.sx, w.x), x1 = Math.max(d.sx, w.x), y0 = Math.min(d.sy, w.y), y1 = Math.max(d.sy, w.y);
+    const inside = doc.components.map((c) => c.id).filter((id) => {
+      const l = layoutOf(id);
+      return l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1;
+    });
+    const ids = [...new Set([...d.add, ...inside])];
+    select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+    return;
+  }
   if (d.mode === "move" || d.mode === "bend") {
     if (d.moved) commit(d.before);
     else if (d.mode === "bend" && d.bend >= 0) bendClicked(d.index, d.bend);
@@ -1579,6 +1911,18 @@ svg.addEventListener("pointerup", (e) => {
     }
   }
 });
+
+/** Trascinamento di più componenti: posizioni di partenza e pieghe delle linee tra loro. */
+function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string): Drag {
+  const set = new Set(ids);
+  const start: Record<string, [number, number]> = {};
+  for (const id of ids) { const l = layoutOf(id); start[id] = [l.x, l.y]; }
+  const points = new Map<number, Pt[]>();
+  doc.connections.forEach((c, i) => {
+    if (c.points && set.has(splitRef(c.from)[0]) && set.has(splitRef(c.to)[0])) points.set(i, c.points.map((p) => [...p] as Pt));
+  });
+  return { mode: "group", ids, sx: w.x, sy: w.y, start, points, before: snapshot(), moved: false, clicked };
+}
 
 // doppio clic su un punto di piega: lo toglie (la cattura del puntatore assorbe "dblclick")
 let lastBendClick = { key: "", at: 0 };
@@ -1606,12 +1950,15 @@ svg.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 svg.addEventListener("dragover", (e) => {
-  if (!sim && e.dataTransfer?.types.includes("application/x-pneutrack-type")) {
+  if (!sim && (e.dataTransfer?.types.includes("application/x-pneutrack-type") ||
+               e.dataTransfer?.types.includes("application/x-pneutrack-block"))) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   }
 });
 svg.addEventListener("drop", (e) => {
+  const lib = e.dataTransfer?.getData("application/x-pneutrack-block");
+  if (lib) { e.preventDefault(); insertLibraryBlock(Number(lib), toWorld(e)); return; }
   const data = e.dataTransfer?.getData("application/x-pneutrack-type");
   if (!data) return;
   e.preventDefault();
@@ -1638,6 +1985,13 @@ document.addEventListener("keydown", (e) => {
   if (mod && key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
   else if (mod && (key === "y" || (key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
   else if (mod && key === "d") { e.preventDefault(); duplicateSelection(); }
+  else if (mod && key === "g" && e.shiftKey) { e.preventDefault(); splitSelection(); }
+  else if (mod && key === "g") { e.preventDefault(); mergeSelection(); }
+  else if (mod && key === "a") {
+    e.preventDefault();
+    const ids = doc.components.map((c) => c.id);
+    select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+  }
   else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); }
   else if (key === "r" && !mod) rotateSelection();
   else if (e.key === "Escape") select(null);
