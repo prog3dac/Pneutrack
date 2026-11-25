@@ -1,0 +1,326 @@
+{
+ "format": "pneutrack/circuit",
+ "version": 1,
+ "name": "Elettropneumatica: marcia e arresto con autoritenuta",
+ "components": [
+  {
+   "id": "C1",
+   "type": "double_acting_cylinder",
+   "params": {
+    "bore": "32 mm",
+    "rod": "12 mm",
+    "stroke": "100 mm",
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "V1",
+   "type": "directional_valve",
+   "function": "5/2",
+   "actuation_14": "solenoid",
+   "actuation_12": "spring",
+   "params": {
+    "max_pressure": "10 bar"
+   }
+  },
+  {
+   "id": "P",
+   "type": "pressure_source",
+   "params": {
+    "pressure": "6 bar"
+   }
+  },
+  {
+   "id": "G",
+   "type": "electric_supply",
+   "params": {
+    "voltage": "24 V"
+   }
+  },
+  {
+   "id": "N1",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N2",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S0",
+   "type": "pushbutton",
+   "contact": "nc",
+   "label": "Arresto"
+  },
+  {
+   "id": "N3",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N4",
+   "type": "wire_junction"
+  },
+  {
+   "id": "S1",
+   "type": "pushbutton",
+   "contact": "no",
+   "label": "Marcia"
+  },
+  {
+   "id": "K1a",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "K1",
+   "type": "relay_coil"
+  },
+  {
+   "id": "N5",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N6",
+   "type": "wire_junction"
+  },
+  {
+   "id": "K1b",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "Y1",
+   "type": "valve_solenoid",
+   "drives": "V1.14"
+  },
+  {
+   "id": "N7",
+   "type": "wire_junction"
+  },
+  {
+   "id": "N8",
+   "type": "wire_junction"
+  },
+  {
+   "id": "K1c",
+   "type": "relay_contact",
+   "contact": "no",
+   "relay": "K1"
+  },
+  {
+   "id": "H1",
+   "type": "signal_lamp",
+   "lamp_color": "green",
+   "label": "In marcia"
+  }
+ ],
+ "connections": [
+  {
+   "from": "C1.A",
+   "to": "V1.4"
+  },
+  {
+   "from": "C1.B",
+   "to": "V1.2"
+  },
+  {
+   "from": "P.1",
+   "to": "V1.1"
+  },
+  {
+   "from": "N1.1",
+   "to": "S0.11"
+  },
+  {
+   "from": "S0.12",
+   "to": "N3.1"
+  },
+  {
+   "from": "N3.1",
+   "to": "S1.13"
+  },
+  {
+   "from": "S1.14",
+   "to": "N4.1"
+  },
+  {
+   "from": "N3.1",
+   "to": "K1a.13"
+  },
+  {
+   "from": "K1a.14",
+   "to": "N4.1"
+  },
+  {
+   "from": "N4.1",
+   "to": "K1.A1"
+  },
+  {
+   "from": "K1.A2",
+   "to": "N2.1"
+  },
+  {
+   "from": "N5.1",
+   "to": "K1b.13"
+  },
+  {
+   "from": "K1b.14",
+   "to": "Y1.A1"
+  },
+  {
+   "from": "Y1.A2",
+   "to": "N6.1"
+  },
+  {
+   "from": "N7.1",
+   "to": "K1c.13"
+  },
+  {
+   "from": "K1c.14",
+   "to": "H1.X1"
+  },
+  {
+   "from": "H1.X2",
+   "to": "N8.1"
+  },
+  {
+   "from": "G.+",
+   "to": "N1.1",
+   "points": [
+    [
+     460,
+     -260
+    ]
+   ]
+  },
+  {
+   "from": "G.0V",
+   "to": "N2.1",
+   "points": [
+    [
+     460,
+     280
+    ]
+   ]
+  },
+  {
+   "from": "N1.1",
+   "to": "N5.1"
+  },
+  {
+   "from": "N5.1",
+   "to": "N7.1"
+  },
+  {
+   "from": "N2.1",
+   "to": "N6.1"
+  },
+  {
+   "from": "N6.1",
+   "to": "N8.1"
+  }
+ ],
+ "layout": {
+  "C1": {
+   "x": 160,
+   "y": -60,
+   "rot": 0
+  },
+  "V1": {
+   "x": 160,
+   "y": 100,
+   "rot": 0
+  },
+  "P": {
+   "x": 180,
+   "y": 260,
+   "rot": 0
+  },
+  "G": {
+   "x": 460,
+   "y": 10,
+   "rot": 0
+  },
+  "N1": {
+   "x": 560,
+   "y": -260,
+   "rot": 0
+  },
+  "N2": {
+   "x": 560,
+   "y": 280,
+   "rot": 0
+  },
+  "S0": {
+   "x": 560,
+   "y": -120,
+   "rot": 0
+  },
+  "N3": {
+   "x": 560,
+   "y": -40,
+   "rot": 0
+  },
+  "N4": {
+   "x": 560,
+   "y": 60,
+   "rot": 0
+  },
+  "S1": {
+   "x": 560,
+   "y": 10,
+   "rot": 0
+  },
+  "K1a": {
+   "x": 640,
+   "y": 10,
+   "rot": 0
+  },
+  "K1": {
+   "x": 560,
+   "y": 140,
+   "rot": 0
+  },
+  "N5": {
+   "x": 750,
+   "y": -260,
+   "rot": 0
+  },
+  "N6": {
+   "x": 750,
+   "y": 280,
+   "rot": 0
+  },
+  "K1b": {
+   "x": 750,
+   "y": -80,
+   "rot": 0
+  },
+  "Y1": {
+   "x": 750,
+   "y": 100,
+   "rot": 0
+  },
+  "N7": {
+   "x": 860,
+   "y": -260,
+   "rot": 0
+  },
+  "N8": {
+   "x": 860,
+   "y": 280,
+   "rot": 0
+  },
+  "K1c": {
+   "x": 860,
+   "y": -80,
+   "rot": 0
+  },
+  "H1": {
+   "x": 860,
+   "y": 100,
+   "rot": 0
+  }
+ }
+}
