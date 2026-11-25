@@ -466,9 +466,12 @@ function render() {
       }
       pg.append(el("circle", { r: 9, class: "port-hit" }));
       pg.append(el("circle", { r: 3.2, class: "port-dot" }));
-      const lx = pw.dir[0] * -9 + (pw.dir[0] === 0 ? 7 : 0);
-      const ly = pw.dir[1] * -9 + (pw.dir[1] === 0 ? -6 : 3);
-      const t = el("text", { x: lx, y: ly, class: "port-label" });
+      // numero della bocca accanto al tratto tra simbolo e porta, dove non arriva la linea collegata:
+      // porte verticali a destra del tratto, orizzontali sopra
+      const vertical = pw.dir[0] === 0;
+      const lx = vertical ? 3.5 : pw.dir[0] * -5;
+      const ly = vertical ? pw.dir[1] * -5 + 3 : -4;
+      const t = el("text", { x: lx, y: ly, class: "port-label", style: `text-anchor: ${vertical ? "start" : "middle"}` });
       t.textContent = name;
       pg.append(t);
       const live = livePressure(ref);
