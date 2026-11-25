@@ -297,3 +297,28 @@ describe("comandi delle valvole (ISO 1219)", () => {
     expect(back).toBe(false);
   });
 });
+
+describe("ritorno pneumatico", () => {
+  const v = (ret: string): C => ({ id: "V1", type: "directional_valve", function: "5/2", actuation_14: "solenoid", actuation_12: ret });
+  it("interno: con pressione su 1 riporta la valvola a riposo come una molla", () => {
+    const s = sim([src(), v("air_return"), double()], [["P.1", "V1.1"], ["V1.4", "C1.A"], ["V1.2", "C1.B"]]);
+    press(s, "V1"); s.advance(0.5);
+    expect(s.valvePosition("V1")).toBe("14");
+    press(s, "V1", false); s.advance(0.5);
+    expect(s.valvePosition("V1")).toBe("12");
+    expect(frac(s)).toBe(0);
+  });
+  it("esterno: senza aria sulla porta 12 la valvola resta dov'è", () => {
+    const comps = [src(), src("PP", "0.5 bar"), v("air_return_ext"), double()];
+    expect(buildComponent(comps[2]!).ports.map((p) => p.name)).toContain("12");
+    const s = sim(comps, [["P.1", "V1.1"], ["PP.1", "V1.12"], ["V1.4", "C1.A"], ["V1.2", "C1.B"]]);
+    press(s, "V1"); s.advance(0.3);
+    press(s, "V1", false); s.advance(0.3);
+    expect(s.valvePosition("V1")).toBe("14");
+    const ok = sim([src(), src("PP", "4 bar"), v("air_return_ext"), double()],
+      [["P.1", "V1.1"], ["PP.1", "V1.12"], ["V1.4", "C1.A"], ["V1.2", "C1.B"]]);
+    press(ok, "V1"); ok.advance(0.3);
+    press(ok, "V1", false); ok.advance(0.3);
+    expect(ok.valvePosition("V1")).toBe("12");
+  });
+});

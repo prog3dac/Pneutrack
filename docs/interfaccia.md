@@ -41,6 +41,16 @@ npm run build      # versione pubblicabile in dist/
   esterna), pilotaggio, pulsante, leva, leva con arresto, pedale, rullo, tastatore, rullo
   unidirezionale e molla. Per una valvola con comando meccanico
   si può scegliere il **finecorsa** (cilindro e posizione, per esempio C1+) che la aziona.
+- **Ammortizzo**: nei cilindri a doppio effetto si sceglie l'ammortizzo regolabile (ai due fine
+  corsa o su uno solo), la sua lunghezza e l'apertura della vite.
+- **Linee**: la linea selezionata diventa arancione e passa sopra ai simboli, le altre si
+  attenuano. Il colore delle linee indica la fascia di pressione (massima raggiungibile mentre si
+  disegna, istantanea in simulazione); la legenda è in basso a destra.
+- **Mostra**: il menu nella barra in alto nasconde o mostra sigle, descrizioni, valori della
+  simulazione, numeri delle porte, finecorsa, misure dei tubi, punti di collegamento, linee di
+  pilotaggio e di scarico, griglia e legenda. La scelta resta salvata nel browser.
+- **Versione**: il numero accanto al nome dell'app apre le novità di ogni versione
+  ([CHANGELOG.md](../CHANGELOG.md)); dopo un aggiornamento si aprono da sole una volta.
 - **Validazione**: avviene a ogni modifica. I problemi compaiono nel pannello in basso a destra
   (clic per andare al componente), i componenti con errori sono bordati di rosso, le porte
   scollegate sono rosse e le linee in pressione sono blu (tratteggiate quelle di pilotaggio).

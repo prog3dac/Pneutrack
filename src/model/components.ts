@@ -14,7 +14,7 @@ export type Actuation =
   | "pilot"
   | "manual" | "lever" | "lever_detent" | "pedal"
   | "mechanical" | "plunger" | "roller_oneway"
-  | "spring";
+  | "spring" | "air_return" | "air_return_ext";
 export type ValveFunction = "2/2" | "3/2" | "4/2" | "5/2" | "5/3" | "5/3E" | "5/3P";
 
 export interface PortSpec {
@@ -45,7 +45,7 @@ export interface Preset {
 }
 
 export interface OptionSpec {
-  name: "function" | "actuation_14" | "actuation_12";
+  name: "function" | "actuation_14" | "actuation_12" | "cushioning";
   label: string;
   choices: [string, string][];
   default: string;
@@ -63,6 +63,8 @@ export interface ComponentData {
   /** rullo azionato da un cilindro: "C1+" a fine corsa in uscita, "C1-" in rientro */
   cam_14?: string;
   cam_12?: string;
+  /** ammortizzo pneumatico regolabile: "none", "both", "cap" (fondello), "rod" (testata) */
+  cushioning?: string;
 }
 
 /** Componente validato, con parametri convertiti. */
@@ -76,8 +78,18 @@ export interface Component {
   actuation_12?: Actuation;
   cam_14?: Cam;
   cam_12?: Cam;
+  cushioning?: Cushioning;
   ports: PortSpec[];
 }
+
+/** Ammortizzo di fine corsa: su nessun lato, su entrambi, solo al fondello (rientro) o solo alla testata (uscita). */
+export type Cushioning = "none" | "both" | "cap" | "rod";
+export const CUSHIONING_CHOICES: [Cushioning, string][] = [
+  ["none", "Nessuno"],
+  ["both", "Regolabile ai due fine corsa"],
+  ["cap", "Regolabile solo in rientro (fondello)"],
+  ["rod", "Regolabile solo in uscita (testata)"],
+];
 
 /** Finecorsa: il cilindro `cylinder` a fine corsa in uscita ("+") o in rientro ("-"). */
 export interface Cam {
@@ -137,7 +149,7 @@ export const VALVE_PORTS: Record<ValveFunction, [string, PortKind][]> = {
 export const ACTUATIONS: Actuation[] = [
   "solenoid", "solenoid_pilot", "solenoid_pilot_ext", "pilot",
   "manual", "lever", "lever_detent", "pedal",
-  "mechanical", "plunger", "roller_oneway", "spring",
+  "mechanical", "plunger", "roller_oneway", "spring", "air_return", "air_return_ext",
 ];
 export const ACTUATION_LABELS: Record<Actuation, string> = {
   solenoid: "Elettrico: solenoide diretto",
@@ -151,13 +163,16 @@ export const ACTUATION_LABELS: Record<Actuation, string> = {
   mechanical: "Meccanico: rullo",
   plunger: "Meccanico: tastatore",
   roller_oneway: "Meccanico: rullo unidirezionale (leva ribaltabile)",
-  spring: "Molla",
+  spring: "Ritorno a molla",
+  air_return: "Ritorno pneumatico (alimentazione interna)",
+  air_return_ext: "Ritorno pneumatico (alimentazione esterna)",
 };
 /** Nome breve per pannelli ed etichette. */
 export const ACTUATION_SHORT: Record<Actuation, string> = {
   solenoid: "solenoide", solenoid_pilot: "elettropilota", solenoid_pilot_ext: "elettropilota esterno",
   pilot: "pilotaggio", manual: "pulsante", lever: "leva", lever_detent: "leva con arresto", pedal: "pedale",
   mechanical: "rullo", plunger: "tastatore", roller_oneway: "rullo unidirezionale", spring: "molla",
+  air_return: "ritorno pneumatico", air_return_ext: "ritorno pneumatico esterno",
 };
 /** Comandi elettrici: il solenoide si eccita e si diseccita. */
 export const isElectric = (a?: Actuation) => a === "solenoid" || a === "solenoid_pilot" || a === "solenoid_pilot_ext";
@@ -168,7 +183,9 @@ export const isLatching = (a?: Actuation) => isElectric(a) || a === "lever_deten
 /** Comandi azionati dall'utente finché tiene premuto. */
 export const isMomentary = (a?: Actuation) => a === "manual" || a === "lever" || a === "pedal" || isMechanical(a);
 /** Comandi con una porta di pilotaggio (12 o 14): pilotaggio pneumatico o alimentazione esterna del pilota. */
-export const hasPilotPort = (a?: Actuation) => a === "pilot" || a === "solenoid_pilot_ext";
+export const hasPilotPort = (a?: Actuation) => a === "pilot" || a === "solenoid_pilot_ext" || a === "air_return_ext";
+/** Comandi di ritorno: riportano la valvola a riposo quando l'altro lato non è azionato. */
+export const isReturn = (a?: Actuation) => a === "spring" || a === "air_return" || a === "air_return_ext";
 
 const cylinderParams: ParamSpec[] = [
   p("bore", "Alesaggio", "length", { required: true }),
@@ -180,6 +197,16 @@ const cylinderParams: ParamSpec[] = [
   p("load", "Carico", "force", { group: "sim", simDefault: "0 N" }),
   p("friction", "Attrito", "force", { group: "sim", simDefault: "5 N" }),
 ];
+
+/** Ammortizzo pneumatico regolabile (cilindri a doppio effetto). */
+const cushionParams: ParamSpec[] = [
+  p("cushion_length", "Lunghezza ammortizzo", "length", { simDefault: "≈ 0,6 × alesaggio" }),
+  p("cushion_opening", "Apertura vite ammortizzo (0 chiusa, 1 tutta aperta)", "dimensionless",
+    { group: "sim", simDefault: "0.3" }),
+];
+const cushionOption: OptionSpec = {
+  name: "cushioning", label: "Ammortizzo", default: "none", choices: CUSHIONING_CHOICES,
+};
 
 const AIR = "Alimentazione e trattamento aria";
 const DIRECTIONAL = "Valvole distributrici";
@@ -295,6 +322,7 @@ const DEFS: TypeDef[] = [
       { label: "5/2 bistabile pneumatica", options: { function: "5/2", actuation_14: "pilot", actuation_12: "pilot" } },
       { label: "5/2 bistabile elettrica", options: { function: "5/2", actuation_14: "solenoid", actuation_12: "solenoid" } },
       { label: "5/2 bistabile elettropneumatica", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "solenoid_pilot" } },
+      { label: "5/2 elettropneumatica, ritorno pneumatico", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "air_return" } },
       { label: "5/2 elettropneumatica, pilota esterno", options: { function: "5/2", actuation_14: "solenoid_pilot_ext", actuation_12: "spring" } },
       { label: "5/2 a leva con arresto", options: { function: "5/2", actuation_14: "lever_detent", actuation_12: "lever_detent" } },
       { label: "3/2 NC a pedale", options: { function: "3/2", actuation_14: "pedal", actuation_12: "spring" } },
@@ -426,15 +454,22 @@ const DEFS: TypeDef[] = [
   {
     type: "double_acting_cylinder", label: "Cilindro doppio effetto", category: ACTUATORS,
     doc: "Cilindro a doppio effetto. A: camera fondello (uscita), B: camera stelo (rientro).",
-    params: cylinderParams,
+    params: [...cylinderParams, ...cushionParams],
+    options: [cushionOption],
     defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
+    presets: [
+      { label: "Cilindro doppio effetto" },
+      { label: "Cilindro doppio effetto ammortizzato",
+        options: { cushioning: "both" }, params: { cushion_length: "20 mm" } },
+    ],
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
   },
   {
     type: "double_rod_cylinder", label: "Cilindro a doppio stelo", category: ACTUATORS,
     doc: "Cilindro a doppio effetto con stelo passante: stessa area e stessa forza nei due versi.",
-    params: cylinderParams.map((x) => (x.name === "rod" ? { ...x, required: true } : x)),
+    params: [...cylinderParams.map((x) => (x.name === "rod" ? { ...x, required: true } : x)), ...cushionParams],
+    options: [cushionOption],
     defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
@@ -484,7 +519,7 @@ export function buildComponent(raw: ComponentData): Component {
       if (!ACTUATIONS.includes(v as Actuation)) throw new ParameterError(`'${v}' non è un comando valido`);
       comp[side] = v as Actuation;
     }
-    if (comp.actuation_14 === "spring" && comp.actuation_12 === "spring") {
+    if (isReturn(comp.actuation_14) && isReturn(comp.actuation_12)) {
       throw new ParameterError(`${id}: almeno un lato deve avere un comando attivo`);
     }
     for (const side of ["14", "12"] as const) {
@@ -519,7 +554,7 @@ export function buildComponent(raw: ComponentData): Component {
       throw new ParameterError(`${id}.${spec.name}: atteso ${spec.dimension}, ricevuto ${qty.dimension} (${qty})`);
     }
     // i parametri di simulazione come il carico possono valere zero
-    const allowZero = spec.group === "sim" && spec.dimension === "force";
+    const allowZero = (spec.group === "sim" && spec.dimension === "force") || spec.name === "cushion_opening";
     if (allowZero ? qty.si < 0 : qty.si <= 0) {
       throw new ParameterError(`${id}.${spec.name}: deve essere ${allowZero ? "positivo o nullo" : "positivo"} (${qty})`);
     }
@@ -531,8 +566,28 @@ export function buildComponent(raw: ComponentData): Component {
   if (isCylinder(def.type) && comp.params.rod && comp.params.rod.si >= comp.params.bore!.si) {
     throw new ParameterError(`${id}: lo stelo (${comp.params.rod}) deve essere minore dell'alesaggio (${comp.params.bore})`);
   }
+  if (def.options?.some((o) => o.name === "cushioning")) {
+    const cu = raw.cushioning ?? "none";
+    if (!CUSHIONING_CHOICES.some(([v]) => v === cu)) throw new ParameterError(`${id}: ammortizzo '${cu}' non valido`);
+    comp.cushioning = cu as Cushioning;
+    const len = comp.params.cushion_length;
+    if (cu !== "none" && len && len.si * (cu === "both" ? 2 : 1) > comp.params.stroke!.si) {
+      throw new ParameterError(`${id}: l'ammortizzo (${len}) è troppo lungo per la corsa (${comp.params.stroke})`);
+    }
+    const op = comp.params.cushion_opening;
+    if (op && op.si > 1) throw new ParameterError(`${id}.cushion_opening: va da 0 (vite chiusa) a 1 (tutta aperta)`);
+  } else if (raw.cushioning && raw.cushioning !== "none") {
+    throw new ParameterError(`${id}: questo componente non ha l'ammortizzo`);
+  }
   comp.ports = def.ports(comp);
   return comp;
+}
+
+/** Lunghezza dell'ammortizzo [m]: quella indicata o una stima dall'alesaggio (circa 0,6 × alesaggio, 10–40 mm). */
+export function cushionLength(c: Component): number {
+  const given = c.params.cushion_length?.si;
+  const len = given ?? Math.min(0.04, Math.max(0.01, 0.6 * c.params.bore!.si));
+  return Math.min(len, c.params.stroke!.si / (c.cushioning === "both" ? 2 : 1));
 }
 
 /** Parametro con il default di simulazione, se manca. */

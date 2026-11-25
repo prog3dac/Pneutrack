@@ -10,7 +10,7 @@ import { BAR, KAPPA, P_ATM, R_AIR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { Position, SimNetwork, ValveSpec } from "./network";
-import { isMechanical } from "../model/components";
+import { isMechanical, isReturn } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -104,7 +104,7 @@ export class Simulator {
   /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno). */
   sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
     const act = side === "14" ? v.act14 : v.act12;
-    if (act === "spring") return false;
+    if (isReturn(act)) return false;
     if (act === "pilot") {
       const n = side === "14" ? v.pilot14 : v.pilot12;
       const on = n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
@@ -147,6 +147,15 @@ export class Simulator {
     return since === undefined ? null : Math.max(0, v.delay - (this.t - since));
   }
 
+  /** Il lato riporta la valvola a riposo (molla, o ritorno pneumatico con pressione). */
+  private returns(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
+    const act = side === "14" ? v.act14 : v.act12;
+    if (act === "spring") return true;
+    if (act !== "air_return" && act !== "air_return_ext") return false;
+    const n = side === "14" ? v.pilot14 : v.pilot12;
+    return n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
+  }
+
   /** Logica discreta delle valvole: comandi, pilotaggi, molle e memoria delle bistabili. */
   private updateValves(): void {
     const P = this.pressures();
@@ -160,9 +169,10 @@ export class Simulator {
       } else if (s12 && !s14) {
         pos = "12";
       } else if (!s14 && !s12) {
-        if (v.act12 === "spring") pos = "12";
-        else if (v.act14 === "spring") pos = "14";
-        // bistabile: resta dov'è
+        // ritorno: la molla agisce sempre, il ritorno pneumatico solo se ha pressione
+        if (this.returns(v, "12", P)) pos = "12";
+        else if (this.returns(v, "14", P)) pos = "14";
+        // bistabile (o ritorno pneumatico senz'aria): resta dov'è
       }
       this.positions[i] = pos;
     });
@@ -176,7 +186,15 @@ export class Simulator {
       if (o.valve !== undefined && !o.positions!.includes(this.positions[o.valve]!)) continue;
       const pa = P[o.a]!, pb = P[o.b]!;
       if (o.oneWay && pa <= pb) continue;
-      let m = signedFlow(pa, pb, o.C, o.bcrit, net.temperature);
+      let C = o.C;
+      if (o.cushion && pa > pb) {
+        // aria che esce dalla camera: dentro l'ammortizzo passa solo dalla vite
+        const cy = net.cylinders[o.cushion.cylinder]!;
+        const x = y[this.cylOffset + 2 * o.cushion.cylinder]!;
+        const inside = o.cushion.end === "cap" ? x < o.cushion.length : x > cy.stroke - o.cushion.length;
+        if (inside) C = o.cushion.C;
+      }
+      let m = signedFlow(pa, pb, C, o.bcrit, net.temperature);
       if (o.gate) {
         const g = o.gate(P);
         if (g <= 0) continue;

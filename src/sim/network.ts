@@ -9,7 +9,7 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { hasPilotPort, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { cushionLength, hasPilotPort, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { allPorts, analyze, build } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
@@ -31,6 +31,12 @@ export interface Orifice {
   oneWay?: boolean;
   /** apertura 0..1 in funzione delle pressioni assolute dei nodi (valvole logiche, di sicurezza...) */
   gate?: (P: number[]) => number;
+  /**
+   * ammortizzo: orifizio tra la camera `a` del cilindro e la sua porta `b`. Negli ultimi `length`
+   * metri di corsa verso quella camera l'aria in uscita passa solo dalla vite (conduttanza `C`);
+   * in ingresso passa libera (valvola di non ritorno dell'ammortizzo).
+   */
+  cushion?: { cylinder: number; end: "cap" | "rod"; length: number; C: number };
 }
 
 export interface ValveSpec {
@@ -89,6 +95,14 @@ export type CompileResult =
 const NODE_VOLUME = 1e-6;
 const DEAD_VOLUME = 5e-6;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
+/** comandi alimentati dalla porta 1 della valvola stessa */
+const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return";
+/** passaggio libero tra camera e porta del cilindro fuori dall'ammortizzo [m³/(s·Pa)] (5 dm³/(s·bar)) */
+const CUSHION_FREE_C = 5e-3 / BAR;
+/** conduttanza della vite dell'ammortizzo tutta aperta [m³/(s·Pa)] (0,3 dm³/(s·bar)) */
+const CUSHION_MAX_C = 0.3e-3 / BAR;
+/** apertura minima: anche a vite chiusa resta un piccolo trafilamento */
+const CUSHION_MIN_OPENING = 0.01;
 
 // collegamenti attivi in ogni casella, come nei simboli (ui/symbols.ts)
 const VALVE_PATHS: Record<ValveFunction, Partial<Record<Position, [string, string][]>>> = {
@@ -252,12 +266,12 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           }
         }
         const act14 = c.actuation_14!, act12 = c.actuation_12!;
-        const initial: Position = fn.startsWith("5/3") ? "0" : act14 === "spring" ? "14" : "12";
+        const initial: Position = fn.startsWith("5/3") ? "0" : isReturn(act14) ? "14" : "12";
         valves.push({
           id: c.id, fn, act14, act12,
           // pilotaggio pneumatico o alimentazione della valvola pilota (esterna: 14/12, interna: 1)
-          pilot14: hasPilotPort(act14) ? node(c, "14") : act14 === "solenoid_pilot" ? node(c, "1") : undefined,
-          pilot12: hasPilotPort(act12) ? node(c, "12") : act12 === "solenoid_pilot" ? node(c, "1") : undefined,
+          pilot14: hasPilotPort(act14) ? node(c, "14") : internalPilot(act14) ? node(c, "1") : undefined,
+          pilot12: hasPilotPort(act12) ? node(c, "12") : internalPilot(act12) ? node(c, "1") : undefined,
           pilotThreshold: c.params.min_pressure?.si ?? DEFAULT_PILOT_THRESHOLD,
           initial, cam14: c.cam_14, cam12: c.cam_12,
         });
@@ -271,10 +285,22 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const full = (Math.PI * d * d) / 4, annulus = full - (Math.PI * rod * rod) / 4;
         const single = c.type === "single_acting_cylinder";
         const through = c.type === "double_rod_cylinder";
+        // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
+        const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
+          const cu = c.cushioning ?? "none";
+          if (cu !== end && cu !== "both") return node(c, portName);
+          const n = nodeCount++;
+          const opening = Math.min(1, Math.max(CUSHION_MIN_OPENING, simParam(c, "cushion_opening").si));
+          orifices.push({
+            a: n, b: node(c, portName), C: CUSHION_FREE_C, bcrit: 0.4,
+            cushion: { cylinder: cylinders.length, end, length: cushionLength(c), C: opening * CUSHION_MAX_C },
+          });
+          return n;
+        };
         cylinders.push({
           id: c.id,
-          capNode: node(c, "A"),
-          rodNode: single ? atmosphere() : node(c, "B"),
+          capNode: chamber("A", "cap"),
+          rodNode: single ? atmosphere() : chamber("B", "rod"),
           A1: through ? annulus : full,
           A2: annulus,
           stroke: c.params.stroke!.si,

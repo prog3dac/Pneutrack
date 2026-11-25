@@ -14,6 +14,7 @@ import { analyze, type Analysis } from "../model/validation";
 import { compileSim } from "../sim/network";
 import { Simulator } from "../sim/simulator";
 import { BAR, P_ATM } from "../solver/constants";
+import { APP_VERSION, parseChangelog } from "./changelog";
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 
@@ -243,14 +244,17 @@ function render() {
   $("#grid-pattern").setAttribute("patternTransform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
   const lines = $("#lines"), comps = $("#components"), ports = $("#ports"), labels = $("#labels");
+  const linesTop = $("#lines-top");
   lines.replaceChildren(); comps.replaceChildren(); ports.replaceChildren(); labels.replaceChildren();
+  linesTop.replaceChildren();
+  // con una linea selezionata le altre si attenuano e la selezionata passa sopra ai simboli
+  lines.classList.toggle("dimmed", selection?.kind === "connection");
   const P = sim ? sim.s.pressures() : null;
   const livePressure = (ref: string) => {
     if (!sim || !P) return null;
     const n = sim.s.net.portNode[ref];
     return n === undefined ? 0 : (P[n]! - P_ATM) / BAR;
   };
-  const maxBar = sim ? Math.max(1, ...[...sim.s.net.fixed.values()].map((p) => (p - P_ATM) / BAR)) : 1;
 
   // collegamenti
   doc.connections.forEach((c, index) => {
@@ -263,8 +267,9 @@ function render() {
     const lf = livePressure(c.from), lt = livePressure(c.to);
     const live = lf === null || lt === null ? null : (lf + lt) / 2;
     const pr = analysis.pressures[c.from] || analysis.pressures[c.to];
-    const pressurized = live !== null ? live > 0.2 : !!pr && !exhaust;
-    const cls = ["line", pressurized ? "pressurized" : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "",
+    const bar = live !== null ? live : pr && !exhaust ? pr.bar : 0;
+    const pressurized = bar > 0.2;
+    const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "",
                  selection?.kind === "connection" && selection.index === index ? "selected" : ""]
       .filter(Boolean).join(" ");
     const { pts: path, bendAt } = routePoints(a, b, c.points);
@@ -274,27 +279,27 @@ function render() {
     const g = el("g", { class: cls, "data-connection": index });
     g.append(el("polyline", { points: pts, class: "hit" }));
     const stroke = el("polyline", { points: pts, class: "stroke" });
-    if (live !== null && pressurized) stroke.setAttribute("stroke-opacity", (0.35 + 0.65 * Math.min(1, live / maxBar)).toFixed(2));
     // lo spessore segue il diametro esterno del tubo
     if (tube) stroke.style.strokeWidth = String(1.3 + 0.2 * (tube.outer ?? tube.inner * 1.4) * 1000);
     g.append(stroke);
     g.append(svgTitle(`${c.from} — ${c.to}` + (tube ? ` · ${tubeLabel(tube)}` : "") +
       (live !== null ? ` · ${fmtBar(live)}` : pr ? ` · ${pr.text}` : "")));
-    lines.append(g);
-    if (selected && !sim) {
-      if (tube) {
-        // etichetta sul tratto più lungo
-        let k = 1, best = -1;
-        for (let i = 1; i + 2 < path.length; i++) {
-          const d = Math.abs(path[i + 1]![0] - path[i]![0]) + Math.abs(path[i + 1]![1] - path[i]![1]);
-          if (d > best) { best = d; k = i; }
-        }
-        const [x1, y1] = path[k]!, [x2, y2] = path[k + 1]!;
-        const t = el("text", { x: (x1 + x2) / 2 + (x1 === x2 ? 6 : 0), y: (y1 + y2) / 2 - (y1 === y2 ? 6 : 0),
-                               class: "tube-label", "text-anchor": x1 === x2 ? "start" : "middle" });
-        t.textContent = tubeLabel(tube);
-        labels.append(t);
+    (selected ? linesTop : lines).append(g);
+    // misura del tubo: sulla linea selezionata o, se richiesto, su tutte
+    if (tube && (show.tubes || (selected && !sim))) {
+      // etichetta sul tratto più lungo
+      let k = 1, best = -1;
+      for (let i = 1; i + 2 < path.length; i++) {
+        const d = Math.abs(path[i + 1]![0] - path[i]![0]) + Math.abs(path[i + 1]![1] - path[i]![1]);
+        if (d > best) { best = d; k = i; }
       }
+      const [x1, y1] = path[k]!, [x2, y2] = path[k + 1]!;
+      const t = el("text", { x: (x1 + x2) / 2 + (x1 === x2 ? 6 : 0), y: (y1 + y2) / 2 - (y1 === y2 ? 6 : 0),
+                             class: "tube-label", "text-anchor": x1 === x2 ? "start" : "middle" });
+      t.textContent = tubeLabel(tube);
+      labels.append(t);
+    }
+    if (selected && !sim) {
       bendAt.forEach((at, k) => {
         const [x, y] = path[at]!;
         const h = el("circle", { cx: x, cy: y, r: 5, class: "bend-handle", "data-bend": k, "data-connection": index });
@@ -328,16 +333,20 @@ function render() {
     // etichetta (non ruotata), sopra l'ingombro ruotato
     const hh = (l.rot || 0) % 2 ? g.w / 2 : g.h / 2;
     const text = el("text", { x: l.x, y: l.y - hh - 10, class: "label" });
-    let label = comp.id + (comp.label ? ` · ${comp.label}` : "");
-    const cyl = sim?.s.cylinder(comp.id);
-    if (cyl) label += ` · ${(cyl.x * 1000).toFixed(0)} mm`;
-    if (sim && (comp.type === "pressure_gauge" || comp.type === "air_reservoir")) {
-      label += ` · ${fmtBar(sim.s.gauge(`${comp.id}.1`))}`;
+    const parts: string[] = [];
+    if (show.ids) parts.push(comp.id);
+    if (show.desc && comp.label) parts.push(comp.label);
+    if (show.values) {
+      const cyl = sim?.s.cylinder(comp.id);
+      if (cyl) parts.push(`${(cyl.x * 1000).toFixed(0)} mm`);
+      if (sim && (comp.type === "pressure_gauge" || comp.type === "air_reservoir")) {
+        parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
+      }
+      const left = sim?.s.delayRemaining(comp.id);
+      if (left != null && left > 0) parts.push(`${left.toFixed(1).replace(".", ",")} s`);
     }
-    const left = sim?.s.delayRemaining(comp.id);
-    if (left != null && left > 0) label += ` · ${left.toFixed(1).replace(".", ",")} s`;
-    text.textContent = label;
-    labels.append(text);
+    text.textContent = parts.join(" · ");
+    if (parts.length) labels.append(text);
 
     // porte
     for (const name of Object.keys(g.ports)) {
@@ -375,6 +384,96 @@ function paletteItems(): PaletteItem[] {
   })));
 }
 const PALETTE_KEY = "pneutrack.palette.v1"; // categorie chiuse
+
+/** Fasce di pressione per il colore delle linee (bar relativi). */
+const PRESSURE_BANDS: { upTo: number; cls: string; label: string }[] = [
+  { upTo: 2, cls: "p1", label: "fino a 2 bar" },
+  { upTo: 4, cls: "p2", label: "2–4 bar" },
+  { upTo: 6, cls: "p3", label: "4–6 bar" },
+  { upTo: 8, cls: "p4", label: "6–8 bar" },
+  { upTo: Infinity, cls: "p5", label: "oltre 8 bar" },
+];
+const pressureBand = (bar: number) => PRESSURE_BANDS.find((b) => bar <= b.upTo)!.cls;
+const LEGEND_KEY = "pneutrack.legend.v1"; // "closed" se richiusa
+
+/** Legenda in basso a destra: colori delle linee in base alla pressione e tipi di linea. */
+function renderLegend() {
+  const box = $("#legend");
+  const swatch = (cls: string, label: string) =>
+    `<li><svg width="28" height="10" aria-hidden="true"><line x1="1" y1="5" x2="27" y2="5" class="${cls}"/></svg>` +
+    `<span>${label}</span></li>`;
+  let closed = false;
+  try { closed = localStorage.getItem(LEGEND_KEY) === "closed"; } catch { /* nessuna memoria */ }
+  box.innerHTML = `<details${closed ? "" : " open"}><summary>Legenda linee</summary>
+    <p class="legend-note">${sim ? "Pressione istantanea" : "Pressione massima raggiungibile"}</p>
+    <ul>${swatch("lg-none", "senza pressione")}${PRESSURE_BANDS.map((b) => swatch(`lg ${b.cls}`, b.label)).join("")}
+    ${swatch("lg-exhaust", "scarico")}${swatch("lg-pilot", "pilotaggio")}${swatch("lg-selected", "linea selezionata")}</ul></details>`;
+  box.querySelector("details")!.addEventListener("toggle", (e) => {
+    try { localStorage.setItem(LEGEND_KEY, (e.target as HTMLDetailsElement).open ? "open" : "closed"); } catch { /* */ }
+  });
+}
+
+// --- filtri di visualizzazione --------------------------------------------------
+/** Cosa mostrare nell'area di lavoro (solo visualizzazione: lo schema non cambia). */
+const VIEW_OPTIONS = [
+  { key: "ids", label: "Sigle dei componenti", group: "Testi", def: true },
+  { key: "desc", label: "Descrizioni", group: "Testi", def: true },
+  { key: "values", label: "Valori in simulazione (corsa, pressione, tempo)", group: "Testi", def: true },
+  { key: "ports", label: "Numeri delle porte", group: "Testi", def: true },
+  { key: "cams", label: "Sigle dei finecorsa", group: "Testi", def: true },
+  { key: "tubes", label: "Misure di tutti i tubi", group: "Testi", def: false },
+  { key: "dots", label: "Punti di collegamento", group: "Elementi", def: true },
+  { key: "pilot", label: "Linee di pilotaggio", group: "Elementi", def: true },
+  { key: "exhaust", label: "Linee di scarico", group: "Elementi", def: true },
+  { key: "grid", label: "Griglia", group: "Elementi", def: true },
+  { key: "legend", label: "Legenda", group: "Elementi", def: true },
+] as const;
+type ViewKey = typeof VIEW_OPTIONS[number]["key"];
+const VIEW_KEY = "pneutrack.view.v1";
+const show = Object.fromEntries(VIEW_OPTIONS.map((o) => [o.key, o.def])) as Record<ViewKey, boolean>;
+try { Object.assign(show, JSON.parse(localStorage.getItem(VIEW_KEY) || "{}")); } catch { /* predefiniti */ }
+
+function applyView() {
+  const stage = $("#stage");
+  for (const o of VIEW_OPTIONS) stage.classList.toggle(`hide-${o.key}`, !show[o.key]);
+}
+function renderViewFilter() {
+  const body = $("#view-filter-body");
+  body.replaceChildren();
+  let group = "";
+  for (const o of VIEW_OPTIONS) {
+    if (o.group !== group) {
+      group = o.group;
+      const h = document.createElement("h4");
+      h.textContent = group;
+      body.append(h);
+    }
+    const lab = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.name = `show-${o.key}`; cb.checked = show[o.key];
+    cb.addEventListener("change", () => {
+      show[o.key] = cb.checked;
+      try { localStorage.setItem(VIEW_KEY, JSON.stringify(show)); } catch { /* */ }
+      applyView();
+      render();
+    });
+    lab.append(cb, " ", o.label);
+    body.append(lab);
+  }
+  const reset = document.createElement("button");
+  reset.textContent = "Mostra tutto";
+  reset.addEventListener("click", () => {
+    for (const o of VIEW_OPTIONS) show[o.key] = o.key === "tubes" ? show.tubes : true;
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(show)); } catch { /* */ }
+    applyView(); renderViewFilter(); render();
+  });
+  body.append(reset);
+}
+// il menu si chiude facendo clic altrove
+document.addEventListener("pointerdown", (e) => {
+  const menu = $<HTMLDetailsElement>("#view-filter");
+  if (menu.open && !menu.contains(e.target as Node)) menu.open = false;
+});
 
 function renderPalette() {
   const pal = $("#palette");
@@ -985,6 +1084,7 @@ function startSim() {
   $("#sim-bar").hidden = false;
   $("#btn-sim").textContent = "■ Ferma simulazione";
   $("#btn-sim").classList.add("on");
+  renderLegend();
   document.body.dataset.sim = "on";
   updatePlayButton();
   renderProperties();
@@ -1004,6 +1104,7 @@ function stopSim() {
   delete document.body.dataset.sim;
   render();
   renderProperties();
+  renderLegend();
 }
 
 function resetSim() {
@@ -1365,6 +1466,7 @@ document.addEventListener("keydown", (e) => {
   const key = e.key.toLowerCase();
   if (mod && key === "s") { e.preventDefault(); saveProject({ asNew: e.shiftKey }); return; }
   if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
+  if (e.key === "Escape" && !$("#news-dialog").hidden) { closeNews(); return; }
   if (typing) return;
   if (sim) {
     if (e.key === " ") { e.preventDefault(); togglePlay(); }
@@ -1716,11 +1818,48 @@ $("#toolbar").addEventListener("click", (e) => {
     case "undo": undo(); break;
     case "redo": redo(); break;
     case "fit": fitView(); break;
+    case "whats-new": openNews(); break;
     case "sim": if (sim) stopSim(); else startSim(); break;
     case "sim-play": togglePlay(); break;
     case "sim-reset": resetSim(); break;
   }
 });
+
+// --- versione dell'app e novità -------------------------------------------------
+const VERSION_KEY = "pneutrack.version.v1"; // ultima versione di cui l'utente ha visto le novità
+
+function openNews() {
+  const body = $("#news-body");
+  body.replaceChildren();
+  for (const r of parseChangelog()) {
+    const h = document.createElement("h3");
+    h.textContent = `Versione ${r.version}` + (r.version === APP_VERSION ? " (in uso)" : "");
+    const d = document.createElement("span");
+    d.className = "news-date";
+    d.textContent = r.date;
+    h.append(" ", d);
+    const ul = document.createElement("ul");
+    for (const n of r.notes) {
+      const li = document.createElement("li");
+      li.textContent = n;
+      ul.append(li);
+    }
+    body.append(h, ul);
+  }
+  $("#news-dialog").hidden = false;
+  try { localStorage.setItem(VERSION_KEY, APP_VERSION); } catch { /* nessuna memoria */ }
+}
+function closeNews() { $("#news-dialog").hidden = true; }
+$("#news-dialog").addEventListener("click", (e) => {
+  if (target(e).id === "news-dialog" || target(e).closest("[data-nact=close]")) closeNews();
+});
+$("#app-version").textContent = `v${APP_VERSION}`;
+// dopo un aggiornamento mostra le novità una volta; al primo avvio no
+try {
+  const seen = localStorage.getItem(VERSION_KEY);
+  if (seen && seen !== APP_VERSION) openNews();
+  else if (!seen) localStorage.setItem(VERSION_KEY, APP_VERSION);
+} catch { /* nessuna memoria */ }
 
 $<HTMLSelectElement>("#examples").addEventListener("change", async (e) => {
   const sel = e.target as HTMLSelectElement;
@@ -1747,6 +1886,9 @@ function toast(msg: string) {
 
 async function init() {
   renderPalette();
+  renderLegend();
+  renderViewFilter();
+  applyView();
   for (const ex of EXAMPLES) {
     const o = document.createElement("option");
     o.value = ex.id; o.textContent = ex.name;

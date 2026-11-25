@@ -9,7 +9,7 @@
 <body>
 <div id="app">
   <header id="toolbar">
-    <div class="brand">Pneutrack <span id="doc-name"></span></div>
+    <div class="brand">Pneutrack <button id="app-version" class="version" data-act="whats-new" title="Novità di questa versione"></button> <span id="doc-name"></span></div>
     <div class="group">
       <button data-act="projects" class="primary" title="Apri, rinomina, duplica o elimina i progetti">Progetti</button>
       <button data-act="new" title="Nuovo schema">Nuovo</button>
@@ -23,6 +23,10 @@
       <button id="btn-undo" data-act="undo" title="Annulla (Ctrl+Z)">↶ Annulla</button>
       <button id="btn-redo" data-act="redo" title="Ripeti (Ctrl+Y)">↷ Ripeti</button>
       <button data-act="fit" title="Adatta la vista (F)">Adatta vista</button>
+      <details id="view-filter" class="menu">
+        <summary title="Scegli cosa mostrare nell'area di lavoro">Mostra ▾</summary>
+        <div class="menu-body" id="view-filter-body"></div>
+      </details>
     </div>
     <div class="group sim-controls">
       <button id="btn-sim" data-act="sim" class="sim-toggle" title="Anima lo schema e prova i comandi delle valvole">▶ Simula</button>
@@ -57,10 +61,12 @@
         <g id="lines"></g>
         <polyline id="temp-wire" class="temp-wire" style="display:none"/>
         <g id="components"></g>
+        <g id="lines-top"></g>
         <g id="labels"></g>
         <g id="ports"></g>
       </g>
     </svg>
+    <div id="legend" aria-label="Legenda"></div>
   </main>
 
   <aside id="side">
@@ -84,6 +90,15 @@
         <button data-dact="import">Importa file…</button>
       </div>
       <ul id="projects-list"></ul>
+    </div>
+  </div>
+  <div id="news-dialog" class="overlay" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="news-title">
+      <header>
+        <h2 id="news-title">Novità</h2>
+        <button data-nact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <div id="news-body" class="news"></div>
     </div>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
