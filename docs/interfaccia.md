@@ -133,6 +133,15 @@ accendono. Un solenoide con una bobina segue il circuito elettrico e non compare
 pannello mostra lo stato di relè, temporizzatori (con il tempo che manca), bobine e lampade, e avvisa in caso di
 cortocircuito o di un relè che continua a commutare da solo.
 
+## Diagramma delle fasi
+
+Durante la simulazione il pulsante «📈 Diagramma» apre, in basso nell'area di lavoro, il diagramma delle fasi:
+una corsia per ogni cilindro (corsa da 0, tutto dentro, a 1, tutto fuori) e una per ogni bobina, lampada e
+contatto di relè (acceso o spento). Senza circuito elettrico al posto delle bobine ci sono le valvole (azionata o
+a riposo). «Tempo» mette in orizzontale i secondi (diagramma spostamento-tempo); «Passi» mette a distanza uguale
+gli istanti in cui un cilindro arriva a fine corsa (diagramma spostamento-passo). Si registrano gli ultimi 60 s;
+«Ricomincia» azzera il diagramma. L'etichetta di un componente compare accanto alla sua sigla.
+
 ## Selezione, copia e incolla
 
 - Un clic seleziona un componente; `Maiusc`+clic aggiunge o toglie un componente dalla selezione.
@@ -166,6 +175,7 @@ centrale del mouse per spostare la vista.
 | `src/model/` | unità, componenti, schema, validazione ([modello-dati.md](modello-dati.md)) |
 | `src/sim/` | dallo schema alla rete fisica, simulazione interattiva |
 | `src/solver/` | solutore di riferimento (orifizi ISO 6358, RK4) |
+| `src/ui/diagram.ts` | diagramma delle fasi (registrazione in `src/sim/recorder.ts`) |
 | `src/ui/symbols.ts` | simboli in stile ISO 1219, posizione delle porte, stato animato |
 | `src/ui/app.ts` | stato, disegno, interazioni, annulla/ripeti, progetti, simulazione |
 | `src/ui/storage.ts` | archivio dei progetti (database della pagina, browser, memoria) |

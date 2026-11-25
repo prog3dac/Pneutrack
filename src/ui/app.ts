@@ -18,6 +18,8 @@ import { Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
 import { compileSim } from "../sim/network";
 import { Simulator } from "../sim/simulator";
+import { Recorder } from "../sim/recorder";
+import { diagramHeight, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
 import { sheetSvg, svgToPdf } from "./pdf";
@@ -1727,8 +1729,12 @@ interface SimRun {
   last: number;
   lastPanel: number;
   warnings: string[];
+  recorder: Recorder;
 }
 let sim: SimRun | null = null;
+/** diagramma delle fasi aperto e asse orizzontale scelto */
+let diagramOpen = false;
+let diagramMode: DiagramMode = "time";
 /** comandi a pressione (pulsante, rullo) tenuti premuti col puntatore */
 let held: { id: string; side: "14" | "12" } | null = null;
 let heldSwitch: string | null = null;
@@ -1745,7 +1751,9 @@ function startSim() {
   }
   const speed = Number($<HTMLSelectElement>("#sim-speed").value) || 0.25;
   sim = { s: new Simulator(r.network), playing: true, speed, raf: 0, last: performance.now(), lastPanel: 0,
-          warnings: r.warnings };
+          warnings: r.warnings, recorder: null! };
+  sim.recorder = newRecorder(sim.s);
+  sim.recorder.record(0);
   $("#app").classList.add("simulating");
   $("#sim-bar").hidden = false;
   $("#btn-sim").textContent = "■ Ferma simulazione";
@@ -1766,6 +1774,7 @@ function stopSim() {
   heldSwitch = null;
   $("#app").classList.remove("simulating");
   $("#sim-bar").hidden = true;
+  showDiagram(false);
   $("#btn-sim").textContent = "▶ Simula";
   $("#btn-sim").classList.remove("on");
   delete document.body.dataset.sim;
@@ -1786,8 +1795,43 @@ function resetSim() {
     const v = sim.s.net.valves.find((x) => x.id === id)!;
     if (isLatching(side === "14" ? v.act14 : v.act12)) sim.s.setCommand(id, side, true);
   }
+  sim.recorder = newRecorder(sim.s);
+  sim.recorder.record(0);
   render();
   renderSimPanel();
+  renderDiagramPanel();
+}
+
+function newRecorder(s: Simulator): Recorder {
+  const labels: Record<string, string> = {};
+  for (const c of doc.components) if (c.label) labels[c.id] = c.label;
+  return new Recorder(s, labels);
+}
+
+/** Apre o chiude il diagramma delle fasi (solo durante la simulazione). */
+function showDiagram(open: boolean) {
+  diagramOpen = open && !!sim;
+  $("#diagram").hidden = !diagramOpen;
+  $("#btn-diagram").setAttribute("aria-pressed", String(diagramOpen));
+  $("#btn-diagram").classList.toggle("on", diagramOpen);
+  for (const b of document.querySelectorAll<HTMLElement>("#diagram [data-dmode=time], #diagram [data-dmode=step]")) {
+    b.setAttribute("aria-pressed", String(b.dataset.dmode === diagramMode));
+  }
+  renderDiagramPanel();
+}
+
+function renderDiagramPanel() {
+  const stage = $("#stage");
+  if (!sim || !diagramOpen) { stage.style.removeProperty("--diagram-h"); return; }
+  const body = $("#diagram-body");
+  const r = sim.recorder;
+  if (!r.channels.length) {
+    body.innerHTML = `<p class="dg-empty">Nello schema non ci sono cilindri, valvole o bobine da tracciare.</p>`;
+  } else {
+    body.innerHTML = renderDiagram(r.channels, r.samples, diagramMode, Math.max(320, body.clientWidth - 4));
+    body.style.height = `${Math.min(diagramHeight(r.channels), Math.round(stage.clientHeight * 0.4))}px`;
+  }
+  stage.style.setProperty("--diagram-h", `${$("#diagram").offsetHeight}px`);
 }
 
 function updatePlayButton() {
@@ -1798,9 +1842,9 @@ function simFrame(ts: number) {
   if (!sim) return;
   const dt = Math.min(0.05, Math.max(0, (ts - sim.last) / 1000));
   sim.last = ts;
-  if (sim.playing) sim.s.advance(dt * sim.speed);
+  if (sim.playing) { sim.s.advance(dt * sim.speed); sim.recorder.record(sim.s.t); }
   render();
-  if (ts - sim.lastPanel > 120) { sim.lastPanel = ts; updateSimPanel(); }
+  if (ts - sim.lastPanel > 120) { sim.lastPanel = ts; updateSimPanel(); if (diagramOpen) renderDiagramPanel(); }
   sim.raf = requestAnimationFrame(simFrame);
 }
 
@@ -2782,6 +2826,12 @@ $("#projects-dialog").addEventListener("click", (e) => {
   if (act === "save-current") saveProject().then(refreshProjectList);
 });
 
+$("#diagram").addEventListener("click", (e) => {
+  const mode = target(e).closest<HTMLElement>("button")?.dataset.dmode;
+  if (mode === "close") showDiagram(false);
+  else if (mode === "time" || mode === "step") { diagramMode = mode; showDiagram(true); }
+});
+
 $("#toolbar").addEventListener("click", (e) => {
   const act = target(e).closest<HTMLElement>("button")?.dataset.act;
   switch (act) {
@@ -2801,6 +2851,7 @@ $("#toolbar").addEventListener("click", (e) => {
     case "sim": if (sim) stopSim(); else startSim(); break;
     case "sim-play": togglePlay(); break;
     case "sim-reset": resetSim(); break;
+    case "sim-diagram": showDiagram(!diagramOpen); break;
   }
 });
 
