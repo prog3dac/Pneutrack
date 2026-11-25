@@ -9,7 +9,7 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { hasPilotPort, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { allPorts, analyze, build } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
@@ -255,8 +255,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const initial: Position = fn.startsWith("5/3") ? "0" : act14 === "spring" ? "14" : "12";
         valves.push({
           id: c.id, fn, act14, act12,
-          pilot14: act14 === "pilot" ? node(c, "14") : undefined,
-          pilot12: act12 === "pilot" ? node(c, "12") : undefined,
+          // pilotaggio pneumatico o alimentazione della valvola pilota (esterna: 14/12, interna: 1)
+          pilot14: hasPilotPort(act14) ? node(c, "14") : act14 === "solenoid_pilot" ? node(c, "1") : undefined,
+          pilot12: hasPilotPort(act12) ? node(c, "12") : act12 === "solenoid_pilot" ? node(c, "1") : undefined,
           pilotThreshold: c.params.min_pressure?.si ?? DEFAULT_PILOT_THRESHOLD,
           initial, cam14: c.cam_14, cam12: c.cam_12,
         });

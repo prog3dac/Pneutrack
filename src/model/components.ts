@@ -9,7 +9,12 @@
 import { Quantity, UnitError, type Dimension } from "./units";
 
 export type PortKind = "supply" | "work" | "exhaust" | "pilot";
-export type Actuation = "solenoid" | "pilot" | "manual" | "mechanical" | "spring";
+export type Actuation =
+  | "solenoid" | "solenoid_pilot" | "solenoid_pilot_ext"
+  | "pilot"
+  | "manual" | "lever" | "lever_detent" | "pedal"
+  | "mechanical" | "plunger" | "roller_oneway"
+  | "spring";
 export type ValveFunction = "2/2" | "3/2" | "4/2" | "5/2" | "5/3" | "5/3E" | "5/3P";
 
 export interface PortSpec {
@@ -128,14 +133,42 @@ export const VALVE_PORTS: Record<ValveFunction, [string, PortKind][]> = {
   "5/3E": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
   "5/3P": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
 };
-export const ACTUATIONS: Actuation[] = ["solenoid", "pilot", "manual", "mechanical", "spring"];
-const ACTUATION_LABELS: Record<Actuation, string> = {
-  solenoid: "Elettrico (solenoide)",
-  pilot: "Pneumatico (pilotaggio)",
-  manual: "Manuale (pulsante)",
-  mechanical: "Meccanico (rullo)",
+/** Comandi secondo ISO 1219-1, nell'ordine in cui compaiono nel menu. */
+export const ACTUATIONS: Actuation[] = [
+  "solenoid", "solenoid_pilot", "solenoid_pilot_ext", "pilot",
+  "manual", "lever", "lever_detent", "pedal",
+  "mechanical", "plunger", "roller_oneway", "spring",
+];
+export const ACTUATION_LABELS: Record<Actuation, string> = {
+  solenoid: "Elettrico: solenoide diretto",
+  solenoid_pilot: "Elettrico: solenoide e valvola pilota (alimentazione interna)",
+  solenoid_pilot_ext: "Elettrico: solenoide e valvola pilota (alimentazione esterna)",
+  pilot: "Pneumatico: pilotaggio in pressione",
+  manual: "Manuale: pulsante",
+  lever: "Manuale: leva",
+  lever_detent: "Manuale: leva con arresto",
+  pedal: "Manuale: pedale",
+  mechanical: "Meccanico: rullo",
+  plunger: "Meccanico: tastatore",
+  roller_oneway: "Meccanico: rullo unidirezionale (leva ribaltabile)",
   spring: "Molla",
 };
+/** Nome breve per pannelli ed etichette. */
+export const ACTUATION_SHORT: Record<Actuation, string> = {
+  solenoid: "solenoide", solenoid_pilot: "elettropilota", solenoid_pilot_ext: "elettropilota esterno",
+  pilot: "pilotaggio", manual: "pulsante", lever: "leva", lever_detent: "leva con arresto", pedal: "pedale",
+  mechanical: "rullo", plunger: "tastatore", roller_oneway: "rullo unidirezionale", spring: "molla",
+};
+/** Comandi elettrici: il solenoide si eccita e si diseccita. */
+export const isElectric = (a?: Actuation) => a === "solenoid" || a === "solenoid_pilot" || a === "solenoid_pilot_ext";
+/** Comandi meccanici: possono essere azionati da un cilindro (finecorsa). */
+export const isMechanical = (a?: Actuation) => a === "mechanical" || a === "plunger" || a === "roller_oneway";
+/** Comandi che restano nella posizione in cui li si lascia (solenoidi, leva con arresto). */
+export const isLatching = (a?: Actuation) => isElectric(a) || a === "lever_detent";
+/** Comandi azionati dall'utente finché tiene premuto. */
+export const isMomentary = (a?: Actuation) => a === "manual" || a === "lever" || a === "pedal" || isMechanical(a);
+/** Comandi con una porta di pilotaggio (12 o 14): pilotaggio pneumatico o alimentazione esterna del pilota. */
+export const hasPilotPort = (a?: Actuation) => a === "pilot" || a === "solenoid_pilot_ext";
 
 const cylinderParams: ParamSpec[] = [
   p("bore", "Alesaggio", "length", { required: true }),
@@ -257,17 +290,24 @@ const DEFS: TypeDef[] = [
       { label: "3/2 NA a pulsante", options: { function: "3/2", actuation_14: "spring", actuation_12: "manual" } },
       { label: "2/2 a pulsante (intercettazione)", options: { function: "2/2", actuation_14: "manual", actuation_12: "spring" } },
       { label: "5/2 monostabile a solenoide", options: { function: "5/2", actuation_14: "solenoid", actuation_12: "spring" } },
+      { label: "5/2 monostabile elettropneumatica", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "spring" } },
       { label: "5/2 monostabile pilotata", options: { function: "5/2", actuation_14: "pilot", actuation_12: "spring" } },
       { label: "5/2 bistabile pneumatica", options: { function: "5/2", actuation_14: "pilot", actuation_12: "pilot" } },
       { label: "5/2 bistabile elettrica", options: { function: "5/2", actuation_14: "solenoid", actuation_12: "solenoid" } },
+      { label: "5/2 bistabile elettropneumatica", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "solenoid_pilot" } },
+      { label: "5/2 elettropneumatica, pilota esterno", options: { function: "5/2", actuation_14: "solenoid_pilot_ext", actuation_12: "spring" } },
+      { label: "5/2 a leva con arresto", options: { function: "5/2", actuation_14: "lever_detent", actuation_12: "lever_detent" } },
+      { label: "3/2 NC a pedale", options: { function: "3/2", actuation_14: "pedal", actuation_12: "spring" } },
+      { label: "3/2 NC a tastatore", options: { function: "3/2", actuation_14: "plunger", actuation_12: "spring" } },
+      { label: "3/2 NC a rullo unidirezionale", options: { function: "3/2", actuation_14: "roller_oneway", actuation_12: "spring" } },
       { label: "5/3 centri chiusi", options: { function: "5/3", actuation_14: "solenoid", actuation_12: "solenoid" } },
       { label: "5/3 centri in scarico", options: { function: "5/3E", actuation_14: "solenoid", actuation_12: "solenoid" } },
       { label: "5/3 centri in pressione", options: { function: "5/3P", actuation_14: "solenoid", actuation_12: "solenoid" } },
     ],
     ports: (c) => {
       const ports = VALVE_PORTS[c.function ?? "5/2"].map(([n, k]) => port(n, k, k === "exhaust"));
-      if (c.actuation_14 === "pilot") ports.push(port("14", "pilot"));
-      if (c.actuation_12 === "pilot") ports.push(port("12", "pilot"));
+      if (hasPilotPort(c.actuation_14)) ports.push(port("14", "pilot"));
+      if (hasPilotPort(c.actuation_12)) ports.push(port("12", "pilot"));
       return ports;
     },
     // analisi conservativa: in qualche posizione l'alimentazione raggiunge ogni utilizzo
@@ -379,7 +419,7 @@ const DEFS: TypeDef[] = [
     type: "single_acting_cylinder", label: "Cilindro semplice effetto", category: ACTUATORS,
     doc: "Cilindro a semplice effetto con ritorno a molla. Porta A: camera di spinta.",
     params: [...cylinderParams, p("spring_force", "Forza molla", "force", { group: "sim", simDefault: "15 N" })],
-    defaults: { bore: "20 mm", stroke: "50 mm", max_pressure: "10 bar" },
+    defaults: { bore: "20 mm", rod: "8 mm", stroke: "50 mm", max_pressure: "10 bar" },
     actuator: true,
     ports: () => [port("A", "work")],
   },
@@ -452,8 +492,8 @@ export function buildComponent(raw: ComponentData): Component {
       if (raw_cam == null || raw_cam === "") continue;
       const m = /^([A-Za-z0-9_-]+)([+-])$/.exec(String(raw_cam));
       if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
-      if (comp[`actuation_${side}`] !== "mechanical") {
-        throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede il comando a rullo sul lato ${side}`);
+      if (!isMechanical(comp[`actuation_${side}`])) {
+        throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede un comando meccanico sul lato ${side}`);
       }
       comp[`cam_${side}`] = { cylinder: m[1]!, end: m[2] as "+" | "-" };
     }

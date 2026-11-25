@@ -2,7 +2,11 @@
 // Tutto gira nel browser: modello, validazione e solutore sono moduli TypeScript.
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import {
-  buildComponent, cylinderInfo, typeList, type ComponentData, type ParamSpec, type TypeDef,
+  CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
+} from "../model/cylinders";
+import {
+  ACTUATION_SHORT, buildComponent, cylinderInfo, isElectric, isLatching, isMechanical, isMomentary, typeList,
+  type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
 import { Quantity, type Dimension } from "../model/units";
@@ -37,9 +41,6 @@ const PREF_UNIT: Record<Dimension, string> = {
 const EXAMPLE_VALUE: Partial<Record<Dimension, string>> = {
   pressure: "6 bar", length: "32 mm", flow: "500 Nl/min", angle: "90 deg", force: "10 N",
   mass: "1 kg", conductance: "1 dm3/(s·bar)", dimensionless: "0.35",
-};
-const ACTUATION_NAME: Record<string, string> = {
-  solenoid: "solenoide", manual: "pulsante", mechanical: "rullo", pilot: "pilotaggio", spring: "molla",
 };
 
 const EXAMPLES = Object.entries(
@@ -458,6 +459,7 @@ function camField(comp: ComponentData, side: "14" | "12") {
   const sel = document.createElement("select");
   sel.name = key;
   const choices: [string, string][] = [["", "a mano (clic in simulazione)"]];
+  const what = ACTUATION_SHORT[(comp[`actuation_${side}`] ?? "mechanical") as Actuation];
   for (const c of doc.components.filter((x) => x.type.endsWith("_cylinder"))) {
     choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)`]);
   }
@@ -473,14 +475,66 @@ function camField(comp: ComponentData, side: "14" | "12") {
     const c = byId(comp.id)!;
     if (sel.value) c[key] = sel.value; else delete c[key];
   }));
-  const f = field(`Rullo ${side} premuto da`, sel);
+  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel);
   if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
   return f;
+}
+
+/** Misura normalizzata del cilindro: imposta insieme alesaggio e stelo. */
+function cylinderSizeField(comp: ComponentData) {
+  const sel = document.createElement("select");
+  sel.name = "cylinder-size";
+  const custom = document.createElement("option");
+  custom.value = ""; custom.textContent = "Personalizzata (valori inseriti a mano)";
+  sel.append(custom);
+  for (const series of CYLINDER_SERIES) {
+    const g = document.createElement("optgroup");
+    g.label = series.label;
+    for (const { bore, rod } of series.sizes) {
+      const o = document.createElement("option");
+      o.value = `${series.id}|${bore}|${rod}`;
+      o.textContent = `${series.label.split(" (")[0]} · Ø${bore} · stelo Ø${rod}`;
+      g.append(o);
+    }
+    sel.append(g);
+  }
+  const match = seriesOf(comp.params?.bore, comp.params?.rod)[0];
+  sel.value = match ? `${match.id}|${toMm(comp.params!.bore)}|${toMm(comp.params!.rod)}` : "";
+  sel.addEventListener("change", () => {
+    if (!sel.value) return;
+    const [, bore, rod] = sel.value.split("|");
+    mutate(() => {
+      const c = byId(comp.id)!;
+      c.params = { ...c.params, bore: `${bore} mm`, rod: `${rod} mm` };
+    });
+  });
+  return field("Misura standard", sel);
+}
+
+/** Suggerimenti per i campi di alesaggio, stelo e corsa (si può sempre scrivere un altro valore). */
+const STANDARD_LISTS: Record<string, number[]> = { bore: STANDARD_BORES, rod: STANDARD_RODS, stroke: STANDARD_STROKES };
+function standardList(name: string): string | null {
+  const values = STANDARD_LISTS[name];
+  if (!values) return null;
+  const id = `std-${name}`;
+  if (!document.getElementById(id)) {
+    const dl = document.createElement("datalist");
+    dl.id = id;
+    for (const v of values) {
+      const o = document.createElement("option");
+      o.value = `${v} mm`;
+      dl.append(o);
+    }
+    document.body.append(dl);
+  }
+  return id;
 }
 
 function paramInput(comp: ComponentData, p: ParamSpec) {
   const inp = document.createElement("input");
   inp.name = `param-${p.name}`;
+  const list = comp.type.endsWith("_cylinder") ? standardList(p.name) : null;
+  if (list) inp.setAttribute("list", list);
   inp.value = comp.params?.[p.name] ?? "";
   inp.placeholder = p.simDefault ? `predefinito ${p.simDefault}`
     : (p.required ? "obbligatorio, " : "") + `es. ${EXAMPLE_VALUE[p.dimension] ?? `1 ${PREF_UNIT[p.dimension]}`}`;
@@ -535,18 +589,19 @@ function renderProperties() {
       sel.addEventListener("change", () => mutate(() => {
         const c = byId(comp.id)!;
         c[opt.name] = sel.value;
-        if (opt.name !== "function" && sel.value !== "mechanical") delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
+        if (opt.name !== "function" && !isMechanical(sel.value as Actuation)) delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
         pruneConnections(comp.id);
       }));
       panel.append(field(opt.label, sel));
       // rullo: può essere premuto da un cilindro a fine corsa
       const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
-      if (side && (comp[opt.name] ?? opt.default) === "mechanical") panel.append(camField(comp, side));
+      if (side && isMechanical((comp[opt.name] ?? opt.default) as Actuation)) panel.append(camField(comp, side));
     }
 
     const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
     const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
     if (catalogParams.length) heading(panel, "Parametri da catalogo");
+    if (comp.type.endsWith("_cylinder")) panel.append(cylinderSizeField(comp));
     for (const p of catalogParams) panel.append(paramInput(comp, p));
     if (simParams.length) heading(panel, "Parametri di simulazione");
     for (const p of simParams) panel.append(paramInput(comp, p));
@@ -959,7 +1014,7 @@ function resetSim() {
   // i solenoidi restano come li ha lasciati l'utente
   for (const [id, side] of commands) {
     const v = sim.s.net.valves.find((x) => x.id === id)!;
-    if ((side === "14" ? v.act14 : v.act12) === "solenoid") sim.s.setCommand(id, side, true);
+    if (isLatching(side === "14" ? v.act14 : v.act12)) sim.s.setCommand(id, side, true);
   }
   render();
   renderSimPanel();
@@ -985,7 +1040,7 @@ function commandSides() {
   return sim.s.net.valves.flatMap((v) => (["14", "12"] as const).flatMap((side) => {
     const act = side === "14" ? v.act14 : v.act12;
     const cam = side === "14" ? v.cam14 : v.cam12;
-    return act === "solenoid" || act === "manual" || (act === "mechanical" && !cam) ? [{ id: v.id, side, act }] : [];
+    return isLatching(act) || (isMomentary(act) && !cam) ? [{ id: v.id, side, act }] : [];
   }));
 }
 
@@ -994,9 +1049,15 @@ function pressCommand(id: string, side: "14" | "12") {
   const v = sim.s.net.valves.find((x) => x.id === id);
   if (!v) return;
   const act = side === "14" ? v.act14 : v.act12;
-  if (act === "solenoid") {
-    sim.s.setCommand(id, side, !sim.s.command(id, side));
-  } else if (act === "manual" || act === "mechanical") {
+  if (isLatching(act)) {
+    const on = !sim.s.command(id, side);
+    sim.s.setCommand(id, side, on);
+    // leva con arresto su entrambi i lati: è una sola leva, spostarla libera l'altro lato
+    const other = side === "14" ? "12" : "14";
+    if (on && act === "lever_detent" && (other === "14" ? v.act14 : v.act12) === "lever_detent") {
+      sim.s.setCommand(id, other, false);
+    }
+  } else if (isMomentary(act)) {
     releaseHeld();
     sim.s.setCommand(id, side, true);
     held = { id, side };
@@ -1018,7 +1079,8 @@ function renderSimPanel() {
   const info = document.createElement("p");
   info.className = "sim-help";
   info.textContent = "Fai clic sui comandi delle valvole nello schema o qui sotto. " +
-    "Pulsanti e rulli restano azionati finché tieni premuto; i solenoidi si eccitano e si diseccitano a ogni clic.";
+    "Pulsanti, leve, pedali e rulli restano azionati finché tieni premuto; solenoidi e leve con arresto " +
+    "cambiano stato a ogni clic. Le elettrovalvole servopilotate commutano solo se il pilota ha pressione.";
   panel.append(info);
   for (const w of sim.warnings) {
     const p = document.createElement("p");
@@ -1036,8 +1098,9 @@ function renderSimPanel() {
       const b = document.createElement("button");
       b.dataset.cmd = `${c.id}|${c.side}`;
       b.className = `sim-cmd ${c.act}`;
-      b.textContent = `${c.id} · ${c.side} · ${ACTUATION_NAME[c.act]}`;
-      b.title = c.act === "solenoid" ? "Clic: eccita / diseccita" : "Tieni premuto per azionare";
+      b.textContent = `${c.id} · ${c.side} · ${ACTUATION_SHORT[c.act]}`;
+      b.title = isElectric(c.act) ? "Clic: eccita / diseccita" : isLatching(c.act) ? "Clic: sposta la leva"
+        : "Tieni premuto per azionare";
       box.append(b);
     }
     panel.append(box);

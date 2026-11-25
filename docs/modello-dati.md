@@ -48,12 +48,24 @@ Tutti i tipi accettano `max_pressure`; i parametri di simulazione (`conductance`
 | | `air_motor` | Motore pneumatico | 1, 2 | |
 
 Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`, `5/3E`, `5/3P`) e un
-comando per lato (`actuation_14`, `actuation_12`: `solenoid`, `pilot`, `manual`, `mechanical`,
-`spring`). Un comando `pilot` aggiunge la porta di pilotaggio. Gli scarichi lasciati liberi
-scaricano in atmosfera. La palette propone valvole già configurate (`presets`), per esempio
+comando per lato (`actuation_14`, `actuation_12`), con i comandi di ISO 1219-1:
+
+| Comando | Valore | Comportamento in simulazione |
+|---|---|---|
+| Solenoide diretto | `solenoid` | eccitato o diseccitato con un clic |
+| Solenoide e valvola pilota, alimentazione interna | `solenoid_pilot` | come il solenoide, ma commuta solo se la porta 1 supera la pressione minima di pilotaggio (`min_pressure`, 2 bar se non indicata) |
+| Solenoide e valvola pilota, alimentazione esterna | `solenoid_pilot_ext` | aggiunge la porta 14 (o 12) per l'aria del pilota, che deve superare la pressione minima |
+| Pilotaggio pneumatico | `pilot` | aggiunge la porta 14 (o 12); commuta oltre la pressione minima |
+| Pulsante, leva, pedale | `manual`, `lever`, `pedal` | azionati finché si tiene premuto |
+| Leva con arresto | `lever_detent` | resta dove la si lascia; con l'arresto sui due lati è una sola leva a due posizioni |
+| Rullo, tastatore | `mechanical`, `plunger` | a mano, o da un cilindro a fine corsa (finecorsa) |
+| Rullo unidirezionale (leva ribaltabile) | `roller_oneway` | con un finecorsa dà un impulso solo mentre lo stelo arriva verso la camma (ultimi 5 mm), non quando torna indietro né da fermo |
+| Molla | `spring` | ritorno |
+
+Gli scarichi lasciati liberi scaricano in atmosfera. La palette propone valvole già configurate (`presets`), per esempio
 "3/2 NC a rullo" o "5/2 bistabile pneumatica", e serbatoi di volume diverso.
 
-Un comando `mechanical` può essere un **finecorsa** azionato da un cilindro: `"cam_14": "C1+"`
+Un comando meccanico (`mechanical`, `plunger`, `roller_oneway`) può essere un **finecorsa** azionato da un cilindro: `"cam_14": "C1+"`
 significa che il lato 14 è azionato quando lo stelo di C1 è tutto fuori, `"C1-"` quando è tutto
 dentro. Con i finecorsa si costruiscono cicli automatici (esempio "Ciclo automatico A+ A- con
 finecorsa").
@@ -61,6 +73,13 @@ finecorsa").
 Nuovi tipi: una voce in `DEFS` (`src/model/components.ts`) con porte, parametri ed eventualmente
 `paths` (percorsi interni della pressione) e `sources`; poi il simbolo in `src/ui/symbols.ts` e,
 se va simulato, il comportamento in `src/sim/network.ts`.
+
+### Misure normalizzate dei cilindri
+
+`src/model/cylinders.ts` elenca le coppie alesaggio/stelo delle serie ISO 6432 (minicilindri,
+Ø8–25), ISO 21287 (compatti, Ø20–100) e ISO 15552 (Ø32–320), più alesaggi e steli normalizzati
+(ISO 3320) e corse preferenziali (ISO 4393). Sono solo suggerimenti: nel file i valori restano
+`bore`, `rod` e `stroke` e si possono scrivere a mano.
 
 ## Tubi
 

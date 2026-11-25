@@ -4,7 +4,7 @@
 //   { w, h, ports: { nome: {x, y, dir} }, svg }
 // Le porte coincidono con quelle del modello (numerazione ISO 5599).
 // `state` (facoltativo) è lo stato di simulazione: posizione della valvola, corsa del cilindro.
-import type { ComponentData } from "../model/components";
+import { isMechanical, type Actuation, type ComponentData } from "../model/components";
 import type { Position } from "../sim/network";
 
 export type Dir = [number, number];
@@ -110,9 +110,36 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
       body = line(o(0), 0, o(14), 0) + line(o(14), -8, o(14), 8) +
         path(`M${o(14)},-8 Q${o(20)},0 ${o(14)},8`, "nofill");
       break;
+    case "lever":
+    case "lever_detent":
+      // leva: asta inclinata con impugnatura; con arresto, tacche sopra lo stelo
+      body = line(o(0), 0, o(10), 0) + line(o(10), 0, o(18), -11) + circle(o(18.5), -12, 2, "fill");
+      if (kind === "lever_detent") body += line(o(1), -7, o(9), -7) + path(`M${o(2)},-7 L${o(3.5)},-4 L${o(5)},-7 L${o(6.5)},-4 L${o(8)},-7`, "nofill");
+      break;
+    case "pedal":
+      body = line(o(0), 0, o(10), 0) + line(o(10), 7, o(20), -7) + line(o(10), 7, o(13), 7);
+      break;
     case "mechanical":
       body = line(o(0), 0, o(10), 0) + circle(o(15), 0, 5, "nofill");
       break;
+    case "plunger":
+      // tastatore: asta con testa arrotondata
+      body = line(o(0), 0, o(10), 0) + path(`M${o(10)},-5 L${o(14)},-5 Q${o(19)},0 ${o(14)},5 L${o(10)},5 Z`, "nofill");
+      break;
+    case "roller_oneway":
+      // rullo su leva ribaltabile
+      body = line(o(0), 0, o(8), 0) + line(o(8), 0, o(13), -6) + circle(o(16), -9, 4, "nofill") +
+        circle(o(8), 0, 1.5, "fill");
+      break;
+    case "solenoid_pilot":
+    case "solenoid_pilot_ext": {
+      // valvola pilota (triangolo) comandata dal solenoide
+      const xa = Math.min(o(0), o(10));
+      body = rect(xa, -8, 10, 16) + fillPath(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`) +
+        rect(Math.min(o(10), o(20)), -8, 10, 16) + line(o(10), 8, o(20), -8);
+      if (kind === "solenoid_pilot_ext") body += line(o(5), 8, o(5), 32, "dash");
+      break;
+    }
     case "spring":
       body = zigzag(o(0), 0, o(18), 0, 6, 6);
       break;
@@ -157,8 +184,8 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const a12 = comp.actuation_12 ?? "spring";
   moving += actuator(a14, x0, -1, !!state?.active14) + actuator(a12, -x0, 1, !!state?.active12);
   // finecorsa: sigla del cilindro che preme il rullo
-  if (comp.cam_14 && a14 === "mechanical") moving += text(x0 - 15, -10, comp.cam_14, "cam-label");
-  if (comp.cam_12 && a12 === "mechanical") moving += text(-x0 + 15, -10, comp.cam_12, "cam-label");
+  if (comp.cam_14 && isMechanical(a14 as Actuation)) moving += text(x0 - 15, -16, comp.cam_14, "cam-label");
+  if (comp.cam_12 && isMechanical(a12 as Actuation)) moving += text(-x0 + 15, -16, comp.cam_12, "cam-label");
 
   let fixedPart = "";
   const ports: Record<string, PortGeom> = {};
@@ -180,6 +207,15 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   if (a12 === "pilot") {
     ports["12"] = { x: -x0 + 20, y: 0, dir: right };
     if (shift < 0) fixedPart += line(-x0 + 20 + shift, 0, -x0 + 20, 0, "dash");
+  }
+  // alimentazione esterna della valvola pilota: porta sotto il comando
+  if (a14 === "solenoid_pilot_ext") {
+    ports["14"] = { x: x0 - 5, y: 32, dir: down };
+    if (shift) fixedPart += line(x0 - 5, 32, x0 - 5 + shift, 32, "dash");
+  }
+  if (a12 === "solenoid_pilot_ext") {
+    ports["12"] = { x: -x0 + 5, y: 32, dir: down };
+    if (shift) fixedPart += line(-x0 + 5 + shift, 32, -x0 + 5, 32, "dash");
   }
   const svg = `<g transform="translate(${shift},0)" class="valve-body">${moving}</g>${fixedPart}`;
   return { w: W + 44, h: S + 2 * STUB, ports, svg };

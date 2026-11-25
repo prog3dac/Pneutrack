@@ -10,6 +10,12 @@ import { BAR, KAPPA, P_ATM, R_AIR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { Position, SimNetwork, ValveSpec } from "./network";
+import { isMechanical } from "../model/components";
+
+/** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
+const ONEWAY_ZONE = 0.005;
+/** velocità minima dello stelo perché la leva ribaltabile venga azionata [m/s] */
+const ONEWAY_MIN_SPEED = 1e-3;
 
 export const DT = 2e-5;
 
@@ -109,14 +115,28 @@ export class Simulator {
       return this.t - this.pilotSince.get(key)! >= v.delay - 1e-9;
     }
     const cam = side === "14" ? v.cam14 : v.cam12;
-    if (act === "mechanical" && cam) {
+    if (isMechanical(act) && cam) {
       const c = this.cylinder(cam.cylinder);
       if (!c) return false;
-      // il rullo è premuto negli ultimi 2 mm di corsa
-      const tol = 0.002 / this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+      const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+      if (act === "roller_oneway") {
+        // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
+        const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
+        const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+        const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
+        return inZone && towards;
+      }
+      // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
+      const tol = 0.002 / stroke;
       return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
     }
-    return this.command(v.id, side);
+    const on = this.command(v.id, side);
+    if (act === "solenoid_pilot" || act === "solenoid_pilot_ext") {
+      // la valvola pilota commuta solo se la sua alimentazione ha pressione sufficiente
+      const n = side === "14" ? v.pilot14 : v.pilot12;
+      return on && n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
+    }
+    return on;
   }
 
   /** Tempo che manca allo scatto di un temporizzatore, o null se non sta contando. */

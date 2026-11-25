@@ -60,7 +60,7 @@ await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
 assert.deepEqual(await visible(), ["Valvola di non ritorno", "Non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
 await page.fill("#palette-search", "5/2 bistabile");
-assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica"]);
+assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica", "5/2 bistabile elettropneumatica"]);
 await page.fill("#palette-search", "");
 assert.equal((await visible()).length, types.length);
 
@@ -161,6 +161,15 @@ await page.waitForSelector("#issues li.error");
 assert.match(await page.textContent("#status"), /1 errore/);
 if (shots) await page.screenshot({ path: `${shots}/sovrapressione.png` });
 
+// 3b. misure normalizzate del cilindro: la misura predefinita è riconosciuta, il menu imposta alesaggio e stelo
+assert.equal(await page.inputValue('#properties select[name="cylinder-size"]'), "iso6432|20|8");
+assert.equal(await page.getAttribute('#properties input[name="param-stroke"]', "list"), "std-stroke");
+await page.selectOption('#properties select[name="cylinder-size"]', "iso6432|25|10");
+await settled();
+s = await state();
+assert.equal(s.doc.components[2].params.bore, "25 mm");
+assert.equal(s.doc.components[2].params.rod, "10 mm");
+
 // 4. parametro con unità sbagliata
 await page.fill('#properties input[name="param-bore"]', "20 bar");
 await page.press('#properties input[name="param-bore"]', "Enter");
@@ -168,8 +177,9 @@ await settled();
 s = await state();
 assert.ok(s.analysis.issues.some((i) => i.code === "INVALID_COMPONENT" && i.component === "C1"));
 
-// 5. annulla due volte: torna il cilindro valido a 4 bar, poi a 10 bar
+// 5. annulla tre volte (alesaggio sbagliato, misura standard, 4 bar): torna il cilindro valido a 10 bar
 await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.keyboard.press("Control+z");
 await page.keyboard.press("Control+z");
 await page.keyboard.press("Control+z");
 await settled();
