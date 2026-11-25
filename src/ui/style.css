@@ -353,3 +353,4 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 .component.junction.selected .junction-dot { fill: var(--sel); }
 .junction-grab { fill: transparent; cursor: move; }
 .line.target .stroke { stroke: var(--accent); stroke-width: 3.4; }
+#canvas.panning { cursor: grab; }

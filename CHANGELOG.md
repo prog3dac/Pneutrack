@@ -3,6 +3,12 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.9.0 · 2026-11-25
+
+- Copia, taglia e incolla (Ctrl+C, Ctrl+X, Ctrl+V e pulsanti nella barra): si copiano i componenti scelti con le linee tra loro, e un blocco resta un blocco. Si incolla sotto il puntatore, anche in un altro progetto o in un'altra scheda.
+- Selezione a riquadro trascinando sul vuoto, con Maiusc per aggiungere alla selezione.
+- La vista si sposta con Spazio+trascina o con il tasto centrale del mouse.
+
 ## 0.8.0 · 2026-11-25
 
 - Punti di connessione: si trascina una linea sopra un'altra per diramarla, e allo stesso punto si collegano tutte le linee che servono. Il pallino prende il colore della pressione.

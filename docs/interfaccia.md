@@ -97,12 +97,20 @@ connessione* della palette si può lasciare direttamente su una linea. Un tubo s
 in proporzione alla lunghezza disegnata. Eliminando un punto che unisce solo due linee, le due
 linee tornano una sola.
 
+## Selezione, copia e incolla
+
+- Un clic seleziona un componente; `Maiusc`+clic aggiunge o toglie un componente dalla selezione.
+- Trascinando sul vuoto si disegna un riquadro: sono selezionati i componenti che vi cadono
+  dentro (con `Maiusc` si aggiungono a quelli già scelti). `Ctrl+A` seleziona tutto, `Esc` niente.
+- `Ctrl+C` copia la selezione con le linee tra i componenti copiati, `Ctrl+X` la taglia, `Ctrl+V`
+  la incolla sotto il puntatore (o, dai pulsanti, accanto all'originale) con sigle nuove. Copiando
+  un blocco si incolla un blocco. La copia passa dagli appunti del sistema, quindi si incolla
+  anche in un altro progetto, in un'altra scheda o in un altro browser.
+
 ## Blocchi
 
 Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una descrizione.
 
-- **Selezione multipla**: `Maiusc`+clic aggiunge o toglie un componente; `Maiusc`+trascinamento
-  su un'area vuota disegna un riquadro di selezione; `Ctrl+A` seleziona tutto.
 - **Unisci** (`Ctrl+G`) crea un blocco dai componenti selezionati; **Dividi** (`Ctrl+Maiusc+G`)
   lo scioglie lasciando i componenti dove sono.
 - Un clic su un componente del blocco seleziona il blocco intero, che si sposta, duplica ed
@@ -112,7 +120,8 @@ Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una 
 - Il filtro *Riquadri dei blocchi* in *Mostra* nasconde le cornici tratteggiate.
 
 Scorciatoie: `R` ruota, `Canc` elimina, `Ctrl+Z`/`Ctrl+Y` annulla/ripeti, `Ctrl+D` duplica,
-`Ctrl+G`/`Ctrl+Maiusc+G` unisci/dividi, `Ctrl+A` seleziona tutto, `Ctrl+S` salva, `F` adatta la vista, rotella per lo zoom, trascina il foglio per spostare la vista.
+`Ctrl+G`/`Ctrl+Maiusc+G` unisci/dividi, `Ctrl+A` seleziona tutto, `Ctrl+S` salva, `F` adatta la vista, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copia/taglia/incolla, rotella per lo zoom, `Spazio`+trascina o tasto
+centrale del mouse per spostare la vista.
 
 ## Struttura
 

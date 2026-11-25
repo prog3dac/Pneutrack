@@ -60,7 +60,7 @@ const EXAMPLES = Object.entries(
 type Selection =
   | { kind: "component"; id: string }
   | { kind: "connection"; index: number }
-  /** più componenti scelti con Maiusc+clic o con un riquadro (Maiusc+trascina) */
+  /** più componenti scelti con Maiusc+clic o con un riquadro (trascinando sul vuoto) */
   | { kind: "multi"; ids: string[] }
   | { kind: "block"; id: string }
   | null;
@@ -1116,7 +1116,7 @@ function renderProperties() {
     const help = document.createElement("p");
     help.className = "help";
     help.textContent = "Trascina uno dei componenti per spostarli tutti. Maiusc+clic aggiunge o toglie un componente, " +
-      "Maiusc+trascina sul vuoto seleziona con un riquadro.";
+      "trascinando sul vuoto si seleziona con un riquadro. Ctrl+C / Ctrl+X / Ctrl+V copia, taglia e incolla.";
     panel.append(help);
   } else if (selection?.kind === "connection" && doc.connections[selection.index]) {
     const c = doc.connections[selection.index]!;
@@ -1183,7 +1183,9 @@ function renderProperties() {
       <ul><li><kbd>R</kbd> ruota</li><li><kbd>Canc</kbd> elimina</li>
       <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd> annulla / ripeti</li>
       <li><kbd>Ctrl</kbd>+<kbd>D</kbd> duplica</li><li><kbd>Ctrl</kbd>+<kbd>S</kbd> salva il progetto</li>
-      <li>Rotella: zoom · trascina il foglio: sposta la vista</li></ul>`;
+      <li><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd> copia, taglia, incolla (sotto il puntatore)</li>
+      <li>Trascina sul vuoto: seleziona con un riquadro (<kbd>Maiusc</kbd> per aggiungere) · <kbd>Ctrl</kbd>+<kbd>A</kbd> tutto</li>
+      <li>Rotella: zoom · <kbd>Spazio</kbd>+trascina o tasto centrale: sposta la vista</li></ul>`;
     panel.append(help);
   }
 }
@@ -1311,6 +1313,10 @@ function renderStatus() {
     : analysis.warnings ? plural(analysis.warnings, "avviso", "avvisi") : "Schema valido";
   $<HTMLButtonElement>("#btn-undo").disabled = !!sim || !history.past.length;
   $<HTMLButtonElement>("#btn-redo").disabled = !!sim || !history.future.length;
+  const none = !selectedIds().length;
+  $<HTMLButtonElement>("#btn-copy").disabled = none;
+  $<HTMLButtonElement>("#btn-cut").disabled = !!sim || none;
+  $<HTMLButtonElement>("#btn-paste").disabled = !!sim || !storedClip();
   $("#doc-name").textContent = doc.name || "Senza nome";
   renderSaveState();
 }
@@ -1428,6 +1434,85 @@ function duplicateSelection() {
   if (newBlock) select({ kind: "block", id: newBlock });
   else select(added.length > 1 ? { kind: "multi", ids: added } : { kind: "component", id: added[0]! });
 }
+
+// --- appunti: copia, taglia, incolla ------------------------------------------------
+const CLIP_KEY = "pneutrack.clipboard.v1"; // ultima copia, condivisa tra progetti e schede
+const CLIP_FORMAT = "pneutrack/clipboard";
+interface Clip { format: typeof CLIP_FORMAT; block: boolean; origin: [number, number]; fragment: Fragment }
+let clipPastes = 0; // incolla ripetuti senza puntatore sul foglio: ogni copia scala di 40
+let pointerWorld: { x: number; y: number } | null = null; // ultimo punto del puntatore sul foglio
+
+function parseClip(text: string | null | undefined): Clip | null {
+  if (!text) return null;
+  try {
+    const raw = JSON.parse(text) as Partial<Clip>;
+    if (raw?.format !== CLIP_FORMAT) return null;
+    const fragment = parseFragment(raw.fragment);
+    if (!fragment) return null;
+    const o = Array.isArray(raw.origin) && raw.origin.length === 2 ? raw.origin as [number, number] : [0, 0] as [number, number];
+    return { format: CLIP_FORMAT, block: !!raw.block, origin: o, fragment };
+  } catch { return null; }
+}
+function storedClip(): Clip | null {
+  try { return parseClip(localStorage.getItem(CLIP_KEY)); } catch { return null; }
+}
+
+/** Copia la selezione negli appunti dell'app (e restituisce il testo per quelli del sistema). */
+function copySelection(): string | null {
+  const ids = selectedIds();
+  if (!ids.length) return null;
+  const block = selection?.kind === "block" ? doc.blocks?.find((b) => b.id === (selection as { id: string }).id) : undefined;
+  const frag = extractFragment(doc, ids, block?.name ?? "", block?.description);
+  const origin: [number, number] = [Math.min(...ids.map((id) => layoutOf(id).x)), Math.min(...ids.map((id) => layoutOf(id).y))];
+  const text = JSON.stringify({ format: CLIP_FORMAT, block: !!block, origin, fragment: frag } satisfies Clip);
+  try { localStorage.setItem(CLIP_KEY, text); } catch { /* resta solo negli appunti del sistema */ }
+  clipPastes = 0;
+  renderStatus();
+  toast(ids.length === 1 ? `Copiato ${ids[0]}` : `Copiati ${ids.length} componenti` + (block ? ` (blocco «${block.name}»)` : ""));
+  return text;
+}
+
+function cutSelection(): string | null {
+  if (sim) return null;
+  const text = copySelection();
+  if (text) deleteSelection();
+  return text;
+}
+
+/** Incolla: sotto il puntatore se è sul foglio, altrimenti scalato rispetto all'originale. */
+function pasteClip(clip: Clip | null = storedClip()) {
+  if (!clip || sim) { if (!clip) toast("Niente da incollare: copia prima uno o più componenti"); return; }
+  clipPastes++;
+  const at = pointerWorld
+    ? { x: snap(pointerWorld.x), y: snap(pointerWorld.y) }
+    : { x: clip.origin[0] + 40 * clipPastes, y: clip.origin[1] + 40 * clipPastes };
+  let added: string[] = [];
+  let newBlock: string | undefined;
+  mutate(() => {
+    added = insertFragment(doc, clip.fragment, at, freeId);
+    if (clip.block) newBlock = mergeBlock(doc, added, clip.fragment.name || undefined, clip.fragment.description).id;
+  });
+  if (newBlock) select({ kind: "block", id: newBlock });
+  else select(added.length > 1 ? { kind: "multi", ids: added } : { kind: "component", id: added[0]! });
+}
+
+// gli eventi copy/cut/paste passano anche dagli appunti del sistema: si copia tra schede e browser
+const editingText = () => !!(document.activeElement?.closest("input, select, textarea"));
+document.addEventListener("copy", (e) => {
+  if (editingText() || window.getSelection()?.toString()) return;
+  const text = copySelection();
+  if (text && e.clipboardData) { e.clipboardData.setData("text/plain", text); e.preventDefault(); }
+});
+document.addEventListener("cut", (e) => {
+  if (editingText() || window.getSelection()?.toString()) return;
+  const text = cutSelection();
+  if (text && e.clipboardData) { e.clipboardData.setData("text/plain", text); e.preventDefault(); }
+});
+document.addEventListener("paste", (e) => {
+  if (editingText()) return;
+  e.preventDefault();
+  pasteClip(parseClip(e.clipboardData?.getData("text/plain")) ?? storedClip());
+});
 
 /** Unisci: i componenti selezionati diventano un blocco. */
 function mergeSelection() {
@@ -1799,6 +1884,10 @@ type Drag =
   /** piega di una linea: `bend` è l'indice del punto, -1 finché non si è mosso il puntatore */
   | { mode: "bend"; index: number; bend: number; sx: number; sy: number; before: string; moved: boolean };
 let drag: Drag | null = null;
+/** barra spaziatrice tenuta premuta: trascinando si sposta la vista */
+let spaceHeld = false;
+document.addEventListener("keyup", (e) => { if (e.key === " ") { spaceHeld = false; svg.classList.remove("panning"); } });
+window.addEventListener("blur", () => { spaceHeld = false; svg.classList.remove("panning"); });
 
 svg.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 && e.button !== 1) return;
@@ -1859,9 +1948,9 @@ svg.addEventListener("pointerdown", (e) => {
     const id = blockEl.dataset.block!;
     if (selection?.kind !== "block" || selection.id !== id) select({ kind: "block", id });
     drag = groupDrag(selectedIds(), w);
-  } else if (!sim && e.button === 0 && e.shiftKey && !line) {
-    // Maiusc+trascina sul vuoto: riquadro di selezione
-    drag = { mode: "marquee", sx: w.x, sy: w.y, add: selectedIds() };
+  } else if (!sim && e.button === 0 && !line && !spaceHeld) {
+    // trascinando sul vuoto: riquadro di selezione (con Maiusc si aggiunge alla selezione)
+    drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [] };
   } else if (!sim && line && e.button === 0) {
     const index = Number(line.dataset.connection);
     if (selection?.kind !== "connection" || selection.index !== index) select({ kind: "connection", index });
@@ -1872,6 +1961,7 @@ svg.addEventListener("pointerdown", (e) => {
 });
 
 svg.addEventListener("pointermove", (e) => {
+  pointerWorld = toWorld(e);
   if (!drag) return;
   const w = toWorld(e);
   if (drag.mode === "group") {
@@ -1934,6 +2024,8 @@ svg.addEventListener("pointermove", (e) => {
     else if (!over) lineUnder(e, drag.from)?.el.classList.add("target");
   }
 });
+
+svg.addEventListener("pointerleave", () => { if (!drag) pointerWorld = null; });
 
 svg.addEventListener("pointerup", (e) => {
   if (!drag) return;
@@ -2099,6 +2191,7 @@ document.addEventListener("keydown", (e) => {
     else if (key === "f" && !mod) fitView();
     return;
   }
+  if (e.key === " ") { e.preventDefault(); spaceHeld = true; svg.classList.add("panning"); return; }
   if (mod && key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
   else if (mod && (key === "y" || (key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
   else if (mod && key === "d") { e.preventDefault(); duplicateSelection(); }
@@ -2486,6 +2579,9 @@ $("#toolbar").addEventListener("click", (e) => {
     case "export": exportCurrent(); break;
     case "pdf": exportPdf(); break;
     case "undo": undo(); break;
+    case "copy": copySelection(); break;
+    case "cut": cutSelection(); break;
+    case "paste": pasteClip(); break;
     case "redo": redo(); break;
     case "fit": fitView(); break;
     case "whats-new": openNews(); break;

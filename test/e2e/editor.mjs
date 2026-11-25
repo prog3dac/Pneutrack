@@ -14,6 +14,7 @@ const expectedStore = process.env.PNEUTRACK_EXPECT_STORE || "browser";
 const browser = await chromium.launch(
   process.env.PNEUTRACK_CHROMIUM ? { executablePath: process.env.PNEUTRACK_CHROMIUM } : {});
 const page = await browser.newPage({ viewport: { width: 1400, height: 820 } });
+await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 
@@ -499,6 +500,40 @@ assert.equal(s.doc.components.filter((c) => c.type === "junction").length, 1);
 assert.equal(s.doc.connections.length, nConn + 2);
 assert.equal(s.doc.components.length, nComp + 2);
 if (shots) await page.screenshot({ path: `${shots}/15-junction.png` });
+
+// 16. selezione a riquadro trascinando sul vuoto; copia, taglia, incolla
+s = await state();
+const nAll = s.doc.components.length, nLines = s.doc.connections.length;
+const cv = await page.locator("#canvas").boundingBox();
+await page.mouse.move(cv.x + 4, cv.y + 4); await page.mouse.down();
+await page.mouse.move(cv.x + cv.width / 2, cv.y + cv.height / 2, { steps: 4 });
+await page.mouse.move(cv.x + cv.width - 4, cv.y + cv.height - 4, { steps: 4 });
+await page.mouse.up();
+assert.match(await page.textContent("#properties h2"), new RegExp(`${nAll} componenti selezionati`));
+assert.equal(await page.locator("#btn-paste").isDisabled(), true, "niente da incollare");
+await page.keyboard.press("Control+c");
+assert.equal(await page.locator("#btn-paste").isDisabled(), false);
+await page.mouse.move(cv.x + 30, cv.y + 30);
+await page.keyboard.press("Control+v");
+await settled();
+s = await state();
+assert.equal(s.doc.components.length, 2 * nAll, "incollati tutti i componenti");
+assert.equal(s.doc.connections.length, 2 * nLines, "incollate tutte le linee tra loro");
+await page.keyboard.press("Control+z");
+await settled();
+// taglia un componente e lo reincolla con il pulsante (accanto all'originale)
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.click(`[data-component="${gauge}"] .halo`, { force: true });
+await page.keyboard.press("Control+x");
+await settled();
+s = await state();
+assert.equal(s.doc.components.length, nAll - 1);
+assert.ok(!s.doc.components.some((c) => c.id === gauge));
+await page.click("#btn-paste");
+await settled();
+s = await state();
+assert.equal(s.doc.components.length, nAll);
+assert.ok(s.doc.components.some((c) => c.id === gauge), "la sigla libera torna uguale");
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();
