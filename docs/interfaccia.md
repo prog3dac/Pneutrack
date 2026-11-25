@@ -112,6 +112,20 @@ seguono, mentre le scritte restano leggibili. Con più componenti o un blocco si
 intero attorno al suo centro, con le pieghe delle linee interne. Nel file la specchiatura è
 `"mirror": true` nel `layout` del componente; il circuito pneumatico non cambia.
 
+## Circuito elettrico di comando
+
+Pulsanti, relè, temporizzatori, bobine, finecorsa elettrici, sensori, pressostati e lampade sono nella categoria
+«Elettrico» della palette, con i simboli CEI EN 60617 disegnati in verticale come negli schemi a scala. Il circuito
+elettrico si disegna accanto a quello pneumatico: i fili sono sottili e marroni, e un filo non si può collegare a
+una porta pneumatica. Le due parti si legano per sigla, dal pannello delle proprietà:
+
+- bobina di elettrovalvola: «Solenoide comandato» sceglie valvola e lato (solo i lati con un solenoide); la sigla
+  della bobina compare accanto al solenoide della valvola;
+- contatto di relè: «Azionato da» sceglie il relè, il temporizzatore o il pressostato;
+- finecorsa elettrico e sensore di prossimità: il cilindro e il fine corsa (+ fuori, − dentro).
+
+Rinominando un componente, i riferimenti che lo indicano si aggiornano.
+
 ## Selezione, copia e incolla
 
 - Un clic seleziona un componente; `Maiusc`+clic aggiunge o toglie un componente dalla selezione.

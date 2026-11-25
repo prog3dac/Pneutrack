@@ -11,6 +11,9 @@ import type { TubeData } from "./tubes";
 import { Quantity } from "./units";
 
 export const JUNCTION = "junction";
+/** punto di connessione dei fili elettrici */
+export const WIRE_JUNCTION = "wire_junction";
+export const isJunctionType = (type?: string): boolean => type === JUNCTION || type === WIRE_JUNCTION;
 export const JUNCTION_PORT = "1";
 
 type Pt = [number, number];
@@ -56,7 +59,7 @@ const withTube = (c: ConnectionData, tube: TubeData | undefined, points: Pt[]): 
  * parte di lunghezza del tubo che va al primo tratto. Restituisce la porta del nuovo punto.
  */
 export function splitConnection(doc: CircuitDoc, index: number, at: Pt, id: string,
-                                bendsBefore = 0, frac = 0.5): string {
+                                bendsBefore = 0, frac = 0.5, type = JUNCTION): string {
   const c = doc.connections[index];
   if (!c) throw new Error(`collegamento ${index} inesistente`);
   const ref = `${id}.${JUNCTION_PORT}`;
@@ -65,7 +68,7 @@ export function splitConnection(doc: CircuitDoc, index: number, at: Pt, id: stri
   const { from, to, tube, points: _p, id: _id, ...rest } = c;
   const first = withTube({ ...rest, from, to: ref }, tubePart(tube, f), pts.slice(0, bendsBefore));
   const second = withTube({ ...rest, from: ref, to }, tubePart(tube, 1 - f), pts.slice(bendsBefore));
-  doc.components.push({ id, type: JUNCTION });
+  doc.components.push({ id, type });
   doc.layout[id] = { x: at[0], y: at[1], rot: 0 };
   doc.connections.splice(index, 1, first, second);
   return ref;
@@ -78,7 +81,7 @@ export function splitConnection(doc: CircuitDoc, index: number, at: Pt, id: stri
  */
 export function dissolveJunction(doc: CircuitDoc, id: string): boolean {
   const comp = doc.components.find((c) => c.id === id);
-  if (comp?.type !== JUNCTION) return false;
+  if (!isJunctionType(comp?.type)) return false;
   const ref = `${id}.${JUNCTION_PORT}`;
   const idx = doc.connections.flatMap((c, i) => (c.from === ref || c.to === ref ? [i] : []));
   if (idx.length !== 2) return false;

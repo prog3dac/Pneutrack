@@ -18,6 +18,13 @@ export interface SymbolState {
   /** lati della valvola comandati in questo momento */
   active14?: boolean;
   active12?: boolean;
+  /** contatto azionato (pulsante premuto, finecorsa o sensore attivo, relè commutato) */
+  actuated?: boolean;
+  /** bobina eccitata, lampada accesa */
+  energized?: boolean;
+  /** sigle delle bobine che eccitano i solenoidi della valvola */
+  coil14?: string;
+  coil12?: string;
 }
 
 const S = 40; // lato di una casella di valvola
@@ -193,6 +200,9 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   // finecorsa: sigla del cilindro che preme il rullo
   if (comp.cam_14 && isMechanical(a14 as Actuation)) moving += text(x0 - 15, -16, comp.cam_14, "cam-label");
   if (comp.cam_12 && isMechanical(a12 as Actuation)) moving += text(-x0 + 15, -16, comp.cam_12, "cam-label");
+  // bobine del circuito elettrico che eccitano i solenoidi
+  if (state?.coil14) moving += text(x0 - 15, -16, state.coil14, "cam-label coil-label");
+  if (state?.coil12) moving += text(-x0 + 15, -16, state.coil12, "cam-label coil-label");
 
   let fixedPart = "";
   const ports: Record<string, PortGeom> = {};
@@ -447,6 +457,110 @@ const rotaryGeometry = (): Geometry => ({
     arrowHead(4, -11, 11, -6) + line(-10, 20, -10, 30) + line(10, 20, 10, 30) + line(0, 0, 0, -4),
 });
 
+
+// --- circuito elettrico (CEI EN 60617, contatti verticali come negli schemi a scala) ----------
+
+const E = 30; // distanza dei morsetti dal centro
+const eTop = (x = 0): PortGeom => ({ x, y: -E, dir: up });
+const eBottom = (x = 0): PortGeom => ({ x, y: E, dir: down });
+const sideText = (x: number, y: number, t: string | undefined, cls = "cam-label") =>
+  t ? `<text x="${x}" y="${y}" class="${cls}" text-anchor="start">${esc(t)}</text>` : "";
+
+/** Segno del comando sul contatto, a sinistra della lama (x0: punto di attacco della linea di comando). */
+function contactOperator(type: string, comp: ComponentData, x0: number, y0: number): string {
+  if (type === "relay_contact") return "";
+  const xo = -22;
+  let svg = line(x0, y0, xo, y0, "dash");
+  if (type === "pushbutton") {
+    svg += line(xo, y0 - 6, xo, y0 + 6) + line(xo, y0 - 6, xo + 3, y0 - 6) + line(xo, y0 + 6, xo + 3, y0 + 6);
+    // con ritenuta: tacca di arresto sulla linea di comando
+    if (comp.operation === "latching") svg += path(`M${xo + 5},${y0 - 5} L${xo + 8},${y0} L${xo + 11},${y0 - 5}`, "nofill");
+  } else if (type === "limit_switch") {
+    if (comp.switch_actuation === "roller_oneway") {
+      svg += line(xo, y0, xo - 4, y0 - 5) + circle(xo - 6, y0 - 8, 3.5, "nofill") + circle(xo, y0, 1.3, "fill");
+    } else {
+      svg += circle(xo - 4, y0, 4, "nofill");
+    }
+  }
+  return svg;
+}
+
+/** Contatto NA (13-14), NC (11-12) o in scambio (11 comune in basso, 14 NA a sinistra, 12 NC a destra). */
+function contactGeometry(comp: ComponentData, state?: SymbolState): Geometry {
+  const kind = comp.contact ?? "no";
+  const on = !!state?.actuated;
+  const cls = on ? "blade active" : "blade";
+  const label = comp.type === "relay_contact" ? comp.relay : comp.type === "limit_switch" ? comp.cam : undefined;
+  let svg = "", ports: Record<string, PortGeom>;
+  if (kind === "co") {
+    svg += line(-10, -E, -10, -12) + line(10, -E, 10, -12) + line(10, -12, 4, -12) + line(0, E, 0, 12);
+    svg += on ? line(0, 12, -10, -12, cls) : line(0, 12, 6, -13, cls);
+    svg += contactOperator(comp.type, comp, on ? -5 : 2, 0);
+    ports = { 11: eBottom(), 14: eTop(-10), 12: eTop(10) };
+  } else if (kind === "nc") {
+    svg += line(0, -E, 0, -12) + line(0, -12, 7, -12) + line(0, E, 0, 12);
+    svg += on ? line(0, 12, -10, -13, cls) : line(0, 12, 9, -14, cls);
+    svg += contactOperator(comp.type, comp, on ? -5 : 4, -1);
+    ports = { 11: eTop(), 12: eBottom() };
+  } else {
+    svg += line(0, -E, 0, -12) + line(0, E, 0, 12);
+    svg += on ? line(0, 12, 0, -12, cls) : line(0, 12, -10, -13, cls);
+    svg += contactOperator(comp.type, comp, on ? 0 : -5, -1);
+    ports = { 13: eTop(), 14: eBottom() };
+  }
+  svg += sideText(kind === "co" ? 14 : 8, 4, label);
+  return { w: 52, h: 2 * E, ports, svg };
+}
+
+/** Bobina (rettangolo) di relè, temporizzatore o elettrovalvola: A1 in alto, A2 in basso. */
+function coilGeometry(comp: ComponentData, state?: SymbolState): Geometry {
+  const on = state?.energized ? " active" : "";
+  let svg = line(0, -E, 0, -8) + line(0, 8, 0, E) + rect(-12, -8, 24, 16, `body coil${on}`);
+  if (comp.type === "valve_solenoid") svg += line(-12, 8, 12, -8);
+  if (comp.type === "timer_relay") {
+    // ritardato all'eccitazione: casella piena; alla diseccitazione: casella con la croce
+    svg += comp.timer_mode === "off_delay"
+      ? rect(-24, -8, 12, 16, "body") + line(-24, -8, -12, 8) + line(-24, 8, -12, -8)
+      : rect(-24, -8, 12, 16, "fill");
+  }
+  if (comp.type === "valve_solenoid") svg += sideText(15, 4, comp.drives);
+  return { w: 52, h: 2 * E, ports: { A1: eTop(), A2: eBottom() }, svg };
+}
+
+const LAMP_COLORS: Record<string, string> = { green: "VE", red: "RD", yellow: "YE", white: "WH", blue: "BU" };
+function lampGeometry(comp: ComponentData, state?: SymbolState): Geometry {
+  const color = comp.lamp_color ?? "green";
+  const svg = line(0, -E, 0, -10) + line(0, 10, 0, E) +
+    circle(0, 0, 10, `body lamp lamp-${color}${state?.energized ? " lit" : ""}`) +
+    line(-7, -7, 7, 7) + line(-7, 7, 7, -7) + sideText(13, 4, LAMP_COLORS[color], "sym-note");
+  return { w: 48, h: 2 * E, ports: { X1: eTop(), X2: eBottom() }, svg };
+}
+
+function supplyGeometry(comp: ComponentData): Geometry {
+  // simbolo di sorgente in continua: tratto lungo (+) e tratto corto (0V)
+  const svg = line(0, -E, 0, -4) + line(0, 4, 0, E) + line(-12, -4, 12, -4) + line(-6, 4, 6, 4, "thick") +
+    sideText(16, 3, comp.params?.voltage ?? "", "sym-note");
+  return { w: 60, h: 2 * E, ports: { "+": eTop(), "0V": eBottom() }, svg };
+}
+
+function proximityGeometry(comp: ComponentData, state?: SymbolState): Geometry {
+  const on = state?.actuated ? " active" : "";
+  const svg = line(0, -E, 0, -16) + line(0, 16, 0, E) + line(14, 0, 24, 0) +
+    rect(-14, -16, 28, 32, `body coil${on}`) + diamond(0, 0, 9) + line(-4, 0, 4, 0) +
+    (comp.sensor_kind === "reed" || !comp.sensor_kind ? "" : line(-4, 4, 4, 4)) +
+    sideText(-14, -20, comp.cam ?? "") ;
+  return { w: 56, h: 2 * E, ports: { BN: eTop(), BU: eBottom(), BK: { x: 24, y: 0, dir: right } }, svg };
+}
+
+function pressureSwitchGeometry(state?: SymbolState): Geometry {
+  // pressostato: pilotaggio dal basso su una molla regolabile, con contatto elettrico
+  const on = state?.actuated ? " active" : "";
+  const svg = line(0, 16, 0, E, "dash") + arrowHead(0, 26, 0, 16, 6) + rect(-14, -16, 28, 32, `body coil${on}`) +
+    zigzag(-8, -4, 8, -4, 4, 3) + line(10, -10, 10, -2) + line(6, -12, 12, -6) +
+    line(-8, 6, 0, 6) + line(0, 6, 6, 2);
+  return { w: 40, h: 2 * E, ports: { 1: eBottom() }, svg };
+}
+
 export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
   switch (comp.type) {
     case "directional_valve": return valveGeometry(comp, state);
@@ -476,6 +590,17 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "sequence_valve": return pilotedValveGeometry(comp, state, "sequence");
     case "time_delay_valve": return pilotedValveGeometry(comp, state, "delay");
     case "air_motor": return motorGeometry();
+    case "wire_junction": return junctionGeometry();
+    case "electric_supply": return supplyGeometry(comp);
+    case "pushbutton":
+    case "relay_contact":
+    case "limit_switch": return contactGeometry(comp, state);
+    case "relay_coil":
+    case "timer_relay":
+    case "valve_solenoid": return coilGeometry(comp, state);
+    case "signal_lamp": return lampGeometry(comp, state);
+    case "proximity_sensor": return proximityGeometry(comp, state);
+    case "pressure_switch": return pressureSwitchGeometry(state);
     default:
       return { w: 40, h: 40, ports: {}, svg: rect(-20, -20, 40, 40, "box") + `<text x="0" y="4" class="unknown">?</text>` };
   }

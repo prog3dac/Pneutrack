@@ -59,7 +59,7 @@ await page.click("#app-version");
 assert.match(await page.textContent("#news-body"), /\(in uso\)/);
 await page.keyboard.press("Escape");
 assert.ok(await page.locator("#news-dialog").isHidden());
-assert.equal(await page.locator("#legend li").count(), 9);
+assert.equal(await page.locator("#legend li").count(), 10);
 
 // menu Mostra: nasconde la legenda e la ripristina
 await page.click("#view-filter summary");
@@ -71,7 +71,7 @@ await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(new Set(types).size, 27, `tipi in palette: ${[...new Set(types)]}`);
+assert.equal(new Set(types).size, 37, `tipi in palette: ${[...new Set(types)]}`);
 assert.ok(types.length >= 37, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
@@ -575,6 +575,44 @@ await page.keyboard.press("h");
 await settled();
 s = await state();
 assert.deepEqual({ ...s.doc.layout[cyl], x: 0, y: 0 }, { x: 0, y: 0, rot: 0 }, "due specchiature tornano all'originale");
+
+// circuito elettrico di comando: simboli, fili, riferimenti per sigla
+await page.evaluate(() => window.pneutrack.loadDoc({
+  name: "Elettropneumatica",
+  components: [
+    { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+    { id: "V1", type: "directional_valve", function: "5/2", actuation_14: "solenoid", actuation_12: "spring" },
+    { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", stroke: "100 mm" } },
+    { id: "G", type: "electric_supply", params: { voltage: "24 V" } },
+    { id: "S1", type: "pushbutton", contact: "no" },
+    { id: "Y1", type: "valve_solenoid" },
+  ],
+  connections: [{ from: "P.1", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" }],
+  layout: { C1: { x: 300, y: 0, rot: 0 }, V1: { x: 300, y: 140, rot: 0 }, P: { x: 300, y: 260, rot: 0 },
+            G: { x: 560, y: 80, rot: 0 }, S1: { x: 680, y: -40, rot: 0 }, Y1: { x: 680, y: 60, rot: 0 } },
+}));
+await settled();
+for (const ref of ["G.+", "G.0V", "S1.13", "S1.14", "Y1.A1", "Y1.A2"]) {
+  assert.equal(await page.locator(`[data-port="${ref}"]`).count(), 1, `morsetto ${ref}`);
+}
+await wire("Y1.A1", "P.1");
+await settled();
+assert.equal((await state()).doc.connections.length, 3, "un filo non si collega a una porta pneumatica");
+await wire("G.+", "S1.13");
+await wire("S1.14", "Y1.A1");
+await wire("Y1.A2", "G.0V");
+await settled();
+assert.equal(await page.locator(".line.wire").count(), 3, "fili elettrici");
+if (shots) await page.screenshot({ path: `${shots}/elettrico.png` });
+assert.match(await page.textContent("#properties h2"), /Filo elettrico/);
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await page.click('[data-component="Y1"] .halo', { force: true });
+await page.selectOption('#properties select[name="drives"]', "V1.14");
+await settled();
+s = await state();
+assert.equal(s.doc.components.find((c) => c.id === "Y1").drives, "V1.14");
+assert.deepEqual(s.analysis.issues.map((i) => i.code), []);
+assert.match(await page.textContent('[data-component="V1"]'), /Y1/, "la valvola mostra la sua bobina");
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();

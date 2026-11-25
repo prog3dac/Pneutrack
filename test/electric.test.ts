@@ -26,12 +26,13 @@ const direct = (): Doc => ({
 });
 
 describe("componenti elettrici", () => {
-  it("sono nella categoria Elettrico, con morsetti elettrici, e restano fuori dalla palette per ora", () => {
+  it("sono nella categoria Elettrico, con morsetti elettrici, e in palette (tranne il punto di connessione)", () => {
     const electric = typeList().filter((t) => t.domain === "electric");
     expect(electric.map((t) => t.type).sort()).toEqual([
       "electric_supply", "limit_switch", "pressure_switch", "proximity_sensor", "pushbutton", "relay_coil",
-      "relay_contact", "signal_lamp", "timer_relay", "valve_solenoid"]);
-    expect(electric.every((t) => t.category === "Elettrico" && t.hidden)).toBe(true);
+      "relay_contact", "signal_lamp", "timer_relay", "valve_solenoid", "wire_junction"]);
+    expect(electric.every((t) => t.category === "Elettrico")).toBe(true);
+    expect(electric.filter((t) => t.hidden).map((t) => t.type)).toEqual(["wire_junction"]);
     expect(buildComponent({ id: "G", type: "electric_supply", params: { voltage: "24 V" } }).ports
       .map((p) => [p.name, p.kind])).toEqual([["+", "electric"], ["0V", "electric"]]);
   });
@@ -158,5 +159,22 @@ describe("validazione del circuito elettrico", () => {
     const a = analyze(doc);
     expect(a.issues.map((i) => [i.code, i.component])).toEqual([
       ["SETPOINT_UNREACHABLE", "B3"], ["INVALID_CAM", "B1"], ["INVALID_CAM", "B2"]]);
+  });
+});
+
+describe("punti di connessione dei fili", () => {
+  it("un filo si dirama con un punto di connessione elettrico, che si può anche togliere", async () => {
+    const { splitConnection, dissolveJunction, WIRE_JUNCTION } = await import("../src/model/junctions");
+    const doc = { ...direct(), format: "pneutrack/circuit" as const, version: 1 as const, name: "", layout: {} };
+    const i = doc.connections.findIndex((c) => c.from === "S1.14");
+    const ref = splitConnection(doc, i, [10, 10], "N1", 0, 0.5, WIRE_JUNCTION);
+    expect(ref).toBe("N1.1");
+    doc.components.push({ id: "H1", type: "signal_lamp" });
+    doc.connections.push({ from: "N1.1", to: "H1.X1" }, { from: "H1.X2", to: "G.0V" });
+    expect(analyze(doc).issues).toEqual([]);
+    doc.connections = doc.connections.filter((c) => c.to !== "H1.X1" && c.from !== "H1.X2");
+    doc.components.pop();
+    expect(dissolveJunction(doc, "N1")).toBe(true);
+    expect(analyze(doc).issues).toEqual([]);
   });
 });

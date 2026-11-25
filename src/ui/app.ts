@@ -5,7 +5,7 @@ import {
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import { mirrorComponents, type Axis } from "../model/mirror";
-import { dissolveJunction, JUNCTION, splitConnection } from "../model/junctions";
+import { dissolveJunction, isJunctionType, JUNCTION, splitConnection, WIRE_JUNCTION } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
@@ -43,6 +43,10 @@ const PREFIX: Record<string, string> = {
   check_valve: "NR", pilot_check_valve: "NRP", shuttle_valve: "OR", and_valve: "AND",
   quick_exhaust_valve: "SR", one_way_flow_control: "RF", relief_valve: "VS", sequence_valve: "SQ",
   time_delay_valve: "TM", air_motor: "MP",
+  // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
+  electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
+  relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
+  wire_junction: "N",
 };
 
 /** unità aggiunta quando si scrive solo un numero */
@@ -221,7 +225,7 @@ function nearestSegment(pts: Pt[], x: number, y: number) {
   return best;
 }
 
-const isJunction = (id: string) => byId(id)?.type === JUNCTION;
+const isJunction = (id: string) => isJunctionType(byId(id)?.type);
 
 /** Direzione d'uscita da un punto di connessione: verso il punto successivo della linea. */
 function aim(p: PortPoint, toward: Pt): PortPoint {
@@ -281,6 +285,16 @@ const fmtBar = (bar: number) => `${bar.toFixed(bar < 10 ? 2 : 1).replace(".", ",
 
 /** Stato grafico di un componente durante la simulazione. */
 function symbolState(comp: ComponentData): SymbolState | undefined {
+  if (comp.type === "directional_valve") {
+    const coil = (side: string) => doc.components.find((c) => c.type === "valve_solenoid" && c.drives === `${comp.id}.${side}`)?.id;
+    const coils = { coil14: coil("14"), coil12: coil("12") };
+    if (!sim) return coils.coil14 || coils.coil12 ? coils : undefined;
+    const spec = sim.s.net.valves.find((v) => v.id === comp.id);
+    if (spec) {
+      return { ...coils, position: sim.s.valvePosition(comp.id),
+               active14: sim.s.sideActive(spec, "14"), active12: sim.s.sideActive(spec, "12") };
+    }
+  }
   if (!sim) return undefined;
   const s = sim.s;
   const spec = s.net.valves.find((v) => v.id === comp.id);
@@ -320,13 +334,14 @@ function render() {
     const { a, b } = ends;
     const kinds = [portKind(ca, pa), portKind(cb, pb)];
     const pilot = kinds.includes("pilot");
+    const wire = kinds.includes("electric");
     const exhaust = kinds.includes("exhaust"); // linea di scarico: sfoga in atmosfera
     const lf = livePressure(c.from), lt = livePressure(c.to);
     const live = lf === null || lt === null ? null : (lf + lt) / 2;
     const pr = analysis.pressures[c.from] || analysis.pressures[c.to];
     const bar = live !== null ? live : pr && !exhaust ? pr.bar : 0;
     const pressurized = bar > 0.2;
-    const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "",
+    const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "", wire ? "wire" : "",
                  selection?.kind === "connection" && selection.index === index ? "selected" : ""]
       .filter(Boolean).join(" ");
     const { pts: path, bendAt } = routePoints(a, b, c.points);
@@ -373,7 +388,7 @@ function render() {
     const l = layoutOf(comp.id);
     const g = geometry(comp, symbolState(comp));
     const iss = issuesFor(comp.id);
-    const junction = comp.type === JUNCTION;
+    const junction = isJunctionType(comp.type);
     const jp = junction ? (livePressure(`${comp.id}.1`) ?? analysis.pressures[`${comp.id}.1`]?.bar ?? 0) : 0;
     const cls = ["component", junction ? "junction" : "", jp > 0.2 ? `pressurized ${pressureBand(jp)}` : "",
       selectedIds().includes(comp.id) ? "selected" : "",
@@ -515,7 +530,7 @@ function renderLegend() {
   box.innerHTML = `<details${closed ? "" : " open"}><summary>Legenda linee</summary>
     <p class="legend-note">${sim ? "Pressione istantanea" : "Pressione massima raggiungibile"}</p>
     <ul>${swatch("lg-none", "senza pressione")}${PRESSURE_BANDS.map((b) => swatch(`lg ${b.cls}`, b.label)).join("")}
-    ${swatch("lg-exhaust", "scarico")}${swatch("lg-pilot", "pilotaggio")}${swatch("lg-selected", "linea selezionata")}</ul></details>`;
+    ${swatch("lg-exhaust", "scarico")}${swatch("lg-pilot", "pilotaggio")}${swatch("lg-wire", "filo elettrico")}${swatch("lg-selected", "linea selezionata")}</ul></details>`;
   box.querySelector("details")!.addEventListener("toggle", (e) => {
     try { localStorage.setItem(LEGEND_KEY, (e.target as HTMLDetailsElement).open ? "open" : "closed"); } catch { /* */ }
   });
@@ -877,6 +892,56 @@ function camField(comp: ComponentData, side: "14" | "12") {
   return f;
 }
 
+/** Menu di un riferimento per sigla (bobina → solenoide, contatto → relè, finecorsa → cilindro). */
+function refField(comp: ComponentData, key: "drives" | "relay" | "cam", label: string, hint: string,
+                  choices: [string, string][], codes: string[]) {
+  const sel = document.createElement("select");
+  sel.name = key;
+  const all: [string, string][] = [["", "nessuno"], ...choices];
+  const current = comp[key] ?? "";
+  if (current && !all.some(([v]) => v === current)) all.push([current, `${current} (non c'è nello schema)`]);
+  for (const [value, text] of all) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = text;
+    sel.append(o);
+  }
+  sel.value = current;
+  sel.addEventListener("change", () => mutate(() => {
+    const c = byId(comp.id)!;
+    if (sel.value) c[key] = sel.value; else delete c[key];
+  }));
+  const f = field(label, sel, hint);
+  if (issuesFor(comp.id).some((i) => codes.includes(i.code))) f.classList.add("invalid");
+  return f;
+}
+
+function electricRefFields(comp: ComponentData): HTMLElement[] {
+  const cams = (): [string, string][] => doc.components.filter((x) => x.type.endsWith("_cylinder"))
+    .flatMap((c) => [[`${c.id}+`, `${c.id} tutto fuori (${c.id}+)`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)`]] as [string, string][]);
+  switch (comp.type) {
+    case "valve_solenoid": {
+      const sides: [string, string][] = doc.components.filter((x) => x.type === "directional_valve").flatMap((v) =>
+        (["14", "12"] as const).filter((s) => isElectric((v[`actuation_${s}`] ?? (s === "14" ? "solenoid" : "spring")) as Actuation))
+          .map((s) => [`${v.id}.${s}`, `${v.id}, solenoide ${s}`] as [string, string]));
+      return [refField(comp, "drives", "Solenoide comandato", FIELD_HELP.drives!, sides,
+        ["INVALID_REFERENCE", "NOT_A_SOLENOID", "DUPLICATE_COIL", "UNLINKED_REFERENCE"])];
+    }
+    case "relay_contact": {
+      const RELAYS: Record<string, string> = { relay_coil: "relè", timer_relay: "temporizzatore", pressure_switch: "pressostato" };
+      const relays = doc.components.filter((x) => RELAYS[x.type])
+        .map((r) => [r.id, `${r.id} (${RELAYS[r.type]})`] as [string, string]);
+      return [refField(comp, "relay", "Azionato da", FIELD_HELP.relay!, relays, ["INVALID_REFERENCE", "UNLINKED_REFERENCE"])];
+    }
+    case "limit_switch":
+      return [refField(comp, "cam", "Azionato da", FIELD_HELP["switch-cam"]!, cams(),
+        ["INVALID_CAM", "UNLINKED_REFERENCE"])];
+    case "proximity_sensor":
+      return [refField(comp, "cam", "Cilindro rilevato", FIELD_HELP["sensor-cam"]!, cams(), ["INVALID_CAM", "UNLINKED_REFERENCE"])];
+    default:
+      return [];
+  }
+}
+
 /** Misura normalizzata del cilindro: imposta insieme alesaggio e stelo. */
 function cylinderSizeField(comp: ComponentData) {
   const sel = document.createElement("select");
@@ -1065,6 +1130,8 @@ function renderProperties() {
       if (side && isMechanical((comp[opt.name] ?? opt.default) as Actuation)) panel.append(camField(comp, side));
     }
 
+    for (const f of electricRefFields(comp)) panel.append(f);
+
     const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
     const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
     if (catalogParams.length) heading(panel, "Parametri da catalogo");
@@ -1149,15 +1216,16 @@ function renderProperties() {
     panel.append(help);
   } else if (selection?.kind === "connection" && doc.connections[selection.index]) {
     const c = doc.connections[selection.index]!;
-    title.textContent = "Collegamento";
+    const wire = isWire(c);
+    title.textContent = wire ? "Filo elettrico" : "Collegamento";
     const p = document.createElement("p");
     const pr = analysis.pressures[c.from];
-    p.innerHTML = `<code></code> — <code></code><br>Pressione massima: <b>${pr ? pr.text : "0 bar"}</b>`;
+    p.innerHTML = `<code></code> — <code></code>` + (wire ? "" : `<br>Pressione massima: <b>${pr ? pr.text : "0 bar"}</b>`);
     const codes = p.querySelectorAll("code");
     codes[0]!.textContent = c.from;
     codes[1]!.textContent = c.to;
     panel.append(p);
-    renderTubeFields(panel, selection.index);
+    if (!wire) renderTubeFields(panel, selection.index);
     const actions = document.createElement("div");
     actions.className = "actions";
     if (c.points?.length) {
@@ -1292,12 +1360,16 @@ function renderTubeFields(panel: HTMLElement, index: number) {
     all.textContent = "Usa questo tubo per tutte le linee";
     all.addEventListener("click", () => {
       const t = doc.connections[index]!.tube!;
-      mutate(() => { for (const conn of doc.connections) if (!isPilotLine(conn)) conn.tube = { ...t }; });
+      mutate(() => { for (const conn of doc.connections) if (!isPilotLine(conn) && !isWire(conn)) conn.tube = { ...t }; });
       toast("Tubo applicato a tutte le linee di potenza (i pilotaggi restano come sono)");
     });
     panel.append(all);
   }
 }
+const MIXED_MSG = "Un filo elettrico non si collega a una porta pneumatica";
+const isElectricRef = (ref: string) => { const [cid, p] = splitRef(ref); return portKind(cid, p) === "electric"; };
+/** Il collegamento è un filo del circuito elettrico. */
+const isWire = (c: ConnectionData) => isElectricRef(c.from) || isElectricRef(c.to);
 const isPilotLine = (c: ConnectionData) => [c.from, c.to].some((r) => { const [cid, p] = splitRef(r); return portKind(cid, p) === "pilot"; });
 
 function renderIssues() {
@@ -1390,6 +1462,10 @@ function renameComponent(oldId: string, newId: string) {
         const cam = c[key];
         if (cam && cam.slice(0, -1) === oldId) c[key] = newId + cam.slice(-1);
       }
+      // riferimenti per sigla del circuito elettrico
+      if (c.cam && c.cam.slice(0, -1) === oldId) c.cam = newId + c.cam.slice(-1);
+      if (c.relay === oldId) c.relay = newId;
+      if (c.drives && splitRef(c.drives)[0] === oldId) c.drives = `${newId}.${splitRef(c.drives)[1]}`;
     }
   });
   select({ kind: "component", id: newId });
@@ -1406,11 +1482,13 @@ function pruneConnections(compId: string) {
 
 function connect(a: string, b: string) {
   if (a === b || sim) return;
+  if (isElectricRef(a) !== isElectricRef(b)) { toast(MIXED_MSG); return; }
   if (doc.connections.some((c) => (c.from === a && c.to === b) || (c.from === b && c.to === a))) {
     toast("Collegamento già presente");
     return;
   }
-  mutate(() => doc.connections.push(lastTube ? { from: a, to: b, tube: { ...lastTube } } : { from: a, to: b }));
+  const tube = lastTube && !isElectricRef(a) ? lastTube : null;
+  mutate(() => doc.connections.push(tube ? { from: a, to: b, tube: { ...tube } } : { from: a, to: b }));
   select({ kind: "connection", index: doc.connections.length - 1 });
 }
 
@@ -2137,15 +2215,18 @@ function splitLine(index: number, w: { x: number; y: number }): string | null {
   let before = Math.abs(at[0] - x1) + Math.abs(at[1] - y1), total = 0;
   for (let i = 0; i + 1 < pts.length; i++) { total += segLen(i); if (i < seg) before += segLen(i); }
   const bendsBefore = bendAt.filter((k) => k <= seg).length;
-  return splitConnection(doc, index, at, nextId(JUNCTION), bendsBefore, total ? before / total : 0.5);
+  const type = isWire(c) ? WIRE_JUNCTION : JUNCTION;
+  return splitConnection(doc, index, at, nextId(type), bendsBefore, total ? before / total : 0.5, type);
 }
 
 /** Collega la porta `from` a una linea esistente, con un punto di connessione dove la si lascia. */
 function connectToLine(from: string, index: number, w: { x: number; y: number }) {
   if (sim) return;
+  const line = doc.connections[index];
+  if (line && isElectricRef(from) !== isWire(line)) { toast(MIXED_MSG); return; }
   mutate(() => {
     const ref = splitLine(index, w);
-    if (ref) doc.connections.push(lastTube ? { from, to: ref, tube: { ...lastTube } } : { from, to: ref });
+    if (ref) doc.connections.push(lastTube && !isElectricRef(from) ? { from, to: ref, tube: { ...lastTube } } : { from, to: ref });
   });
   select({ kind: "connection", index: doc.connections.length - 1 });
 }
