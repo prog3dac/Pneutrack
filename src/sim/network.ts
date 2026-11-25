@@ -9,7 +9,7 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { cushionLength, hasPilotPort, isElectricType, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { conductanceOf, cushionLength, hasPilotPort, isElectricType, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { analyze, build, pneumaticPorts } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
@@ -70,6 +70,10 @@ export interface CylinderSpec {
   mass: number;
   load: number;
   frictionCoulomb: number;
+  /** attrito di primo distacco [N]: a velocità quasi nulla l'attrito sale fino a questo valore (Stribeck) */
+  frictionStatic: number;
+  /** peso della massa mobile lungo l'asse, positivo se si oppone all'uscita dello stelo [N] */
+  gravity: number;
   frictionViscous: number;
   /** forza della molla di richiamo (semplice effetto) [N] */
   spring: number;
@@ -96,6 +100,7 @@ export type CompileResult =
 
 /** Volume di ogni nodo di raccordo e tubo [m³]. */
 const NODE_VOLUME = 1e-6;
+const G = 9.81;
 const DEAD_VOLUME = 5e-6;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
 /** comandi alimentati dalla porta 1 della valvola stessa */
@@ -171,7 +176,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   const ramp = (x: number, width: number) => Math.min(1, Math.max(0, x / width));
   /** valvola 3/2 NC (porte 1, 2, 3) comandata dal pilotaggio 12 */
   const pilotedThreeTwo = (c: Component, threshold: number, delay?: number) => {
-    const C = simParam(c, "conductance").si, bcrit = simParam(c, "critical_ratio").si;
+    const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
     const vi = valves.length;
     for (const [pos, pairs] of Object.entries(VALVE_PATHS["3/2"]) as [Position, [string, string][]][]) {
       for (const [x, y] of pairs) orifices.push({ a: node(c, x), b: node(c, y), C, bcrit, valve: vi, positions: [pos] });
@@ -188,7 +193,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       if (p.kind === "exhaust" && !connected.has(`${c.id}.${p.name}`)) fixed.set(node(c, p.name), P_ATM);
     }
     const orifice = (x: string, y: string, extra: Partial<Orifice> = {}): Orifice => ({
-      a: node(c, x), b: node(c, y), C: simParam(c, "conductance").si, bcrit: simParam(c, "critical_ratio").si, ...extra,
+      a: node(c, x), b: node(c, y), C: conductanceOf(c), bcrit: simParam(c, "critical_ratio").si, ...extra,
     });
     switch (c.type) {
       case "pressure_source":
@@ -265,7 +270,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         break;
       case "directional_valve": {
         const fn = c.function!;
-        const C = simParam(c, "conductance").si, bcrit = simParam(c, "critical_ratio").si;
+        const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
         const vi = valves.length;
         for (const [pos, pairs] of Object.entries(VALVE_PATHS[fn]) as [Position, [string, string][]][]) {
           for (const [x, y] of pairs) {
@@ -316,6 +321,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           mass: simParam(c, "mass").si,
           load: simParam(c, "load").si,
           frictionCoulomb: simParam(c, "friction").si,
+          frictionStatic: c.params.static_friction?.si ?? simParam(c, "friction").si,
+          gravity: simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
           frictionViscous: 20,
           spring: single ? simParam(c, "spring_force").si : 0,
         });

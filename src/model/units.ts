@@ -30,7 +30,7 @@ const UNITS: Record<string, [Dimension, number]> = {
   s: ["time", 1], ms: ["time", 1e-3], min: ["time", 60],
   rad: ["angle", 1], deg: ["angle", Math.PI / 180],
   V: ["voltage", 1], mV: ["voltage", 1e-3], kV: ["voltage", 1e3],
-  "": ["dimensionless", 1],
+  "": ["dimensionless", 1], "%": ["dimensionless", 0.01],
 };
 
 const ALIASES: Record<string, string> = {
