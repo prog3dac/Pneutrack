@@ -22,8 +22,8 @@ npm run build      # versione pubblicabile in dist/
 La finestra ha due modalità, scelte con l'interruttore al centro della barra in alto:
 
 - **Disegno**: a sinistra la barra delle sezioni (Pneumatica, Elettrico, Blocchi, Foglio) e la palette
-  a icone; al centro il foglio; a destra le proprietà dell'elemento selezionato. Sopra la selezione
-  compare una barra con Ruota, Specchia ↔ / ↕, Duplica ed Elimina; in basso a destra del foglio ci sono
+  a icone; al centro il foglio; a destra, solo quando serve, la colonna delle proprietà. Sopra la selezione
+  compare una barra con ✎ (dati del componente), Ruota, Specchia ↔ / ↕, Duplica ed Elimina; in basso a destra del foglio ci sono
   zoom, *Adatta* e il menu *Mostra*.
 - **Simula**: palette e barra delle sezioni si nascondono; a destra ci sono comandi e valori in tempo
   reale, in basso la fascia con Pausa, Ricomincia, velocità, tempo e il diagramma delle fasi.
@@ -50,7 +50,10 @@ dei problemi.
   personalizzata) e la lunghezza. Il pannello mostra volume e conduttanza stimata; lo spessore
   della linea segue il diametro. *Usa questo tubo per tutte le linee* lo applica a tutte le linee
   di potenza; le nuove linee ricevono l'ultimo tubo scelto. Una linea senza misura è ideale.
-- **Proprietà**: seleziona un componente per cambiarne sigla, descrizione, funzione della valvola,
+- **Colonna di destra**: compare solo quando serve, cioè in Simula e, in Disegno, quando sono
+  selezionati testi o forme, una linea, un blocco o più elementi insieme. Con un componente
+  selezionato, o niente, il foglio usa tutta la larghezza.
+- **Proprietà**: doppio clic su un componente (o *Invio* con il componente selezionato) apre la finestra dei suoi dati; le modifiche si vedono subito, *OK* le tiene in un solo passo annullabile e *Annulla*/*Esc* le scarta. Nella finestra si cambiano sigla, descrizione, funzione della valvola,
   comandi, parametri da catalogo (`6 bar`, `32 mm`, `0,6 MPa`...; un numero senza unità prende
   l'unità tipica del parametro) e parametri di simulazione (conduttanza, massa, carico, attrito).
   Per i cilindri si può scegliere una **misura standard** (ISO 6432, ISO 21287, ISO 15552), che
@@ -68,7 +71,7 @@ dei problemi.
 - **Mostra**: il menu in basso a destra del foglio nasconde o mostra sigle, descrizioni, valori della
   simulazione, numeri delle porte, finecorsa, misure dei tubi, punti di collegamento, linee di
   pilotaggio e di scarico, griglia e legenda. La scelta resta salvata nel browser.
-- **Foglio e PDF**: nel pannello *Schema* (clic su un punto vuoto del foglio, o su *Foglio* nella barra delle sezioni) si sceglie il formato
+- **Foglio e PDF**: nella finestra *Schema e foglio* (doppio clic su un punto vuoto del foglio, o *Foglio* nella barra delle sezioni) si sceglie il formato
   da A4 ad A0, l'orientamento e i dati del cartiglio (disegnato da, numero disegno, revisione).
   *Formato adatto al disegno* sceglie il formato più piccolo che lo contiene; *Centra sul disegno*
   sposta il foglio. Il pulsante *PDF* scarica il foglio in PDF vettoriale, in tema chiaro e senza
@@ -136,7 +139,7 @@ linee tornano una sola.
 
 ## Descrizioni dei campi
 
-Passando il mouse su un campo del pannello a destra (le etichette con «?») compare una descrizione:
+Passando il mouse su un campo della finestra o del pannello a destra (le etichette con «?») compare una descrizione:
 a che cosa serve il dato, le unità accettate, se è obbligatorio e il valore usato se resta vuoto. I
 testi sono in `src/ui/help.ts`; un test controlla che ogni parametro e ogni opzione del catalogo ne
 abbia uno, quindi un componente nuovo va accompagnato dalle sue descrizioni.
