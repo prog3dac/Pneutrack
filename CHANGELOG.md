@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.20.1 · 2026-11-26
+
+- Simulazione: un cilindro fermo a fine corsa e spinto contro l'arresto non consuma più aria. Prima, nei passi intermedi del calcolo, il pistone entrava appena nell'arresto e tornava indietro a ogni passo, e a impianto fermo si contavano circa 0,9 Nl/min che non esistono.
+
 ## 0.20.0 · 2026-11-25
 
 - Simula: nuova sezione «Misure» nel pannello, con la pressione dei manometri, l'aria consumata e la portata attuale in litri normali (Nl e Nl/min, ANR), i cicli completati con durata e aria dell'ultimo ciclo, la media per ciclo, il consumo medio in Nl/min e il tempo dell'ultima uscita e dell'ultimo rientro di ogni cilindro. Ogni voce si spiega al passaggio del mouse.

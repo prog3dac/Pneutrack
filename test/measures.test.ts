@@ -22,8 +22,9 @@ describe("aria consumata", () => {
     expect(filled).toBeGreaterThan(0.1);
     expect(s.airFlow()).toBeLessThan(0.1);
     s.advance(1);
-    // a impianto fermo resta solo il piccolo trafilamento numerico del riduttore (< 1,2 Nl/min)
-    expect(s.airUsed() - filled).toBeLessThan(0.02);
+    // a impianto fermo non si consuma aria: il pistone spinto contro l'arresto non "pompa"
+    expect(s.airUsed() - filled).toBeLessThan(1e-4);
+    expect(s.cylinder("C1")!.x).toBe(0);
   });
 
   it("un ciclo di un doppio effetto consuma l'aria delle due camere alla pressione di lavoro", () => {
