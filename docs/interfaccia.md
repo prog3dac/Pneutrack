@@ -42,8 +42,10 @@ dei problemi.
   Le valvole distributrici più comuni e i serbatoi di varie taglie sono già configurati.
 - **Collegare**: trascina da una porta a un'altra. Più linee sulla stessa porta formano un raccordo a T.
 - **Linee**: trascina una linea per piegarla dove vuoi (nasce un punto di piega, agganciato alla
-  griglia); trascina i punti per spostarli, doppio clic su un punto per toglierlo, *Raddrizza linea*
-  per tornare al percorso automatico.
+  griglia); trascina i punti per spostarli, doppio clic su un punto per toglierlo. Tutte le porte dei
+  simboli cadono sui nodi della griglia, quindi due porte allineate si collegano con un tratto dritto.
+  Dopo ogni spostamento la linea perde da sola i gradini di un passo e le pieghe superflue;
+  *Raddrizza linea* toglie anche i gradini di due passi, *Togli le pieghe* torna al percorso automatico.
 - **Tubi**: seleziona una linea e scegli la misura (Ø4×2,5, Ø6×4, Ø8×5, Ø10×6,5, Ø12×8 o
   personalizzata) e la lunghezza. Il pannello mostra volume e conduttanza stimata; lo spessore
   della linea segue il diametro. *Usa questo tubo per tutte le linee* lo applica a tutte le linee

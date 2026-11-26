@@ -75,15 +75,16 @@ function zigzag(x1: number, y1: number, x2: number, y2: number, n = 6, amp = 5) 
 
 // --- valvole distributrici -------------------------------------------------
 
-// posizione orizzontale delle porte all'interno di una casella (0..1)
+// posizione orizzontale delle porte all'interno di una casella (0..1): sempre a quarti, così con
+// caselle da 40 le porte cadono sui nodi della griglia (passo 10) e le linee restano dritte
 const VALVE_LAYOUT: Record<string, { top: Record<string, number>; bottom: Record<string, number> }> = {
   "2/2": { top: { 2: 0.5 }, bottom: { 1: 0.5 } },
-  "3/2": { top: { 2: 0.5 }, bottom: { 1: 0.3, 3: 0.7 } },
-  "4/2": { top: { 4: 0.3, 2: 0.7 }, bottom: { 1: 0.3, 3: 0.7 } },
-  "5/2": { top: { 4: 0.3, 2: 0.7 }, bottom: { 5: 0.2, 1: 0.5, 3: 0.8 } },
-  "5/3": { top: { 4: 0.3, 2: 0.7 }, bottom: { 5: 0.2, 1: 0.5, 3: 0.8 } },
-  "5/3E": { top: { 4: 0.3, 2: 0.7 }, bottom: { 5: 0.2, 1: 0.5, 3: 0.8 } },
-  "5/3P": { top: { 4: 0.3, 2: 0.7 }, bottom: { 5: 0.2, 1: 0.5, 3: 0.8 } },
+  "3/2": { top: { 2: 0.5 }, bottom: { 1: 0.25, 3: 0.75 } },
+  "4/2": { top: { 4: 0.25, 2: 0.75 }, bottom: { 1: 0.25, 3: 0.75 } },
+  "5/2": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
+  "5/3": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
+  "5/3E": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
+  "5/3P": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
 };
 
 type BoxItem = ["a", string, string] | ["x", string];
@@ -110,6 +111,10 @@ const VALVE_BOXES: Record<string, BoxItem[][]> = {
     [["a", "1", "2"], ["a", "4", "5"], ["x", "3"]],
   ],
 };
+
+/** tratteggio dell'alimentazione esterna del pilota: dal comando alla porta, che sta su un nodo della griglia */
+const extPilotLine = (o: (d: number) => number) =>
+  path(`M${o(5)},8 L${o(5)},22 L${o(10)},22 L${o(10)},30`, "nofill dash");
 
 function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
   const o = (d: number) => x0 + side * d;
@@ -153,7 +158,7 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
       const xa = Math.min(o(0), o(10));
       body = rect(xa, -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body") +
         rect(Math.min(o(10), o(20)), -8, 10, 16) + line(o(10), 8, o(20), -8);
-      if (kind === "solenoid_pilot_ext") body += line(o(5), 8, o(5), 32, "dash");
+      if (kind === "solenoid_pilot_ext") body += extPilotLine(o);
       break;
     }
     case "air_return":
@@ -162,7 +167,7 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
       // alimentazione interna: tratteggio verso il corpo valvola; esterna: tratteggio verso la porta di pilotaggio
       body = rect(Math.min(o(0), o(10)), -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body");
       if (kind === "air_return") body += line(o(5), 8, o(5), 16, "dash") + line(o(5), 16, o(-4), 16, "dash");
-      else body += line(o(5), 8, o(5), 32, "dash");
+      else body += extPilotLine(o);
       break;
     case "spring":
       body = zigzag(o(0), 0, o(18), 0, 6, 6);
@@ -237,12 +242,12 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   }
   // alimentazione esterna della valvola pilota: porta sotto il comando
   if (a14 === "solenoid_pilot_ext" || a14 === "air_return_ext") {
-    ports["14"] = { x: x0 - 5, y: 32, dir: down };
-    if (shift) fixedPart += line(x0 - 5, 32, x0 - 5 + shift, 32, "dash");
+    ports["14"] = { x: x0 - 10, y: 30, dir: down };
+    if (shift) fixedPart += line(x0 - 10, 30, x0 - 10 + shift, 30, "dash");
   }
   if (a12 === "solenoid_pilot_ext" || a12 === "air_return_ext") {
-    ports["12"] = { x: -x0 + 5, y: 32, dir: down };
-    if (shift) fixedPart += line(-x0 + 5 + shift, 32, -x0 + 5, 32, "dash");
+    ports["12"] = { x: -x0 + 10, y: 30, dir: down };
+    if (shift) fixedPart += line(-x0 + 10 + shift, 30, -x0 + 10, 30, "dash");
   }
   const svg = `<g transform="translate(${shift},0)" class="valve-body">${moving}</g>${fixedPart}`;
   return { w: W + 44, h: S + 2 * STUB, ports, svg };
@@ -260,34 +265,35 @@ const reservoirGeometry = (): Geometry => ({
 });
 
 const filterGeometry = (): Geometry => ({
-  w: 56, h: 44, ports: { 1: { x: -26, y: 0, dir: left }, 2: { x: 26, y: 0, dir: right } },
+  w: 64, h: 44, ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 30, y: 0, dir: right } },
   // cartuccia (tratteggio perpendicolare al flusso) e separatore con scarico manuale (ISO 1219-2, all. C)
-  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(0, -16, 0, 9, "dash") +
+  svg: line(-30, 0, -16, 0) + line(16, 0, 30, 0) + diamond(0, 0, 16) + line(0, -16, 0, 9, "dash") +
     line(-7, 9, 7, 9) + line(0, 16, 0, 24),
 });
 
 const lubricatorGeometry = (): Geometry => ({
-  w: 56, h: 44, ports: { 1: { x: -26, y: 0, dir: left }, 2: { x: 26, y: 0, dir: right } },
+  w: 64, h: 44, ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 30, y: 0, dir: right } },
   // tubo di pescaggio: tratto dal vertice superiore verso l'interno (ISO 1219-2, all. C)
-  svg: line(-26, 0, -16, 0) + line(16, 0, 26, 0) + diamond(0, 0, 16) + line(0, -16, 0, -6),
+  svg: line(-30, 0, -16, 0) + line(16, 0, 30, 0) + diamond(0, 0, 16) + line(0, -16, 0, -6),
 });
 
 function frlGeometry(): Geometry {
-  const box = `<rect x="-46" y="-20" width="92" height="40" class="nofill dashdot"/>`;
-  const filter = diamond(-28, 2, 10) + line(-28, -8, -28, 7, "dash") + line(-32, 7, -24, 7);
-  const reg = rect(-9, -8, 18, 20, "box") + arrow(0, 10, 0, -6) + zigzag(9, 6, 16, 6, 4, 3) + adjustArrow(9, 12, 16, 0);
-  const gauge = circle(0, -15, 5, "body") + line(0, -15, 3, -18);
-  const lub = diamond(28, 2, 10) + line(28, -8, 28, -2);
-  const flow = line(-56, 2, -38, 2) + line(-18, 2, -9, 2) + line(9, 2, 18, 2) + line(38, 2, 56, 2);
+  // linea di flusso a y = 0, porte a ±60: sui nodi della griglia
+  const box = `<rect x="-46" y="-22" width="92" height="40" class="nofill dashdot"/>`;
+  const filter = diamond(-28, 0, 10) + line(-28, -10, -28, 5, "dash") + line(-32, 5, -24, 5);
+  const reg = rect(-9, -10, 18, 20, "box") + arrow(0, 8, 0, -8) + zigzag(9, 4, 16, 4, 4, 3) + adjustArrow(9, 10, 16, -2);
+  const gauge = circle(0, -17, 5, "body") + line(0, -17, 3, -20);
+  const lub = diamond(28, 0, 10) + line(28, -10, 28, -4);
+  const flow = line(-60, 0, -38, 0) + line(-18, 0, -9, 0) + line(9, 0, 18, 0) + line(38, 0, 60, 0);
   return {
-    w: 116, h: 48, ports: { 1: { x: -56, y: 2, dir: left }, 2: { x: 56, y: 2, dir: right } },
+    w: 124, h: 48, ports: { 1: { x: -60, y: 0, dir: left }, 2: { x: 60, y: 0, dir: right } },
     svg: box + flow + filter + reg + gauge + lub,
   };
 }
 
 const gaugeGeometry = (): Geometry => ({
-  w: 32, h: 48, ports: { 1: { x: 0, y: 24, dir: down } },
-  svg: circle(0, -2, 13, "body") + arrow(-7, 5, 7, -9) + line(0, 11, 0, 24),
+  w: 32, h: 44, ports: { 1: { x: 0, y: 20, dir: down } },
+  svg: circle(0, -2, 13, "body") + arrow(-7, 5, 7, -9) + line(0, 11, 0, 20),
 });
 
 // --- valvole di blocco e logiche -------------------------------------------------
@@ -301,16 +307,16 @@ const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
   path(`M${x - 10},${y - 5 * dir} L${x},${y + 8 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
 
 const checkGeometry = (): Geometry => ({
-  w: 30, h: 50,
-  ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
-  svg: line(0, 24, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -24),
+  w: 30, h: 60,
+  ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
+  svg: line(0, 30, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -30),
 });
 
 const pilotCheckGeometry = (): Geometry => ({
-  w: 56, h: 50,
-  ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up }, 21: { x: 26, y: 4, dir: right } },
-  svg: rect(-14, -14, 28, 30, "box") + line(0, 24, 0, 6) + checkElement(0, -2) +
-    line(0, -7, 0, -24) + line(26, 4, 6, 4, "dash"),
+  w: 64, h: 60,
+  ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up }, 21: { x: 30, y: 0, dir: right } },
+  svg: rect(-14, -14, 28, 30, "box") + line(0, 30, 0, 6) + checkElement(0, -2) +
+    line(0, -7, 0, -30) + line(30, 0, 6, 0, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {
@@ -329,9 +335,9 @@ function logicGeometry(kind: "or" | "and"): Geometry {
 }
 
 const quickExhaustGeometry = (): Geometry => ({
-  w: 64, h: 52,
-  ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -24, dir: up }, 3: { x: 0, y: 24, dir: down } },
-  svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -24) + line(0, 12, 0, 24) +
+  w: 64, h: 60,
+  ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -30, dir: up }, 3: { x: 0, y: 30, dir: down } },
+  svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -30) + line(0, 12, 0, 30) +
     path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-6,5 L0,12 L6,5", "nofill"),
 });
 
@@ -342,21 +348,21 @@ function oneWayFlowGeometry(): Geometry {
   const bypass = line(0, -18, 22, -18) + line(22, -18, 22, -6) + line(22, 7, 22, 18) + line(22, 18, 0, 18) +
     checkElement(22, 2, -1);
   return {
-    w: 76, h: 50,
-    ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
+    w: 76, h: 60,
+    ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
     // strozzatore e non ritorno nello stesso corpo: cornice a tratto e punto (ISO 1219-1, 5.10)
-    svg: line(0, -24, 0, 24) + throttle + bypass + rect(-16, -22, 52, 44, "nofill dashdot"),
+    svg: line(0, -30, 0, 30) + throttle + bypass + rect(-16, -22, 52, 44, "nofill dashdot"),
   };
 }
 
 function pressureBoxGeometry(kind: "relief"): Geometry {
   void kind;
-  const svg = rect(-18, -18, 36, 36, "box") + line(0, 18, 0, 28) + line(18, 0, 28, 0) +
+  const svg = rect(-18, -18, 36, 36, "box") + line(0, 18, 0, 30) + line(18, 0, 30, 0) +
     arrow(6, 12, 6, -12) + zigzag(0, -18, 0, -34, 5, 5) + arrow(-9, -22, 9, -30) +
     line(0, 23, -11, 23, "dash") + line(-11, 23, -11, 18, "dash");
   return {
-    w: 60, h: 66,
-    ports: { 1: { x: 0, y: 28, dir: down }, 3: { x: 28, y: 0, dir: right } },
+    w: 64, h: 70,
+    ports: { 1: { x: 0, y: 30, dir: down }, 3: { x: 30, y: 0, dir: right } },
     svg,
   };
 }
@@ -390,20 +396,20 @@ const motorGeometry = (): Geometry => ({
 // --- altri componenti -------------------------------------------------------
 
 const sourceGeometry = (): Geometry => ({
-  w: 30, h: 50, ports: { 1: { x: 0, y: -24, dir: up } },
+  w: 30, h: 50, ports: { 1: { x: 0, y: -20, dir: up } },
   // sorgente di energia pneumatica (ISO 1219-1 F071V1; esempi in ISO 1219-2 e 1219-3): triangolo vuoto con la punta sulla linea
-  svg: path("M0,-10 L-9,6 L9,6 Z", "body") + line(0, -10, 0, -24),
+  svg: path("M0,-10 L-9,6 L9,6 Z", "body") + line(0, -10, 0, -20),
 });
 
 const silencerGeometry = (): Geometry => ({
-  w: 22, h: 30, ports: { 1: { x: 0, y: -14, dir: up } },
-  svg: line(0, -14, 0, -6) + path("M0,-6 L9,6 L-9,6 Z", "nofill") + rect(-9, 6, 18, 6, "hatch"),
+  w: 22, h: 40, ports: { 1: { x: 0, y: -20, dir: up } },
+  svg: line(0, -20, 0, -6) + path("M0,-6 L9,6 L-9,6 Z", "nofill") + rect(-9, 6, 18, 6, "hatch"),
 });
 
 /** Scarico in atmosfera (ISO 1219): triangolo vuoto con la punta verso la linea. */
 const exhaustGeometry = (): Geometry => ({
-  w: 22, h: 26, ports: { 1: { x: 0, y: -14, dir: up } },
-  svg: line(0, -14, 0, -2) + path("M0,-2 L9,10 L-9,10 Z", "nofill"),
+  w: 22, h: 26, ports: { 1: { x: 0, y: -10, dir: up } },
+  svg: line(0, -10, 0, -2) + path("M0,-2 L9,10 L-9,10 Z", "nofill"),
 });
 
 /** Punto di connessione: il pallino pieno degli incroci collegati (ISO 1219). */
@@ -433,9 +439,9 @@ function regulatorGeometry(): Geometry {
 }
 
 const flowControlGeometry = (): Geometry => ({
-  w: 30, h: 50,
-  ports: { 1: { x: 0, y: 24, dir: down }, 2: { x: 0, y: -24, dir: up } },
-  svg: line(0, -24, 0, 24) + path("M-8,-10 Q-1,0 -8,10", "nofill") + path("M8,-10 Q1,0 8,10", "nofill") +
+  w: 30, h: 60,
+  ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
+  svg: line(0, -30, 0, 30) + path("M-8,-10 Q-1,0 -8,10", "nofill") + path("M8,-10 Q1,0 8,10", "nofill") +
     arrow(-12, 12, 12, -12),
 });
 
@@ -462,17 +468,17 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false,
     line(pistonX, -15, pistonX, 15, "thick");
   if (cushioning === "cap" || cushioning === "both") svg += cushionMark(pistonX, "cap");
   if (cushioning === "rod" || cushioning === "both") svg += cushionMark(pistonX, "rod");
-  const ports: Record<string, PortGeom> = { A: { x: -50, y: 25, dir: down } };
-  svg += line(-50, 15, -50, 25);
+  const ports: Record<string, PortGeom> = { A: { x: -50, y: 30, dir: down } };
+  svg += line(-50, 15, -50, 30);
   if (double) {
-    svg += line(50, 15, 50, 25);
-    ports.B = { x: 50, y: 25, dir: down };
+    svg += line(50, 15, 50, 30);
+    ports.B = { x: 50, y: 30, dir: down };
   } else {
     // molla a tutta altezza nella camera stelo e sfiato senza raccordo (triangolo) come in ISO 1219-3, all. C
     svg += zigzag(pistonX + 2, 0, 58, 0, 8, 13);
     svg += path("M46,15 L54,15 L50,22 Z", "body");
   }
-  return { w: through ? 250 : 152, h: 52, ports, svg };
+  return { w: through ? 250 : 152, h: 62, ports, svg };
 }
 
 const rotaryGeometry = (): Geometry => ({
@@ -570,11 +576,11 @@ function supplyGeometry(comp: ComponentData): Geometry {
 
 function proximityGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const on = state?.actuated ? " active" : "";
-  const svg = line(0, -E, 0, -16) + line(0, 16, 0, E) + line(14, 0, 24, 0) +
+  const svg = line(0, -E, 0, -16) + line(0, 16, 0, E) + line(14, 0, 30, 0) +
     rect(-14, -16, 28, 32, `body coil${on}`) + diamond(0, 0, 9) + line(-4, 0, 4, 0) +
     (comp.sensor_kind === "reed" || !comp.sensor_kind ? "" : line(-4, 4, 4, 4)) +
     sideText(-14, -20, comp.cam ?? "") ;
-  return { w: 56, h: 2 * E, ports: { BN: eTop(), BU: eBottom(), BK: { x: 24, y: 0, dir: right } }, svg };
+  return { w: 64, h: 2 * E, ports: { BN: eTop(), BU: eBottom(), BK: { x: 30, y: 0, dir: right } }, svg };
 }
 
 function pressureSwitchGeometry(state?: SymbolState): Geometry {
