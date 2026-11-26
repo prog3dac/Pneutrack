@@ -28,7 +28,7 @@ import {
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
 import { fmtG, Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
-import { compileSim } from "../sim/network";
+import { compileSim, type Tunable, type TunableKind } from "../sim/network";
 import { Simulator } from "../sim/simulator";
 import { Recorder } from "../sim/recorder";
 import { strokes, summarize } from "../sim/measures";
@@ -348,6 +348,17 @@ function splitRef(ref: string): [string, string] {
 }
 const fmtBar = (bar: number) => `${bar.toFixed(bar < 10 ? 2 : 1).replace(".", ",")} bar`;
 
+/** Gruppi con il manometro sul corpo: FRL e, con l'opzione, riduttore e filtro riduttore (leggono la porta 2). */
+const hasIntegratedGauge = (comp: ComponentData) => comp.type === "frl_unit" ||
+  ((comp.type === "pressure_regulator" || comp.type === "filter_regulator") && comp.gauge_fitted === "yes");
+/** Fondo scala del manometro integrato [bar]: 10 bar, o il massimo del campo di regolazione se è più alto. */
+function gaugeScale(comp: ComponentData): number {
+  try {
+    const max = comp.params?.setpoint_max ? Quantity.coerce(comp.params.setpoint_max).to("bar") : 0;
+    return max > 10 ? 16 : 10;
+  } catch { return 10; }
+}
+
 /** Stato grafico di un componente durante la simulazione. */
 function symbolState(comp: ComponentData): SymbolState | undefined {
   if (comp.type === "directional_valve") {
@@ -375,6 +386,7 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
     const c = s.cylinder(comp.id);
     return c ? { stroke: c.fraction } : undefined;
   }
+  if (hasIntegratedGauge(comp)) return { gauge: s.gauge(`${comp.id}.2`) / gaugeScale(comp) };
   if (comp.type === "pressure_indicator") {
     let t = 1;
     try { if (comp.params?.threshold) t = Quantity.coerce(comp.params.threshold).to("bar"); } catch { /* resta 1 bar */ }
@@ -471,6 +483,7 @@ function render() {
     const cls = ["component", junction ? "junction" : "", jp > 0.2 ? `pressurized ${pressureBand(jp)}` : "",
       selectedIds().includes(comp.id) ? "selected" : "",
       sim && switchIds.has(comp.id) ? "switchable" : "",
+      sim && tunablesOf(comp.id).length ? "tunable" : "", sim && tuneOpen === comp.id ? "tune-open" : "",
       iss.some((i) => i.severity === "error") ? "has-error" :
         iss.some((i) => i.severity === "warning") ? "has-warning" : ""].filter(Boolean).join(" ");
     const grp = el("g", {
@@ -501,6 +514,7 @@ function render() {
       const cyl = sim?.s.cylinder(comp.id);
       if (cyl) parts.push(`${(cyl.x * 1000).toFixed(0)} mm`);
       if (sim && GAUGE_TYPES.has(comp.type)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
+      if (sim && hasIntegratedGauge(comp)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.2`)));
       if (sim && comp.type === "differential_gauge") {
         parts.push(`Δ ${fmtBar(sim.s.gauge(`${comp.id}.1`) - sim.s.gauge(`${comp.id}.2`))}`);
       }
@@ -567,6 +581,7 @@ function render() {
   renderStatus();
   renderTabs();
   positionSelbar();
+  positionTunePop();
   $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
 }
 
@@ -2526,6 +2541,8 @@ interface SimRun {
   recorder: Recorder;
 }
 let sim: SimRun | null = null;
+/** componente con la regolazione aperta accanto al simbolo */
+let tuneOpen: string | null = null;
 /** diagramma delle fasi aperto e asse orizzontale scelto */
 let diagramOpen = false;
 let diagramMode: DiagramMode = "time";
@@ -2569,6 +2586,8 @@ function stopSim() {
   sim = null;
   held = null;
   heldSwitch = null;
+  tuneOpen = null;
+  renderTunePop();
   $("#app").classList.remove("simulating");
   $("#sim-bar").hidden = true;
   showDiagram(false);
@@ -2751,7 +2770,8 @@ function renderSimPanel() {
     "Pulsanti, leve, pedali e rulli restano azionati finché tieni premuto; solenoidi e leve con arresto " +
     "cambiano stato a ogni clic. Le elettrovalvole servopilotate commutano solo se il pilota ha pressione. " +
     "Nel circuito elettrico si fa clic su pulsanti e interruttori; i solenoidi con una bobina seguono la bobina, " +
-    "e i fili sotto tensione diventano rossi.";
+    "e i fili sotto tensione diventano rossi. Riduttori, strozzatori e tarature si regolano con i cursori " +
+    "qui sotto, con un clic sul simbolo o con la rotellina sopra il simbolo.";
   panel.append(info);
   for (const w of sim.warnings) {
     const p = document.createElement("p");
@@ -2792,6 +2812,25 @@ function renderSimPanel() {
       b.title = sw.latching ? "Clic: chiudi / apri" : "Tieni premuto per azionare";
       box.append(b);
     }
+    panel.append(box);
+  }
+  if (sim.s.net.tunables.length) {
+    heading(panel, "Regolazioni");
+    const box = document.createElement("div");
+    box.className = "sim-tuners";
+    // quella del componente selezionato in cima
+    const sel = selection?.kind === "component" ? selection.id : null;
+    const list = [...sim.s.net.tunables].sort((a, b) => Number(b.id === sel) - Number(a.id === sel));
+    for (const t of list) box.append(tuner(t));
+    const acts = document.createElement("div");
+    acts.className = "sim-tune-actions";
+    const save = button("Riporta nello schema", saveTunings,
+      "Scrive nello schema le regolazioni cambiate in simulazione (si annulla con Ctrl+Z dopo l'uscita)");
+    save.dataset.tuneSave = "";
+    const back = button("Valori dello schema", resetTunings, "Rimette le regolazioni ai valori dello schema");
+    back.dataset.tuneBack = "";
+    acts.append(save, back);
+    box.append(acts);
     panel.append(box);
   }
   if (sim.s.electric) {
@@ -2838,6 +2877,9 @@ function renderSimPanel() {
   };
   for (const g of allComponents().filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor")) {
     measure(`${g.type === "pressure_sensor" ? "Sensore" : "Manometro"} ${g.id}`, `port:${g.id}.1`, "Pressione relativa letta dal manometro in questo istante; la sua traccia è nel diagramma delle fasi.");
+  }
+  for (const g of allComponents().filter(hasIntegratedGauge)) {
+    measure(`Manometro ${g.id}`, `port:${g.id}.2`, "Pressione regolata, letta dal manometro del gruppo a valle del riduttore (porta 2).");
   }
   measure("Aria consumata", "air:total", "Aria uscita dalle alimentazioni dall'inizio della simulazione, in litri normali (ANR, ISO 8778: 20 °C e 1 bar assoluto). Comprende il riempimento iniziale delle linee.");
   measure("Portata attuale", "air:flow", "Aria che esce adesso dalle alimentazioni, in litri normali al minuto.");
@@ -2923,7 +2965,158 @@ function updateSimPanel() {
   for (const b of document.querySelectorAll<HTMLElement>("#properties [data-switch]")) {
     b.classList.toggle("on", s.switchState(b.dataset.switch!));
   }
+  syncTuners();
 }
+
+// --- regolazioni in simulazione ----------------------------------------------------
+
+let tunerSeq = 0;
+const tunablesOf = (id: string): Tunable[] => sim?.s.net.tunables.filter((t) => t.id === id) ?? [];
+/** unità mostrata dai cursori: bar, % e secondi */
+const TUNE_UNIT: Record<TunableKind, { k: number; unit: string; digits: number }> = {
+  pressure: { k: 1 / BAR, unit: "bar", digits: 1 },
+  opening: { k: 100, unit: "%", digits: 0 },
+  time: { k: 1, unit: "s", digits: 1 },
+};
+const tuneText = (t: Tunable, v = t.value) => {
+  const u = TUNE_UNIT[t.kind];
+  return `${(v * u.k).toFixed(u.digits).replace(".", ",")} ${u.unit}`;
+};
+/** valore da scrivere nello schema: "6.5 bar", "35 %", "2.5 s" */
+const tuneParam = (t: Tunable) => {
+  const u = TUNE_UNIT[t.kind];
+  return `${+(t.value * u.k).toFixed(u.digits + 1)} ${u.unit}`;
+};
+const tuneKey = (t: Tunable) => `${t.id}|${t.param}`;
+const tuneByKey = (key: string) => {
+  const [id, param] = key.split("|") as [string, string];
+  return sim?.s.tunable(id, param);
+};
+
+/** Cursore di una regolazione, con valore, campo e valore dello schema. */
+function tuner(t: Tunable): HTMLElement {
+  const u = TUNE_UNIT[t.kind];
+  const box = document.createElement("div");
+  box.className = "tuner";
+  const id = `tuner-${++tunerSeq}`;
+  const label = document.createElement("label");
+  label.htmlFor = id;
+  label.textContent = `${t.id} · ${t.label}`;
+  const out = document.createElement("output");
+  out.htmlFor.add(id);
+  out.dataset.tuneOut = tuneKey(t);
+  const input = document.createElement("input");
+  Object.assign(input, { type: "range", id, min: String(t.min * u.k), max: String(t.max * u.k),
+                         step: String(t.step * u.k), value: String(t.value * u.k) });
+  input.dataset.tune = tuneKey(t);
+  const note = document.createElement("small");
+  note.dataset.tuneNote = tuneKey(t);
+  box.append(label, out, input, note);
+  return box;
+}
+
+/** Allinea cursori, valori e pulsanti alle regolazioni attuali. */
+function syncTuners() {
+  if (!sim) return;
+  for (const input of document.querySelectorAll<HTMLInputElement>("[data-tune]")) {
+    const t = tuneByKey(input.dataset.tune!);
+    if (t && document.activeElement !== input) input.value = String(t.value * TUNE_UNIT[t.kind].k);
+  }
+  for (const out of document.querySelectorAll<HTMLElement>("[data-tune-out]")) {
+    const t = tuneByKey(out.dataset.tuneOut!);
+    if (t) out.textContent = tuneText(t);
+  }
+  for (const note of document.querySelectorAll<HTMLElement>("[data-tune-note]")) {
+    const t = tuneByKey(note.dataset.tuneNote!);
+    if (t) {
+      note.textContent = `${tuneText(t, t.min)} … ${tuneText(t, t.max)}` +
+        (Math.abs(t.value - t.initial) > 1e-9 ? ` · nello schema ${tuneText(t, t.initial)}` : "");
+    }
+  }
+  const changedAny = sim.s.net.tunables.some((t) => Math.abs(t.value - t.initial) > 1e-9);
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-tune-save], [data-tune-back]")) b.disabled = !changedAny;
+}
+
+function setTuning(t: Tunable, value: number) {
+  if (!sim) return;
+  sim.s.setTunable(t.id, t.param, value);
+  syncTuners();
+}
+
+/** Rotellina sul simbolo: un passo della prima regolazione (Maiusc: dieci passi). */
+function wheelTune(id: string, e: WheelEvent) {
+  const t = tunablesOf(id)[0];
+  if (!t) return;
+  setTuning(t, t.value + Math.sign(-e.deltaY) * t.step * (e.shiftKey ? 10 : 1));
+}
+
+/** Scrive nello schema i valori trovati provando, come una modifica annullabile. */
+function saveTunings() {
+  if (!sim) return;
+  const changedT = sim.s.net.tunables.filter((t) => Math.abs(t.value - t.initial) > 1e-9);
+  if (!changedT.length) return;
+  const before = snapshot();
+  for (const t of changedT) {
+    const c = anyById(t.id);
+    if (!c) continue;
+    (c.params ??= {})[t.param] = tuneParam(t);
+    t.initial = t.value;
+  }
+  commit(before);
+  syncTuners();
+  toast(changedT.length > 1 ? `${changedT.length} regolazioni riportate nello schema` : "Regolazione riportata nello schema");
+}
+
+/** Rimette le regolazioni ai valori dello schema. */
+function resetTunings() {
+  if (!sim) return;
+  for (const t of sim.s.net.tunables) sim.s.setTunable(t.id, t.param, t.initial);
+  syncTuners();
+}
+
+function openTunePop(id: string | null) {
+  tuneOpen = id && tunablesOf(id).length ? id : null;
+  renderTunePop();
+  render();
+}
+
+function renderTunePop() {
+  const pop = $("#tune-pop");
+  const list = tuneOpen ? tunablesOf(tuneOpen) : [];
+  if (!sim || !list.length) { pop.hidden = true; pop.replaceChildren(); return; }
+  const close = document.createElement("button");
+  close.className = "tune-close";
+  close.textContent = "✕";
+  close.title = "Chiudi";
+  close.setAttribute("aria-label", "Chiudi la regolazione");
+  close.addEventListener("click", () => openTunePop(null));
+  pop.replaceChildren(close, ...list.map(tuner));
+  pop.hidden = false;
+  syncTuners();
+  positionTunePop();
+}
+
+/** Riquadro della regolazione accanto al simbolo, dentro l'area di lavoro. */
+function positionTunePop() {
+  const pop = $("#tune-pop");
+  if (!tuneOpen || pop.hidden && !pop.childElementCount) return;
+  if (!byId(tuneOpen)) { pop.hidden = true; return; }
+  const b = compBox(tuneOpen), stage = $("#stage").getBoundingClientRect();
+  const x0 = b.x * view.k + view.x, x1 = (b.x + b.w) * view.k + view.x, y0 = b.y * view.k + view.y;
+  if (x1 < 0 || x0 > stage.width || y0 > stage.height || (b.y + b.h) * view.k + view.y < 0) { pop.hidden = true; return; }
+  pop.hidden = false;
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  const left = x1 + 12 + w > stage.width - 8 ? x0 - w - 12 : x1 + 12;
+  pop.style.left = `${Math.max(8, Math.min(stage.width - w - 8, left))}px`;
+  pop.style.top = `${Math.max(8, Math.min(stage.height - h - 8, y0))}px`;
+}
+
+document.addEventListener("input", (e) => {
+  const input = (e.target as Element).closest<HTMLInputElement>("[data-tune]");
+  const t = input && tuneByKey(input.dataset.tune!);
+  if (!t) return;
+  setTuning(t, Number(input.value) / TUNE_UNIT[t.kind].k);
+});
 
 $("#properties").addEventListener("pointerdown", (e) => {
   const sw = target(e).closest("[data-switch]") as HTMLElement | null;
@@ -3311,7 +3504,15 @@ svg.addEventListener("pointerdown", (e) => {
       pressSwitch(comp.dataset.component!);
       return;
     }
-    if (comp) { select({ kind: "component", id: comp.dataset.component! }); return; }
+    if (comp) {
+      const id = comp.dataset.component!;
+      select({ kind: "component", id });
+      // regolazione: si apre accanto al simbolo (un secondo clic la chiude)
+      if (tunablesOf(id).length) openTunePop(tuneOpen === id ? null : id);
+      else if (tuneOpen) openTunePop(null);
+      return;
+    }
+    if (tuneOpen) openTunePop(null);
   }
   svg.setPointerCapture(e.pointerId);
 
@@ -3690,6 +3891,9 @@ function bendClicked(index: number, k: number) {
 
 svg.addEventListener("wheel", (e) => {
   e.preventDefault();
+  // in simulazione la rotellina su un riduttore o uno strozzatore ne cambia la regolazione
+  const over = sim ? target(e).closest<SVGElement>("[data-component]")?.dataset.component : undefined;
+  if (over && tunablesOf(over).length) { wheelTune(over, e); return; }
   const r = svg.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   const k = Math.max(0.25, Math.min(4, view.k * Math.exp(-e.deltaY * 0.0015)));

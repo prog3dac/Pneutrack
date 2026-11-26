@@ -98,6 +98,13 @@ dei problemi.
   arriva in fondo. Manometri e serbatoi mostrano la pressione, i temporizzatori il tempo che manca. *Pausa* (barra spaziatrice),
   *Ricomincia* e la velocità (da 0,05× a tempo reale) controllano il tempo. Durante la simulazione
   lo schema non si modifica; *Disegno* (o `Esc`) torna al disegno, con la vista com'era prima.
+- **Regolazioni in simulazione**: riduttori (anche FRL e filtro riduttore), limitatrici, valvole di
+  sequenza, pressostati, strozzatori, viti di ammortizzo, temporizzatori e alimentazione hanno un
+  cursore nel pannello («Regolazioni») e uno accanto al simbolo, che si apre con un clic; la rotellina
+  sul simbolo cambia il valore di un passo (*Maiusc*: dieci). Il campo è quello di regolazione del
+  catalogo (`setpoint_min` … `setpoint_max`), altrimenti da 0 alla pressione max. I valori restano
+  finché si resta in Simula; «Riporta nello schema» li scrive nello schema. I gruppi con manometro
+  (FRL, riduttore e filtro riduttore «con manometro») mostrano la pressione a valle (porta 2).
 - **Progetti**: *Salva* (`Ctrl+S`) registra lo schema nell'archivio dei progetti; da quel momento
   ogni modifica viene salvata in automatico dopo un istante. *Salva copia* crea un nuovo progetto.
   La finestra *Progetti* elenca i progetti (più recenti in alto), con ricerca, apertura,

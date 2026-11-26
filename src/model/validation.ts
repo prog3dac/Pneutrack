@@ -20,6 +20,8 @@
  * | UNSUPPLIED_PILOT      | warning | pilotaggio collegato ma mai in pressione             |
  * | INVALID_CAM           | error   | finecorsa riferito a un cilindro che non c'è         |
  * | SETPOINT_UNREACHABLE  | warning | taratura (sequenza, FRL...) sopra la pressione max   |
+ * | SETPOINT_RANGE        | error   | campo di regolazione con il minimo sopra il massimo  |
+ * | SETPOINT_OUT_OF_RANGE | warning | taratura fuori dal campo di regolazione              |
  * | MIXED_CONNECTION      | error   | linea tra un morsetto elettrico e una porta pneumatica |
  * | UNCONNECTED_TERMINAL  | warning | morsetto elettrico scollegato                        |
  * | NO_ELECTRIC_SUPPLY    | warning | componenti elettrici senza alimentazione elettrica   |
@@ -272,6 +274,14 @@ export function analyze(data: Pick<CircuitDoc, "components" | "connections">): A
       issues.push(issue("error", "OVERPRESSURE",
         `${c.id} può ricevere ${fmtBar(barFromPa(reached))} ma il massimo da catalogo è ${maxP}`,
         c.id, refs.filter((r) => pAt(r) === reached)));
+    }
+    const set = c.params.setpoint, sMin = c.params.setpoint_min, sMax = c.params.setpoint_max;
+    if (sMin && sMax && sMin.si > sMax.si) {
+      issues.push(issue("error", "SETPOINT_RANGE",
+        `${c.id}: il campo di regolazione va da ${sMin} a ${sMax}, il minimo supera il massimo`, c.id));
+    } else if (set && ((sMin && set.si < sMin.si * (1 - 1e-9)) || (sMax && set.si > sMax.si * (1 + 1e-9)))) {
+      issues.push(issue("warning", "SETPOINT_OUT_OF_RANGE",
+        `${c.id}: la taratura ${set} è fuori dal campo di regolazione (${sMin ?? "0 bar"} … ${sMax ?? "senza massimo"})`, c.id));
     }
     if (isActuator(c) && reached === 0) {
       issues.push(issue("warning", "UNSUPPLIED_ACTUATOR",

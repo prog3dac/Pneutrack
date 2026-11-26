@@ -95,6 +95,28 @@ export interface CylinderSpec {
   lock?: { node: number; threshold: number; at: "any" | "cap" };
 }
 
+/** grandezza di una regolazione: pressione relativa [Pa], apertura 0..1, tempo [s] */
+export type TunableKind = "pressure" | "opening" | "time";
+
+/** Regolazione che si può cambiare mentre la simulazione gira (vite, manopola, ritardo). */
+export interface Tunable {
+  /** sigla del componente */
+  id: string;
+  /** parametro dello schema che regola */
+  param: string;
+  label: string;
+  kind: TunableKind;
+  min: number;
+  max: number;
+  step: number;
+  /** valore dello schema quando la simulazione è partita */
+  initial: number;
+  /** valore attuale */
+  value: number;
+  /** porta il nuovo valore (già nel campo) dentro la rete */
+  apply(v: number): void;
+}
+
 export interface SimNetwork {
   nodeCount: number;
   /** pressione imposta [Pa ass.] dei nodi fissi */
@@ -108,6 +130,8 @@ export interface SimNetwork {
   temperature: number;
   /** circuito elettrico di comando, se lo schema ne ha uno */
   electric: ElectricNetwork | null;
+  /** regolazioni modificabili durante la simulazione */
+  tunables: Tunable[];
 }
 
 export type CompileResult =
@@ -116,6 +140,18 @@ export type CompileResult =
 
 /** Attuatori a semplice effetto: una sola camera in pressione e la forza di ritorno. */
 const SINGLE_ACTING = new Set(["single_acting_cylinder", "bellows_cylinder", "diaphragm_cylinder", "pneumatic_muscle"]);
+
+const PRESSURE_STEP = 0.1 * BAR;
+/** campo dei cursori di pressione senza campo di regolazione né pressione max [Pa] */
+const DEFAULT_PRESSURE_SPAN = 10 * BAR;
+
+/** Campo di regolazione di una taratura: quello di catalogo, altrimenti da 0 alla pressione max. */
+function pressureRange(c: Component, value: number): [number, number] {
+  const lo = c.params.setpoint_min?.si ?? 0;
+  const hi = c.params.setpoint_max?.si ?? c.params.max_pressure?.si ?? DEFAULT_PRESSURE_SPAN;
+  // la taratura dello schema resta sempre raggiungibile, anche se è fuori dal campo
+  return [Math.min(lo, value), Math.max(hi, value)];
+}
 
 /** Volume di ogni nodo di raccordo e tubo [m³]. */
 const NODE_VOLUME = 1e-6;
@@ -198,7 +234,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   /** apertura progressiva tra 0 e 1 attorno a una soglia (evita commutazioni a scatto) */
   const ramp = (x: number, width: number) => Math.min(1, Math.max(0, x / width));
   /** valvola 3/2 NC (porte 1, 2, 3) comandata dal pilotaggio 12 */
-  const pilotedThreeTwo = (c: Component, threshold: number, delay?: number) => {
+  const pilotedThreeTwo = (c: Component, threshold: number, delay?: number): number => {
     const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
     const vi = valves.length;
     for (const [pos, pairs] of Object.entries(VALVE_PATHS["3/2"]) as [Position, [string, string][]][]) {
@@ -206,7 +242,23 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     }
     valves.push({ id: c.id, fn: "3/2", act14: "pilot", act12: "spring", pilot14: node(c, "12"),
                   pilotThreshold: threshold, initial: "12", delay });
+    return vi;
   };
+
+  const tunables: Tunable[] = [];
+  const tune = (c: Component, param: string, label: string, kind: TunableKind, value: number,
+                apply: (v: number) => void) => {
+    const [min, max, step] = kind === "pressure" ? [...pressureRange(c, value), PRESSURE_STEP]
+      : kind === "opening" ? [0, 1, 0.01]
+      : [0, Math.max(10, 3 * value), 0.1];
+    tunables.push({ id: c.id, param, label, kind, min, max, step, initial: value, value, apply });
+  };
+  /** taratura di un riduttore: limite dell'orifizio 1 → 2 */
+  const tuneSetpoint = (c: Component, o: Orifice, label: string, also?: (v: number) => void) =>
+    tune(c, "setpoint", label, "pressure", c.params.setpoint!.si, (v) => { o.limit = P_ATM + v; also?.(v); });
+  /** apertura di uno strozzatore: conduttanza a tutta apertura per l'apertura */
+  const tuneOpening = (c: Component, param: string, label: string, o: Orifice, full: number) =>
+    tune(c, param, label, "opening", simParam(c, param).si, (v) => { o.C = full * v; });
 
   for (const c of comps) {
     // la parte elettrica la compila compileElectric (il pressostato legge solo la pressione della sua porta)
@@ -220,9 +272,13 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     });
     switch (c.type) {
       case "pressure_source":
-      case "compressor":
-        fixed.set(node(c, "1"), P_ATM + c.params.pressure!.si);
+      case "compressor": {
+        const n = node(c, "1"), p = c.params.pressure!.si;
+        fixed.set(n, P_ATM + p);
+        tune(c, "pressure", c.type === "compressor" ? "Pressione di mandata" : "Pressione", "pressure", p,
+             (v) => fixed.set(n, P_ATM + v));
         break;
+      }
       case "vacuum_pump":
         fixed.set(node(c, "1"), Math.max(0.05 * BAR, P_ATM - c.params.vacuum!.si));
         break;
@@ -247,15 +303,21 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         break;
       case "pressure_regulator":
       case "frl_unit":
-      case "filter_regulator":
-        orifices.push(orifice("1", "2", { limit: P_ATM + c.params.setpoint!.si }));
+      case "filter_regulator": {
+        const o = orifice("1", "2", { limit: P_ATM + c.params.setpoint!.si });
+        orifices.push(o);
+        tuneSetpoint(c, o, "Pressione regolata");
         break;
+      }
       case "relieving_regulator":
       case "proportional_regulator": {
-        const set = c.params.setpoint!.si, o2 = node(c, "2");
-        orifices.push(orifice("1", "2", { limit: P_ATM + set }));
+        const st = { set: c.params.setpoint!.si }, o2 = node(c, "2");
+        const o = orifice("1", "2", { limit: P_ATM + st.set });
+        orifices.push(o);
         // scarico: l'eccesso a valle oltre la taratura esce da 3
-        orifices.push(orifice("2", "3", { oneWay: true, gate: (P) => ramp(gauge(P, o2) - set - 0.1 * BAR, 0.1 * BAR) }));
+        orifices.push(orifice("2", "3", { oneWay: true, gate: (P) => ramp(gauge(P, o2) - st.set - 0.1 * BAR, 0.1 * BAR) }));
+        tuneSetpoint(c, o, c.type === "proportional_regulator" ? "Pressione impostata dal segnale" : "Pressione regolata",
+                     (v) => { st.set = v; });
         break;
       }
       case "piloted_regulator": {
@@ -271,7 +333,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
         const vi = valves.length, a = node(c, "1"), b = node(c, "2");
         orifices.push({ a, b, C, bcrit, valve: vi, positions: ["12"] });
-        orifices.push({ a, b, C: C * simParam(c, "pressed_opening").si, bcrit, valve: vi, positions: ["14"] });
+        const pressed: Orifice = { a, b, C: C * simParam(c, "pressed_opening").si, bcrit, valve: vi, positions: ["14"] };
+        orifices.push(pressed);
+        tuneOpening(c, "pressed_opening", "Apertura con il rullo premuto", pressed, C);
         valves.push({ id: c.id, fn: "2/2", act14: "mechanical", act12: "spring", pilotThreshold: DEFAULT_PILOT_THRESHOLD,
                       initial: "12", cam14: c.cam_14 });
         break;
@@ -329,7 +393,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "soft_start_valve": {
         const C = conductanceOf(c), i1 = node(c, "1"), o2 = node(c, "2");
         const ratio = simParam(c, "switch_ratio").si;
-        orifices.push(orifice("1", "2", { C: C * simParam(c, "fill_opening").si, oneWay: true }));
+        const fill = orifice("1", "2", { C: C * simParam(c, "fill_opening").si, oneWay: true });
+        orifices.push(fill);
+        tuneOpening(c, "fill_opening", "Apertura dello strozzatore di riempimento", fill, C);
         // apertura piena quando la pressione a valle raggiunge la soglia
         orifices.push(orifice("1", "2", { oneWay: true,
           gate: (P) => ramp(gauge(P, o2) - ratio * gauge(P, i1) + 0.05 * BAR, 0.1 * BAR) }));
@@ -363,7 +429,12 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         orifices.push(orifice("3", "4", { oneWay: true }), orifice("4", "3", { oneWay: true, gate: open(p1) }));
         break;
       }
-      case "flow_control_valve":
+      case "flow_control_valve": {
+        const o = orifice("1", "2");
+        orifices.push(o);
+        tuneOpening(c, "opening", "Apertura", o, conductanceOf(c, false));
+        break;
+      }
       case "air_filter":
       case "lubricator":
       case "air_dryer":
@@ -374,10 +445,13 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "air_motor":
         orifices.push(orifice("1", "2", c.motor_kind === "one_way" ? { oneWay: true } : {}));
         break;
-      case "one_way_flow_control":
-        orifices.push(orifice("1", "2"));
+      case "one_way_flow_control": {
+        const o = orifice("1", "2");
+        orifices.push(o);
         orifices.push(orifice("2", "1", { C: simParam(c, "free_conductance").si, oneWay: true }));
+        tuneOpening(c, "opening", "Apertura", o, conductanceOf(c, false));
         break;
+      }
       case "check_valve": {
         // con la molla apre più tardi: 0,5 bar se la pressione di apertura non è indicata
         const crack = c.params.cracking_pressure?.si ?? (c.check_spring === "yes" ? 0.5 * BAR : 0.1 * BAR);
@@ -413,16 +487,22 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         break;
       }
       case "relief_valve": {
-        const i1 = node(c, "1"), set = c.params.setpoint!.si;
-        orifices.push(orifice("1", "3", { oneWay: true, gate: (P) => ramp(gauge(P, i1) - set, 0.2 * BAR) }));
+        const i1 = node(c, "1"), st = { set: c.params.setpoint!.si };
+        orifices.push(orifice("1", "3", { oneWay: true, gate: (P) => ramp(gauge(P, i1) - st.set, 0.2 * BAR) }));
+        tune(c, "setpoint", "Pressione di taratura", "pressure", st.set, (v) => { st.set = v; });
         break;
       }
-      case "sequence_valve":
-        pilotedThreeTwo(c, c.params.setpoint!.si);
+      case "sequence_valve": {
+        const vi = pilotedThreeTwo(c, c.params.setpoint!.si);
+        tune(c, "setpoint", "Pressione di commutazione", "pressure", c.params.setpoint!.si,
+             (v) => { valves[vi]!.pilotThreshold = v; });
         break;
-      case "time_delay_valve":
-        pilotedThreeTwo(c, simParam(c, "pilot_pressure").si, c.params.delay!.si);
+      }
+      case "time_delay_valve": {
+        const vi = pilotedThreeTwo(c, simParam(c, "pilot_pressure").si, c.params.delay!.si);
+        tune(c, "delay", "Ritardo", "time", c.params.delay!.si, (v) => { valves[vi]!.delay = v; });
         break;
+      }
       case "directional_valve": {
         const fn = c.function!;
         const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
@@ -462,15 +542,18 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const single = SINGLE_ACTING.has(c.type) || (c.type === "gripper" && c.gripper_kind === "single");
         const through = c.type === "double_rod_cylinder" || c.type === "rodless_cylinder";
         // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
+        const cushions: Orifice[] = [];
         const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
           const cu = c.cushioning ?? "none";
           if (cu !== end && cu !== "both") return node(c, portName);
           const n = nodeCount++;
           const opening = Math.min(1, Math.max(CUSHION_MIN_OPENING, simParam(c, "cushion_opening").si));
-          orifices.push({
+          const o: Orifice = {
             a: n, b: node(c, portName), C: CUSHION_FREE_C, bcrit: 0.4,
             cushion: { cylinder: cylinders.length, end, length: cushionLength(c), C: opening * CUSHION_MAX_C },
-          });
+          };
+          orifices.push(o);
+          cushions.push(o);
           return n;
         };
         cylinders.push({
@@ -496,6 +579,11 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
               ? { node: node(c, "A"), threshold: simParam(c, "unlock_pressure").si, at: "cap" }
               : undefined,
         });
+        if (cushions.length) {
+          tune(c, "cushion_opening", "Apertura vite ammortizzo", "opening", simParam(c, "cushion_opening").si, (v) => {
+            for (const o of cushions) o.cushion!.C = Math.max(CUSHION_MIN_OPENING, v) * CUSHION_MAX_C;
+          });
+        }
         break;
       }
       default:
@@ -505,13 +593,22 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
 
   const baseVolume = Array.from({ length: nodeCount }, () => options.nodeVolume ?? NODE_VOLUME);
   for (const [n, v] of [...tubeVolumes, ...extraVolumes]) baseVolume[n]! += v;
+  const electric = compileElectric(built, portNode);
+  // pressostati e temporizzatori del circuito elettrico
+  for (const sw of electric?.pressureSwitches ?? []) {
+    const c = built.components.get(sw.id)!, hyst = sw.on - sw.off;
+    tune(c, "setpoint", "Pressione di intervento", "pressure", sw.on, (v) => { sw.on = v; sw.off = Math.max(0, v - hyst); });
+  }
+  for (const r of electric?.relays ?? []) {
+    if (r.mode !== "relay") tune(built.components.get(r.id)!, "delay", "Ritardo", "time", r.delay, (v) => { r.delay = v; });
+  }
   return {
     ok: true,
     warnings,
     network: {
       nodeCount, fixed, baseVolume,
       orifices, valves, cylinders, portNode, temperature: 293.15,
-      electric: compileElectric(built, portNode),
+      electric, tunables,
     },
   };
 }

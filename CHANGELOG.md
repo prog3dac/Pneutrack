@@ -3,6 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.32.0 · 2026-11-26
+
+- In simulazione si regolano gli elementi mentre il circuito gira: pressione di riduttori, gruppi FRL, filtri riduttori e riduttori con scarico, taratura di valvole limitatrici, di sequenza e pressostati, apertura di strozzatori, regolatori di flusso e viti di ammortizzo, ritardo dei temporizzatori, pressione dell'alimentazione. Il cilindro rallenta o accelera subito, senza ripartire.
+- I cursori stanno nel pannello a destra, sotto «Regolazioni» (quello del componente selezionato in cima). Un clic sul simbolo apre il cursore accanto al simbolo; la rotellina sul simbolo cambia il valore a piccoli passi (con *Maiusc* dieci passi). La freccia di regolazione del simbolo si colora quando è regolabile.
+- I valori trovati provando valgono finché si resta in Simula, anche dopo *Ricomincia*. «Riporta nello schema» li scrive nello schema (si annulla con *Ctrl+Z*), «Valori dello schema» rimette quelli di partenza.
+- Nuovo campo di regolazione (min e max) per riduttori, FRL, limitatrici, valvole di sequenza e pressostati: il cursore resta in quel campo; se manca va da 0 alla pressione max. I riduttori nuovi partono con 0,5…10 bar. La validazione segnala una taratura fuori dal campo.
+- I gruppi con il manometro mostrano la pressione regolata: nel gruppo FRL e, con la nuova opzione «Con manometro», nel riduttore e nel filtro riduttore la lancetta si muove e il valore compare accanto alla sigla e tra le misure.
+
 ## 0.31.0 · 2026-11-26
 
 - Pneutrack si installa come app: nel menu *File* c'è «Installa l'app…» (in Chrome ed Edge apre la richiesta del browser, in Safari e negli altri mostra come fare). Installata, si apre dal menu Start, dal Dock o dalla schermata Home in una finestra sua, con la sua icona.
