@@ -19,6 +19,20 @@ animarlo.
 > Dettagli in [docs/interfaccia.md](docs/interfaccia.md), [docs/modello-dati.md](docs/modello-dati.md),
 > [docs/elettropneumatica.md](docs/elettropneumatica.md) e [docs/PIANO.md](docs/PIANO.md).
 
+## Installare l'app
+
+Pneutrack si può installare come app dal browser, senza scaricare nulla: si apre in una
+finestra sua, con l'icona tra le altre app, e funziona anche **senza rete** dopo la prima
+apertura.
+
+- **Chrome o Edge** (Windows, Mac, Linux, Android): apri <https://prog3dac.github.io/Pneutrack/>
+  e scegli *File* → *Installa l'app…*, oppure l'icona di installazione nella barra degli indirizzi.
+- **Safari su Mac**: menu *File* → *Aggiungi al Dock*.
+- **Safari su iPhone e iPad**: *Condividi* → *Aggiungi alla schermata Home*.
+
+I progetti restano salvati nel browser con cui si è installata l'app. Quando esce una versione
+nuova l'app lo segnala con il pulsante *Aggiorna*.
+
 ## Sviluppo
 
 Pneutrack è scritto in TypeScript e richiede Node.js 22.

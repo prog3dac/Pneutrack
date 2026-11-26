@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pneutrack</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%232563eb' stroke-width='3'/%3E%3Cpath d='M16 9 L22 20 H10 Z' fill='none' stroke='%232563eb' stroke-width='2.5'/%3E%3C/svg%3E">
+  <link rel="manifest" href="%BASE_URL%manifest.webmanifest">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="Pneutrack">
+  <meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
 <div id="app">
@@ -28,6 +33,7 @@
           <hr>
           <button data-act="bom" title="Elenco dei pezzi dello schema con sigle, dati, codici e quantità; si scarica in CSV o PDF">Distinta componenti…</button>
           <hr>
+          <button id="btn-install" data-act="install" title="Installa Pneutrack sul computer o sul tablet: si apre in una finestra sua, anche senza rete" hidden>Installa l'app…</button>
           <a class="menu-link" href="simboli.html" target="_blank" rel="noopener" title="Tutti i componenti con simbolo, descrizione e porte">Catalogo dei simboli ↗</a>
         </div>
       </details>
@@ -215,6 +221,26 @@
         <button id="export-current"></button>
       </div>
     </div>
+  </div>
+  <div id="install-dialog" class="overlay" hidden>
+    <div class="dialog narrow" role="dialog" aria-modal="true" aria-labelledby="install-title">
+      <header>
+        <h2 id="install-title">Installa l'app</h2>
+        <button data-iact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <p class="store-label">Installata, Pneutrack si apre dal menu Start, dal Dock o dalla schermata Home in una finestra sua, funziona anche senza rete e riceve le versioni nuove. I progetti restano quelli salvati in questo browser.</p>
+      <ul class="install-steps">
+        <li><b>Chrome ed Edge</b> (Windows, Mac, Linux, Android): icona di installazione nella barra degli indirizzi, oppure menu ⋮ → <i>Installa Pneutrack</i> (in Edge: <i>App</i> → <i>Installa questo sito come app</i>).</li>
+        <li><b>Safari su Mac</b>: menu <i>File</i> → <i>Aggiungi al Dock</i>.</li>
+        <li><b>Safari su iPhone e iPad</b>: pulsante <i>Condividi</i> → <i>Aggiungi alla schermata Home</i>.</li>
+        <li><b>Firefox</b>: su computer non installa le app web; si usa la pagina come adesso, anche senza rete dopo la prima apertura.</li>
+      </ul>
+    </div>
+  </div>
+  <div id="update-bar" class="update-bar" role="status" hidden>
+    <span>È pronta una versione nuova di Pneutrack.</span>
+    <button id="update-now" class="primary">Aggiorna</button>
+    <button id="update-later" class="icon" aria-label="Più tardi" title="Più tardi: si aggiorna alla prossima apertura">✕</button>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>
 </div>

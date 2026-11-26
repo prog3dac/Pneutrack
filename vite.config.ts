@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
+import { pwa } from "./tools/pwa";
 
 const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
 
@@ -14,4 +15,6 @@ export default defineConfig({
   },
   // numero di versione dell'app, mostrato nell'intestazione
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // app installabile: service worker con tutti i file della build (tools/pwa.ts)
+  plugins: [pwa(pkg.version)],
 });

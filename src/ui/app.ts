@@ -46,6 +46,7 @@ import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } 
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 import { labelSpot } from "./labels";
+import { initPwa } from "./pwa";
 import { designationPrefix, paletteCategories, paletteItems } from "./palette";
 import { EXIT, routePoints, simplifyPolyline, straightenBends, type PortPoint, type RouteEnd } from "../model/route";
 
@@ -4110,7 +4111,11 @@ $<HTMLInputElement>("#file-input").addEventListener("change", async (e) => {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file) return;
+  if (file) await openFile(file);
+});
+
+/** Apre un file .pneu.json (progetto o schema): da «Importa file…» o dal sistema con l'app installata. */
+async function openFile(file: File) {
   try {
     const data = JSON.parse(await file.text());
     const circuit = data.circuit && data.circuit.components ? data.circuit : data; // progetto o schema
@@ -4123,7 +4128,7 @@ $<HTMLInputElement>("#file-input").addEventListener("change", async (e) => {
   } catch (err) {
     toast(`Impossibile aprire il file: ${(err as Error).message}`);
   }
-});
+}
 
 // --- finestra Progetti -----------------------------------------------------------------
 
@@ -4564,4 +4569,6 @@ window.pneutrack = {
   startSim, stopSim, pressCommand, releaseHeld,
 };
 export type { ConnectionData };
-init();
+const ready = init();
+// app installabile: service worker, «Installa l'app», versioni nuove, file aperti dal sistema
+initPwa({ toast, openFile: (file) => ready.then(() => openFile(file)) });
