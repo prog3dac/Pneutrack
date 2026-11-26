@@ -3,6 +3,12 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.26.0 · 2026-11-26
+
+- Linee dei tubi sulla griglia: tutte le porte dei simboli cadono ora sui nodi della griglia, in ogni rotazione e specchiate, e il tratto d'uscita dalla porta è lungo un passo. Due porte sulla stessa verticale o orizzontale si collegano con un tratto dritto, senza più i piccoli scalini di prima, e tutti i gomiti cadono sui nodi. Le porte di valvole, cilindri, gruppo FRL, filtro, lubrificatore, manometro, non ritorno, strozzatori, scarico rapido, limitatrice, sorgente, silenziatore, scarico e sensore si sono spostate di pochi punti.
+- Raddrizza automatico: dopo aver spostato un componente, un gruppo o una piega, la linea perde da sola i gradini di un passo, i tratti allineati e le pieghe che non servono più. Gli schemi salvati con la versione precedente si sistemano allo stesso modo quando si aprono.
+- «Raddrizza linea» nel pannello del collegamento toglie i gradini fino a due passi e tiene le pieghe che servono; il vecchio comportamento (togliere tutte le pieghe) è nel nuovo pulsante «Togli le pieghe».
+
 ## 0.25.0 · 2026-11-26
 
 - Testi e forme sullo schema: nuova sezione «Annot.» nella barra a sinistra con testo, nota in riquadro, richiamo con freccia, indice di revisione, linea, freccia, polilinea, rettangolo, cerchio ed ellisse.

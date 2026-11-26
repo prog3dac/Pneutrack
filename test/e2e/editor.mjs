@@ -163,7 +163,7 @@ assert.equal(s.doc.connections[1].points, undefined, "piega tolta");
 await page.keyboard.press("Control+z");
 s = await state();
 assert.equal(s.doc.connections[1].points.length, 1, "annulla riporta la piega");
-await page.click('#properties button:has-text("Raddrizza linea")');
+await page.click('#properties button:has-text("Togli le pieghe")');
 s = await state();
 assert.equal(s.doc.connections[1].points, undefined);
 

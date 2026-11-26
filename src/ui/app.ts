@@ -42,6 +42,7 @@ import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } 
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 import { labelSpot } from "./labels";
+import { EXIT, routePoints, simplifyPolyline, straightenBends, type PortPoint, type RouteEnd } from "../model/route";
 
 const GRID = 10;
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -190,7 +191,6 @@ function toWorld(evt: { clientX: number; clientY: number }) {
 }
 const snap = (v: number) => Math.round(v / GRID) * GRID;
 
-interface PortPoint { x: number; y: number; dir: Dir }
 function portWorld(compId: string, portName: string): PortPoint | null {
   const comp = byId(compId);
   if (!comp) return null;
@@ -204,49 +204,8 @@ function portWorld(compId: string, portName: string): PortPoint | null {
 
 type Pt = [number, number];
 
-/**
- * Percorso ortogonale di una linea: tratto d'uscita dalla porta, poi i punti di piega
- * scelti dall'utente (se ci sono), poi il tratto d'ingresso nell'altra porta.
- * `bendAt[k]` è l'indice in `pts` del k-esimo punto di piega.
- */
-function routePoints(a: PortPoint, b: { x: number; y: number; dir?: Dir }, bends: Pt[] = []) {
-  const s1: Pt = [a.x + a.dir[0] * 15, a.y + a.dir[1] * 15];
-  const s2: Pt = b.dir ? [b.x + b.dir[0] * 15, b.y + b.dir[1] * 15] : [b.x, b.y];
-  const pts: Pt[] = [[a.x, a.y], s1];
-  const bendAt: number[] = [];
-  if (!bends.length) {
-    const v1 = a.dir[0] === 0, v2 = b.dir ? b.dir[0] === 0 : !v1;
-    if (v1 && v2) {
-      const my = (s1[1] + s2[1]) / 2;
-      pts.push([s1[0], my], [s2[0], my]);
-    } else if (!v1 && !v2) {
-      const mx = (s1[0] + s2[0]) / 2;
-      pts.push([mx, s1[1]], [mx, s2[1]]);
-    } else if (v1) {
-      pts.push([s1[0], s2[1]]);
-    } else {
-      pts.push([s2[0], s1[1]]);
-    }
-  } else {
-    let vertical = a.dir[0] === 0; // asse dell'ultimo tratto
-    const goTo = (q: Pt) => {
-      const p = pts[pts.length - 1]!;
-      if (p[0] !== q[0] && p[1] !== q[1]) {
-        // gira: prima perpendicolare all'ultimo tratto, poi di nuovo parallelo
-        pts.push(vertical ? [q[0], p[1]] : [p[0], q[1]]);
-      } else if (p[0] !== q[0] || p[1] !== q[1]) {
-        vertical = p[0] === q[0];
-      }
-      pts.push(q);
-    };
-    for (const w of bends) { goTo(w); bendAt.push(pts.length - 1); }
-    goTo(s2);
-  }
-  pts.push(s2, [b.x, b.y]);
-  return { pts, bendAt };
-}
 const ptsAttr = (pts: Pt[]) => pts.map((p) => p.join(",")).join(" ");
-const route = (a: PortPoint, b: { x: number; y: number; dir?: Dir }, bends?: Pt[]) =>
+const route = (a: PortPoint, b: RouteEnd, bends?: Pt[]) =>
   ptsAttr(routePoints(a, b, bends).pts);
 
 /** Indice del tratto di `pts` più vicino al punto (x, y). */
@@ -278,9 +237,43 @@ function connEnds(c: ConnectionData): { a: PortPoint; b: PortPoint } | null {
   if (!a || !b) return null;
   const bends = c.points ?? [];
   const pa0 = a, pb0 = b;
-  if (isJunction(ca)) a = aim(a, bends[0] ?? (isJunction(cb) ? [pb0.x, pb0.y] : [pb0.x + pb0.dir[0] * 15, pb0.y + pb0.dir[1] * 15]));
-  if (isJunction(cb)) b = aim(b, bends[bends.length - 1] ?? (isJunction(ca) ? [pa0.x, pa0.y] : [pa0.x + pa0.dir[0] * 15, pa0.y + pa0.dir[1] * 15]));
+  if (isJunction(ca)) a = aim(a, bends[0] ?? (isJunction(cb) ? [pb0.x, pb0.y] : [pb0.x + pb0.dir[0] * EXIT, pb0.y + pb0.dir[1] * EXIT]));
+  if (isJunction(cb)) b = aim(b, bends[bends.length - 1] ?? (isJunction(ca) ? [pa0.x, pa0.y] : [pa0.x + pa0.dir[0] * EXIT, pa0.y + pa0.dir[1] * EXIT]));
   return { a, b };
+}
+
+/**
+ * Raddrizza le pieghe di una linea (gradini lunghi al più `maxJog`, tratti allineati, pieghe
+ * superflue). Restituisce true se la linea è cambiata.
+ */
+function straightenConnection(c: ConnectionData, maxJog = GRID): boolean {
+  const old = c.points;
+  if (!old?.length) return false;
+  const ends = connEnds(c);
+  if (!ends) return false;
+  const next = straightenBends(ends.a, ends.b, old, maxJog);
+  if (next.length === old.length && next.every((p, i) => p[0] === old[i]![0] && p[1] === old[i]![1])) return false;
+  if (next.length) c.points = next; else delete c.points;
+  // sui punti di connessione la direzione d'uscita dipende dalle pieghe: si controlla il disegno ottenuto
+  const after = connEnds(c);
+  const want = simplifyPolyline(routePoints(ends.a, ends.b, next).pts, 0);
+  const got = after && simplifyPolyline(routePoints(after.a, after.b, next).pts, 0);
+  if (!got || got.length !== want.length || got.some((p, i) => p[0] !== want[i]![0] || p[1] !== want[i]![1])) {
+    c.points = old;
+    return false;
+  }
+  return true;
+}
+
+/** Raddrizza le linee che toccano i componenti `ids` (tutte, senza `ids`). Restituisce quante ne ha cambiate. */
+function straightenLines(ids?: Iterable<string>, maxJog = GRID): number {
+  const set = ids ? new Set(ids) : null;
+  let n = 0;
+  for (const c of doc.connections) {
+    if (set && !set.has(splitRef(c.from)[0]) && !set.has(splitRef(c.to)[0])) continue;
+    if (straightenConnection(c, maxJog)) n++;
+  }
+  return n;
 }
 
 /** Tubo valido di un collegamento, o null. */
@@ -1826,9 +1819,18 @@ function renderProperties() {
     if (c.points?.length) {
       const straight = document.createElement("button");
       straight.textContent = "Raddrizza linea";
-      straight.title = "Toglie i punti di piega";
-      straight.addEventListener("click", () => mutate(() => { delete doc.connections[(selection as { index: number }).index]!.points; }));
-      actions.append(straight);
+      straight.title = "Toglie i gradini fino a due passi di griglia, i tratti allineati e le pieghe che non servono";
+      straight.addEventListener("click", () => {
+        const index = (selection as { index: number }).index;
+        let done = false;
+        mutate(() => { done = straightenConnection(doc.connections[index]!, 2 * GRID); });
+        if (!done) toast("La linea è già dritta: per rifarla da capo usa «Togli le pieghe».");
+      });
+      const reset = document.createElement("button");
+      reset.textContent = "Togli le pieghe";
+      reset.title = "Toglie tutti i punti di piega: la linea torna al percorso automatico";
+      reset.addEventListener("click", () => mutate(() => { delete doc.connections[(selection as { index: number }).index]!.points; }));
+      actions.append(straight, reset);
     }
     const split = document.createElement("button");
     split.textContent = "Aggiungi punto di connessione";
@@ -2138,14 +2140,14 @@ function alignSelection(mode: AlignMode) {
     const g = geometry(byId(id)!), rot = layoutOf(id).rot || 0;
     return rot % 2 ? { hw: g.h / 2, hh: g.w / 2 } : { hw: g.w / 2, hh: g.h / 2 };
   };
-  mutate(() => { alignComponents(doc, ids, mode, size, GRID); });
+  mutate(() => { alignComponents(doc, ids, mode, size, GRID); straightenLines(ids); });
 }
 
 /** Specchia la selezione: un componente sul posto, più componenti attorno al centro del gruppo. */
 function mirrorSelection(axis: Axis) {
   const ids = selectedIds();
   if (!ids.length || sim) return;
-  mutate(() => mirrorComponents(doc, ids, axis));
+  mutate(() => { mirrorComponents(doc, ids, axis); straightenLines(ids); });
 }
 
 function rotateSelection() {
@@ -3067,7 +3069,7 @@ svg.addEventListener("pointerup", (e) => {
   const d = drag;
   drag = null;
   if (d.mode === "group") {
-    if (d.moved) commit(d.before);
+    if (d.moved) { straightenLines(d.ids); commit(d.before); }
     else if (d.clicked) select({ kind: "component", id: d.clicked });
     return;
   }
@@ -3092,6 +3094,8 @@ svg.addEventListener("pointerup", (e) => {
     return;
   }
   if (d.mode === "move" || d.mode === "bend" || d.mode === "label") {
+    if (d.moved && d.mode === "move") straightenLines([d.id]);
+    if (d.moved && d.mode === "bend" && doc.connections[d.index]) straightenConnection(doc.connections[d.index]!);
     if (d.moved) commit(d.before);
     else if (d.mode === "bend" && d.bend >= 0) bendClicked(d.index, d.bend);
   } else if (d.mode === "pan") {
@@ -3379,6 +3383,7 @@ function loadDoc(data: Partial<CircuitDoc>, { fit = true } = {}) {
     if (!doc.layout[c.id]) doc.layout[c.id] = { x: (i % 5) * 160, y: Math.floor(i / 5) * 140, rot: 0 };
     i++;
   }
+  straightenLines(); // schemi salvati con le porte di prima: si tolgono i gradini rimasti
   selection = null;
   commit(before);
   if (fit) fitView();
@@ -4002,7 +4007,7 @@ async function init() {
   // bozza locale subito, poi l'archivio (sul web può rispondere dopo qualche secondo)
   let restored: Partial<CircuitDoc> | null = null;
   try { restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { restored = null; }
-  if (restored?.components) { doc = { ...emptyCircuit(), ...restored } as Doc; cleanAnnotations(); }
+  if (restored?.components) { doc = { ...emptyCircuit(), ...restored } as Doc; cleanAnnotations(); straightenLines(); }
   history.past = []; history.future = [];
   changed();
   if (doc.components.length) fitView();
@@ -4016,6 +4021,7 @@ async function init() {
       const p = await store.get(lastId);
       doc = { ...emptyCircuit(), ...p.circuit };
       cleanAnnotations();
+      straightenLines();
       project = { id: p.id, createdAt: p.createdAt };
       savedSnapshot = snapshot();
       lastSavedAt = p.updatedAt;
