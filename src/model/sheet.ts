@@ -2,7 +2,7 @@
  * Foglio di disegno: formato ISO 216 (A4–A0), orientamento e dati del cartiglio.
  *
  * Nel file: `"sheet": {"format": "A3", "orientation": "landscape", "origin": [x, y],
- * "author": "…", "number": "…", "revision": "…"}`. Come `layout`, non conta per il modello.
+ * "author": "…", "number": "…", "revision": "…", "bom": true}`. Come `layout`, non conta per il modello.
  */
 
 export type SheetFormat = "A4" | "A3" | "A2" | "A1" | "A0";
@@ -16,6 +16,8 @@ export interface SheetData {
   author?: string;
   number?: string;
   revision?: string;
+  /** distinta componenti disegnata sopra il cartiglio */
+  bom?: boolean;
 }
 
 /** Dimensioni ISO 216 in mm (lato corto × lato lungo). */
@@ -82,5 +84,6 @@ export function parseSheet(raw: unknown): SheetData | null {
     s.origin = [d.origin[0] as number, d.origin[1] as number];
   }
   for (const k of ["author", "number", "revision"] as const) if (typeof d[k] === "string") s[k] = d[k] as string;
+  if (d.bom === true) s.bom = true;
   return s;
 }

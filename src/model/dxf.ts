@@ -45,8 +45,8 @@ export function dxfText(s: string): string {
 }
 
 /** Byte del file in Windows-1252, la codifica dichiarata nell'intestazione ($DWGCODEPAGE). */
-export function dxfBytes(text: string): Uint8Array {
-  const out = new Uint8Array(text.length);
+export function dxfBytes(text: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(text.length));
   for (let i = 0; i < text.length; i++) {
     const cp = text.charCodeAt(i);
     out[i] = cp < 0x80 || (cp >= 0xa0 && cp <= 0xff) ? cp : CP1252[cp] ?? 0x3f;
