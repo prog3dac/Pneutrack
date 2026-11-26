@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.20.0 · 2026-11-25
+
+- Allineamento dei componenti selezionati (almeno 2), dal menu Modifica o dal pannello della selezione multipla: bordi a sinistra, a destra, in alto, in basso, oppure centri sulla stessa verticale (valvola sotto il suo cilindro) o sulla stessa orizzontale (fila di valvole). Le posizioni restano sulla griglia e Ctrl+Z annulla.
+- Distribuzione in orizzontale o in verticale (almeno 3 componenti): il primo e l'ultimo restano fermi, gli altri prendono lo stesso passo tra i centri.
+
 ## 0.19.0 · 2026-11-25
 
 - Strozzatore bidirezionale e regolatore di flusso unidirezionale: nuovo campo «Apertura», da 0 % (chiuso) a 100 % (tutto aperto). La conduttanza C ora è quella a tutta apertura, come a catalogo, e la simulazione usa apertura × C; nel regolatore unidirezionale il verso libero non cambia. Un regolatore nuovo parte al 20 % di 1,5 dm³/(s·bar). Gli schemi salvati con la sola C simulano come prima; quelli con C vuota ora usano 1,5 dm³/(s·bar) tutto aperto: per ritrovare la velocità di prima basta scrivere 20 % nell'apertura.

@@ -5,6 +5,7 @@ import {
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import { mirrorComponents, type Axis } from "../model/mirror";
+import { ALIGN_LABELS, alignComponents, type AlignMode } from "../model/align";
 import { dissolveJunction, isJunctionType, JUNCTION, splitConnection, WIRE_JUNCTION } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
@@ -1262,6 +1263,16 @@ function renderProperties() {
       button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
     );
     panel.append(actions);
+    const alignHead = document.createElement("h4");
+    alignHead.textContent = "Allinea";
+    const align = document.createElement("div");
+    align.className = "actions align-grid";
+    for (const mode of Object.keys(ALIGN_LABELS) as AlignMode[]) {
+      const b = button(ALIGN_LABELS[mode].label, () => alignSelection(mode), ALIGN_LABELS[mode].title, `align-${mode}`);
+      if (mode.startsWith("dist") && selection.ids.length < 3) b.disabled = true;
+      align.append(b);
+    }
+    panel.append(alignHead, align);
     const help = document.createElement("p");
     help.className = "help";
     help.textContent = "Trascina uno dei componenti per spostarli tutti. Maiusc+clic aggiunge o toglie un componente, " +
@@ -1471,6 +1482,10 @@ function renderStatus() {
   $<HTMLButtonElement>("#btn-copy").disabled = none;
   $<HTMLButtonElement>("#btn-cut").disabled = !!sim || none;
   $<HTMLButtonElement>("#btn-paste").disabled = !!sim || !storedClip();
+  const count = selectedIds().length;
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#edit-menu [data-act^="align-"]')) {
+    b.disabled = !!sim || count < (b.dataset.act!.startsWith("align-dist") ? 3 : 2);
+  }
   $("#doc-name").textContent = doc.name || "Senza nome";
   renderSaveState();
 }
@@ -1562,6 +1577,18 @@ function deleteSelection() {
     pruneBlocks(doc);
   });
   select(null);
+}
+
+/** Allinea o distribuisce i componenti selezionati (servono almeno 2, o 3 per distribuire). */
+function alignSelection(mode: AlignMode) {
+  const ids = selectedIds().filter((id) => byId(id));
+  if (ids.length < 2 || sim) return;
+  if (mode.startsWith("dist") && ids.length < 3) { toast("Per distribuire servono almeno 3 componenti."); return; }
+  const size = (id: string) => {
+    const g = geometry(byId(id)!), rot = layoutOf(id).rot || 0;
+    return rot % 2 ? { hw: g.h / 2, hh: g.w / 2 } : { hw: g.w / 2, hh: g.h / 2 };
+  };
+  mutate(() => { alignComponents(doc, ids, mode, size, GRID); });
 }
 
 /** Specchia la selezione: un componente sul posto, più componenti attorno al centro del gruppo. */
@@ -2991,6 +3018,7 @@ $("#palette").addEventListener("scroll", () => {
 $("#toolbar").addEventListener("click", (e) => {
   const act = target(e).closest<HTMLElement>("button")?.dataset.act;
   if (act && target(e).closest(".menu-body")) closePopups();
+  if (act?.startsWith("align-")) { alignSelection(act.slice(6) as AlignMode); return; }
   switch (act) {
     case "mode-draw": stopSim(); break;
     case "import": $("#file-input").click(); break;
