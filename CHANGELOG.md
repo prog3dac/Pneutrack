@@ -3,6 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.34.0 · 2026-11-26
+
+- I dati di un componente si cambiano in una finestra, come quelle dei configuratori: doppio clic sul simbolo (oppure *Invio* con il componente selezionato, o ✎ nella barra sopra la selezione). A sinistra simbolo, sigla, descrizione, codice e opzioni, con «Configura valvola…» e «Configura cilindro…»; a destra i parametri da catalogo e di simulazione; sotto porte e valori teorici.
+- Le modifiche si vedono subito sul foglio. *OK* (o *Ctrl+Invio*) le tiene in un solo passo di *Ctrl+Z*; *Annulla* (o *Esc*) le scarta tutte.
+- Nome dello schema, formato del foglio e cartiglio nella finestra «Schema e foglio»: pulsante *Foglio* nella barra a sinistra o doppio clic su un punto vuoto.
+- La colonna di destra compare solo quando serve: in Simula e, in Disegno, per testi e forme, linee e tubi, blocchi e selezioni di più elementi. Con un componente selezionato o niente selezionato il foglio usa tutta la larghezza; una linea appena disegnata resta evidenziata senza aprire la colonna (un clic sulla linea la apre).
+- Un parametro con un valore non valido (per esempio un alesaggio in bar) ora si vede segnato in rosso nel suo campo.
+
 ## 0.33.0 · 2026-11-26
 
 - Configuratore delle valvole distributrici: nel pannello della valvola «Configura valvola…», nella palette «Le mie valvole» → «Nuova valvola…». Si scelgono vie (2–5) e posizioni (2 o 3), il contenuto di ogni casella da un elenco di caselle ISO 1219-1 (per esempio 4/3 a centri in pressione, 2/2 normalmente aperta, 3/3 con le caselle che servono), i comandi dei due lati, la portata Qn; l'anteprima del simbolo e i passaggi di ogni posizione si aggiornano a ogni scelta. *Applica* si annulla con *Ctrl+Z*.

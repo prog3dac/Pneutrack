@@ -46,6 +46,16 @@ async function menuAct(act, menu = "#file-menu") {
   await page.click(`${menu} summary`);
   await page.click(`${menu} [data-act="${act}"]`);
 }
+// finestra dei dati di un componente: doppio clic sul simbolo, OK per confermare
+const D = ".props-dialog";
+async function openProps(id) {
+  await page.dblclick(`[data-component="${id}"] .halo`, { force: true });
+  await page.waitForSelector(D);
+}
+async function okProps() {
+  await page.click(`${D} [data-act="props-ok"]`);
+  await page.waitForSelector(D, { state: "detached" });
+}
 async function dropFromPalette(type, x, y) {
   const canvas = await page.locator("#canvas").boundingBox();
   await page.locator(`.palette-item[data-type="${type}"]`).first().dragTo(page.locator("#canvas"), {
@@ -103,9 +113,15 @@ let s = await state();
 assert.deepEqual(s.doc.components.map((c) => c.id), ["P1", "V1", "C1"]);
 assert.ok(s.analysis.issues.some((i) => i.code === "UNCONNECTED_PORT"));
 
-// la valvola diventa 3/2 dal pannello proprietà
+// in Disegno la colonna di destra non c'è: i dati si cambiano nella finestra (doppio clic)
 await page.click('[data-component="V1"] .halo', { force: true });
-await page.selectOption('#properties select[name="function"]', "3/2");
+assert.ok(await page.locator("#side").isHidden(), "colonna nascosta con un componente selezionato");
+await openProps("V1");
+assert.match(await page.textContent(`${D} h2`), /V1/);
+await page.selectOption(`${D} select[name="function"]`, "3/2");
+await settled();
+assert.equal((await state()).doc.components[1].function, "3/2", "la modifica si vede subito");
+await okProps();
 await settled();
 s = await state();
 assert.equal(s.doc.components[1].function, "3/2");
@@ -138,6 +154,7 @@ const lineMid = async (i) => {
 };
 await page.mouse.click(...(await lineMid(1)));
 await page.waitForSelector('#properties select[name="tube-size"]');
+assert.ok(await page.locator("#side").isVisible(), "la colonna compare per la linea selezionata");
 // la linea selezionata passa sopra ai simboli, le altre si attenuano
 assert.equal(await page.locator('#lines-top [data-connection="1"].selected').count(), 1);
 assert.ok(await page.locator("#lines.dimmed").count());
@@ -183,9 +200,10 @@ s = await state();
 assert.equal(s.analysis.errors, 0);
 
 // 3. sovrapressione: cilindro da 4 bar
-await page.click('[data-component="C1"] .halo', { force: true });
-await page.fill('#properties input[name="param-max_pressure"]', "4");
-await page.press('#properties input[name="param-max_pressure"]', "Enter");
+await openProps("C1");
+await page.fill(`${D} input[name="param-max_pressure"]`, "4");
+await page.press(`${D} input[name="param-max_pressure"]`, "Enter");
+await okProps();
 await settled();
 s = await state();
 assert.equal(s.doc.components[2].params.max_pressure, "4 bar", "unità aggiunta in automatico");
@@ -195,20 +213,38 @@ assert.match(await page.textContent("#status"), /1 errore/);
 if (shots) await page.screenshot({ path: `${shots}/sovrapressione.png` });
 
 // 3b. misure normalizzate del cilindro: la misura predefinita è riconosciuta, il menu imposta alesaggio e stelo
-assert.equal(await page.inputValue('#properties select[name="cylinder-size"]'), "iso6432|20|8");
-assert.equal(await page.getAttribute('#properties input[name="param-stroke"]', "list"), "std-stroke");
-await page.selectOption('#properties select[name="cylinder-size"]', "iso6432|25|10");
+await openProps("C1");
+assert.equal(await page.inputValue(`${D} select[name="cylinder-size"]`), "iso6432|20|8");
+assert.equal(await page.getAttribute(`${D} input[name="param-stroke"]`, "list"), "std-stroke");
+await page.selectOption(`${D} select[name="cylinder-size"]`, "iso6432|25|10");
+await okProps();
 await settled();
 s = await state();
 assert.equal(s.doc.components[2].params.bore, "25 mm");
 assert.equal(s.doc.components[2].params.rod, "10 mm");
 
-// 4. parametro con unità sbagliata
-await page.fill('#properties input[name="param-bore"]', "20 bar");
-await page.press('#properties input[name="param-bore"]', "Enter");
+// 4. parametro con unità sbagliata: il campo si segnala nella finestra
+await openProps("C1");
+await page.fill(`${D} input[name="param-bore"]`, "20 bar");
+await page.press(`${D} input[name="param-bore"]`, "Enter");
 await settled();
 s = await state();
 assert.ok(s.analysis.issues.some((i) => i.code === "INVALID_COMPONENT" && i.component === "C1"));
+await page.waitForSelector(`${D} .field.invalid input[name="param-bore"]`);
+await okProps();
+
+// 4b. Annulla (o Esc) nella finestra scarta tutte le modifiche fatte lì, senza passi di annulla
+await openProps("C1");
+await page.fill(`${D} input[name="label"]`, "Da scartare");
+await page.press(`${D} input[name="label"]`, "Enter");
+await page.fill(`${D} input[name="param-stroke"]`, "250");
+await page.press(`${D} input[name="param-stroke"]`, "Enter");
+assert.equal((await state()).doc.components[2].label, "Da scartare");
+await page.keyboard.press("Escape");
+await page.waitForSelector(D, { state: "detached" });
+s = await state();
+assert.equal(s.doc.components[2].label, undefined, "Esc scarta");
+assert.notEqual(s.doc.components[2].params.stroke, "250 mm");
 
 // 5. annulla tre volte (alesaggio sbagliato, misura standard, 4 bar): torna il cilindro valido a 10 bar
 await page.click("#canvas", { position: { x: 40, y: 40 } });
@@ -226,7 +262,7 @@ assert.deepEqual(s.analysis.issues.map((i) => i.code), ["OVERPRESSURE"]);
 // 6. clic sul problema seleziona il componente; Canc lo elimina con le sue linee
 await page.click("#status"); // il bollino apre l'elenco dei problemi
 await page.click("#issues li.error");
-assert.equal(await page.inputValue('#properties input[name="id"]'), "C1");
+assert.equal(await page.evaluate(() => window.pneutrack.selection?.id), "C1");
 await page.keyboard.press("Delete");
 await settled();
 s = await state();
@@ -234,9 +270,13 @@ assert.deepEqual(s.doc.components.map((c) => c.id), ["P1", "V1"]);
 assert.equal(s.doc.connections.length, 1);
 
 // 7. rinomina e rotazione
-await page.click('[data-component="V1"] .halo', { force: true });
-await page.fill('#properties input[name="id"]', "Y1");
-await page.press('#properties input[name="id"]', "Enter");
+await openProps("V1");
+await page.fill(`${D} input[name="id"]`, "Y1");
+await page.press(`${D} input[name="id"]`, "Enter");
+// la finestra si ridisegna subito dopo la modifica e segue la sigla nuova
+await page.waitForFunction((d) => /Y1/.test(document.querySelector(`${d} h2`)?.textContent ?? ""), D);
+await page.keyboard.press("Control+Enter");
+await page.waitForSelector(D, { state: "detached" });
 await page.click("#canvas", { position: { x: 40, y: 40 } });
 await page.click('[data-component="Y1"] .halo', { force: true });
 await page.keyboard.press("r");
@@ -271,8 +311,9 @@ assert.equal(saved.format, "pneutrack/circuit");
 assert.equal(saved.components.length, 8);
 
 // 9b. foglio A3 con cartiglio ed esportazione PDF
-await page.click("#canvas", { position: { x: 40, y: 40 } });
-await page.selectOption('#properties select[name="sheet-format"]', "A3");
+await page.click('#rail [data-rail="sheet"]');
+await page.selectOption(`${D} select[name="sheet-format"]`, "A3");
+await okProps();
 await settled();
 s = await state();
 assert.equal(s.doc.sheet.format, "A3");
@@ -285,9 +326,9 @@ const pdfBytes = Buffer.concat(await (await pdf.createReadStream()).toArray());
 assert.equal(pdfBytes.subarray(0, 5).toString(), "%PDF-");
 assert.ok(pdfBytes.length > 5000);
 // 9c. distinta componenti: codice articolo, finestra, CSV, PDF e tabella sul foglio
-await page.click('[data-component="C1"] .halo', { force: true });
-await page.fill('#properties input[name="code"]', "DSBC-32-100");
-await page.press('#properties input[name="code"]', "Enter");
+await openProps("C1");
+await page.fill(`${D} input[name="code"]`, "DSBC-32-100");
+await okProps(); // OK conferma anche il campo ancora in modifica
 await settled();
 assert.equal((await state()).doc.components.find((c) => c.id === "C1").code, "DSBC-32-100");
 await page.click("#canvas", { position: { x: 40, y: 40 } });
@@ -336,7 +377,10 @@ for (let i = dxfLines.indexOf("ENTITIES"); i < dxfLines.length - 1; i += 2) {
   if (dxfLines[i] === "20") ys.push(Number(dxfLines[i + 1]));
 }
 assert.ok(Math.min(...xs) >= -0.01 && Math.max(...xs) <= 420.01 && Math.min(...ys) >= -0.01 && Math.max(...ys) <= 297.01);
-await page.selectOption('#properties select[name="sheet-format"]', "");
+// doppio clic sul vuoto: la finestra dello schema e del foglio
+await page.dblclick("#canvas", { position: { x: 40, y: 40 } });
+await page.selectOption(`${D} select[name="sheet-format"]`, "");
+await okProps();
 await settled();
 assert.equal((await state()).doc.sheet, undefined);
 
@@ -658,18 +702,18 @@ assert.deepEqual((await state()).doc.layout, beforeAlign, "annulla rimette le po
 // 17. ogni campo da compilare ha una descrizione al passaggio del mouse
 const C = s.doc.components.find((c) => c.type === "double_acting_cylinder").id;
 await page.click("#canvas", { position: { x: 40, y: 40 } });
-await page.click(`[data-component="${C}"] .halo`, { force: true });
-// se fa parte di un blocco il primo clic seleziona il blocco, il secondo il cilindro
-if (!(await page.textContent("#properties h2")).startsWith("Cilindro")) {
-  await page.click(`[data-component="${C}"] .halo`, { force: true });
-}
-const fields = await page.locator("#properties label.field").evaluateAll((els) =>
+// anche se fa parte di un blocco il doppio clic apre i dati del cilindro
+await openProps(C);
+assert.match(await page.textContent(`${D} h2`), /^Cilindro/);
+const fields = await page.locator(`${D} label.field`).evaluateAll((els) =>
   els.map((e) => [e.querySelector("span").textContent.trim(), e.title]));
 assert.ok(fields.length >= 8, "campi del cilindro");
 for (const [label, title] of fields) assert.ok(title.length > 30, `descrizione del campo ${label}`);
 assert.match(fields.find(([l]) => l.startsWith("Alesaggio"))[1], /Unità: mm/);
-await page.click("#canvas", { position: { x: 40, y: 40 } });
-const schemaFields = await page.locator("#properties label.field").evaluateAll((els) => els.map((e) => e.title));
+await page.keyboard.press("Escape");
+await page.click('#rail [data-rail="sheet"]');
+const schemaFields = await page.locator(`${D} label.field`).evaluateAll((els) => els.map((e) => e.title));
+await page.keyboard.press("Escape");
 assert.ok(schemaFields.every((t) => t.length > 30), "campi dello schema e del foglio");
 
 // 18. specchia: le porte passano dall'altra parte, il simbolo resta al suo posto
@@ -725,9 +769,11 @@ await settled();
 assert.equal(await page.locator(".line.wire").count(), 3, "fili elettrici");
 if (shots) await page.screenshot({ path: `${shots}/elettrico.png` });
 assert.match(await page.textContent("#properties h2"), /Filo elettrico/);
+assert.ok(await page.locator("#side").isHidden(), "il filo appena disegnato non apre la colonna");
 await page.click("#canvas", { position: { x: 40, y: 40 } });
-await page.click('[data-component="Y1"] .halo', { force: true });
-await page.selectOption('#properties select[name="drives"]', "V1.14");
+await openProps("Y1");
+await page.selectOption(`${D} select[name="drives"]`, "V1.14");
+await okProps();
 await settled();
 s = await state();
 assert.equal(s.doc.components.find((c) => c.id === "Y1").drives, "V1.14");
@@ -844,7 +890,11 @@ assert.equal(await page.textContent('[data-goto="RM1"]'), "→ fg. 2");
 await page.click('[data-goto="RM1"]');
 assert.equal((await sheetsNow()).active, 1, "il clic sul rimando apre il foglio 2");
 assert.equal((await state()).doc.components.length, 6);
-assert.match(await page.textContent("#properties"), /Prosegue su/);
+// Invio apre i dati del componente selezionato (il rimando compagno)
+await page.keyboard.press("Enter");
+await page.waitForSelector(D);
+assert.match(await page.textContent(D), /Prosegue su/);
+await page.keyboard.press("Escape");
 // PagSu torna al primo foglio
 await page.keyboard.press("PageUp");
 assert.equal((await sheetsNow()).active, 0);

@@ -82,7 +82,8 @@ const EXAMPLES = Object.entries(
 
 type Selection =
   | { kind: "component"; id: string }
-  | { kind: "connection"; index: number }
+  /** `quiet`: linea appena disegnata, evidenziata ma senza aprire la colonna di destra */
+  | { kind: "connection"; index: number; quiet?: boolean }
   /** più componenti (e annotazioni) scelti con Maiusc+clic o con un riquadro (trascinando sul vuoto) */
   | { kind: "multi"; ids: string[]; anns?: string[] }
   /** testo o forma disegnata sullo schema */
@@ -160,6 +161,8 @@ function commit(before?: string) {
 }
 function mutate(fn: () => void) {
   if (sim) return; // durante la simulazione lo schema non si modifica
+  // con la finestra delle proprietà aperta le modifiche diventano un solo passo alla chiusura (OK)
+  if (propsDlg) { fn(); changed(); return; }
   const before = snapshot();
   fn();
   commit(before);
@@ -606,6 +609,7 @@ function positionSelbar() {
   const one = selection?.kind === "annotation" ? annById(selection.id) : undefined;
   $<HTMLButtonElement>('#selbar [data-act="rotate"]').disabled = selection?.kind !== "component" && one?.kind !== "text";
   for (const b of document.querySelectorAll<HTMLButtonElement>('#selbar [data-act^="mirror"]')) b.disabled = !ids.length;
+  $<HTMLElement>('#selbar [data-act="props"]').hidden = selection?.kind !== "component";
   const w = bar.offsetWidth, h = bar.offsetHeight;
   const cx = ((x0 + x1) / 2) * view.k + view.x;
   let top = y0 * view.k + view.y - h - 10;
@@ -1925,133 +1929,22 @@ function paramInput(comp: ComponentData, p: ParamSpec) {
     else delete c.params[p.name];
   }));
   const f = field(p.label + (p.required ? " *" : ""), inp, paramHelp(comp.type, p));
-  const bad = issuesFor(comp.id).find((i) => i.code === "INVALID_COMPONENT" && i.message.includes(`'${p.name}'`));
+  const bad = issuesFor(comp.id).find((i) => i.code === "INVALID_COMPONENT" &&
+    (i.message.includes(`'${p.name}'`) || i.message.includes(`${comp.id}.${p.name}:`)));
   if (bad) f.classList.add("invalid");
   return f;
 }
 
 function renderProperties() {
+  queuePropsRender();
+  updateSide();
   if (sim) return renderSimPanel();
   const panel = $("#properties");
   panel.replaceChildren();
   const title = heading(panel, "", "h2");
 
   if (selection?.kind === "component" && byId(selection.id)) {
-    const comp = byId(selection.id)!;
-    const meta = catalogEntry(comp.type);
-    title.textContent = meta?.label || comp.type;
-
-    const idIn = document.createElement("input");
-    idIn.value = comp.id; idIn.name = "id"; idIn.spellcheck = false;
-    idIn.addEventListener("change", () => renameComponent(comp.id, idIn.value.trim()));
-    panel.append(field("Sigla", idIn, FIELD_HELP.id));
-
-    const labIn = document.createElement("input");
-    labIn.value = comp.label || ""; labIn.name = "label"; labIn.placeholder = "facoltativa";
-    labIn.addEventListener("change", () => mutate(() => {
-      const c = byId(comp.id)!;
-      if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
-    }));
-    panel.append(field("Descrizione", labIn, FIELD_HELP.label));
-    if (REFERENCE_TYPES[comp.type]) panel.append(...referenceFields(comp, labIn));
-    if (!isJunctionType(comp.type)) {
-      const codeIn = document.createElement("input");
-      codeIn.value = comp.code || ""; codeIn.name = "code"; codeIn.placeholder = "facoltativo, per la distinta";
-      codeIn.addEventListener("change", () => mutate(() => {
-        const c = byId(comp.id)!;
-        if (codeIn.value.trim()) c.code = codeIn.value.trim(); else delete c.code;
-      }));
-      panel.append(field("Codice articolo", codeIn, FIELD_HELP.code));
-    }
-    const inBlock = blockOf(doc, comp.id);
-    if (inBlock) {
-      const p = document.createElement("p");
-      p.className = "help";
-      p.append(`Fa parte del blocco «${inBlock.name}». `);
-      const a = document.createElement("button");
-      a.className = "link"; a.textContent = "Seleziona il blocco";
-      a.addEventListener("click", () => select({ kind: "block", id: inBlock.id }));
-      p.append(a);
-      panel.append(p);
-    }
-
-    for (const opt of meta?.options ?? []) {
-      const sel = document.createElement("select");
-      sel.name = opt.name;
-      const choices = [...opt.choices];
-      // valvola con le caselle del configuratore: la sua funzione n/m non è tra quelle normalizzate
-      if (opt.name === "function" && comp.boxes) choices.unshift([comp.function ?? "", `${comp.function} personalizzata (configuratore)`]);
-      for (const [value, text] of choices) {
-        const o = document.createElement("option");
-        o.value = value; o.textContent = text;
-        sel.append(o);
-      }
-      sel.value = comp[opt.name] ?? opt.default;
-      sel.addEventListener("change", () => mutate(() => {
-        const c = byId(comp.id)!;
-        c[opt.name] = sel.value;
-        if (opt.name === "actuation_14" || opt.name === "actuation_12") {
-          const side = opt.name === "actuation_14" ? "14" : "12";
-          if (!isMechanical(sel.value as Actuation) && !isMechanical(c[`aux_${side}`] as Actuation | undefined)) delete c[`cam_${side}`];
-        }
-        if (c.type === "directional_valve") sanitizeValve(c, opt.name);
-        pruneConnections(comp.id);
-      }));
-      panel.append(field(opt.label, sel, optionHelp(comp.type, opt)));
-      // rullo: può essere premuto da un cilindro a fine corsa (anche come secondo comando del lato)
-      const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
-      if (side && (isMechanical((comp[opt.name] ?? opt.default) as Actuation) ||
-          isMechanical(comp[`aux_${side}`] as Actuation | undefined))) panel.append(camField(comp, side));
-    }
-    if (comp.type === "directional_valve") panel.append(valveConfigButton(comp));
-    if (CONFIGURABLE_CYLINDERS.has(comp.type)) panel.append(cylinderConfigButton(comp));
-
-    for (const f of electricRefFields(comp)) panel.append(f);
-
-    const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
-    const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
-    if (catalogParams.length) heading(panel, "Parametri da catalogo");
-    if (partsFor(comp.type).length) panel.append(...partField(comp));
-    if (comp.type.endsWith("_cylinder") && !NO_ISO_SIZES.has(comp.type)) panel.append(cylinderSizeField(comp));
-    for (const p of catalogParams) panel.append(paramInput(comp, p));
-    if (simParams.length) heading(panel, "Parametri di simulazione");
-    for (const p of simParams) panel.append(paramInput(comp, p));
-
-    const portsIn = Object.keys(geometry(comp).ports);
-    if (portsIn.length) {
-      heading(panel, "Porte");
-      const ul = document.createElement("ul");
-      ul.className = "port-list";
-      for (const name of portsIn) {
-        const ref = `${comp.id}.${name}`;
-        const li = document.createElement("li");
-        const pr = analysis.pressures[ref];
-        const n = doc.connections.filter((c) => c.from === ref || c.to === ref).length;
-        li.innerHTML = `<b></b><span>${n ? `${n} collegament${n > 1 ? "i" : "o"}` : "libera"}</span>` +
-          `<span class="pressure">${pr ? pr.text : "0 bar"}</span>`;
-        li.querySelector("b")!.textContent = name;
-        ul.append(li);
-      }
-      panel.append(ul);
-    }
-
-    if (comp.type.endsWith("_cylinder")) {
-      try {
-        const pr = analysis.pressures[`${comp.id}.A`]?.text || "6 bar";
-        const info = cylinderInfo(buildComponent(comp), Quantity.parse(pr));
-        if (info) {
-          const box = document.createElement("div");
-          box.className = "derived";
-          box.innerHTML = `<h3>Valori teorici a ${info.atPressure}</h3>
-            <dl><dt>Area pistone</dt><dd>${info.pistonArea}</dd>
-            <dt>Area anulare</dt><dd>${info.annularArea}</dd>
-            <dt>Forza in uscita</dt><dd>${info.forceExtend}</dd>
-            <dt>Forza in rientro</dt><dd>${info.forceRetract}</dd></dl>`;
-          panel.append(box);
-        }
-      } catch { /* parametri non validi: già segnalati */ }
-    }
-
+    renderComponentFields(panel, title, byId(selection.id)!);
   } else if (selection?.kind === "block" && doc.blocks?.some((b) => b.id === (selection as { id: string }).id)) {
     renderBlockPanel(panel, title, selection.id);
   } else if (selection?.kind === "annotation" && annById(selection.id)) {
@@ -2147,11 +2040,6 @@ function renderProperties() {
     panel.append(help);
   } else {
     title.textContent = "Schema";
-    const nameIn = document.createElement("input");
-    nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
-    nameIn.addEventListener("change", () => mutate(() => { setProjectName(nameIn.value); }));
-    panel.append(field("Nome", nameIn, FIELD_HELP["circuit-name"]));
-    renderSheetFields(panel);
     const help = document.createElement("div");
     help.className = "help";
     help.innerHTML = `<p>Trascina un componente dalla palette sul foglio, oppure fai clic per inserirlo al centro.</p>
@@ -2165,6 +2053,280 @@ function renderProperties() {
       <li>Rotella: zoom · <kbd>Spazio</kbd>+trascina o tasto centrale: sposta la vista</li></ul>`;
     panel.append(help);
   }
+}
+
+/** Dati di un componente: sigla, descrizione, opzioni, configuratori, parametri, porte e valori teorici. */
+/** `more` riceve i parametri da catalogo e di simulazione (nella finestra è la colonna di destra). */
+function renderComponentFields(panel: HTMLElement, title: HTMLElement, comp: ComponentData, more: HTMLElement = panel) {
+  const meta = catalogEntry(comp.type);
+  title.textContent = meta?.label || comp.type;
+
+  const idIn = document.createElement("input");
+  idIn.value = comp.id; idIn.name = "id"; idIn.spellcheck = false;
+  idIn.addEventListener("change", () => renameComponent(comp.id, idIn.value.trim()));
+  panel.append(field("Sigla", idIn, FIELD_HELP.id));
+
+  const labIn = document.createElement("input");
+  labIn.value = comp.label || ""; labIn.name = "label"; labIn.placeholder = "facoltativa";
+  labIn.addEventListener("change", () => mutate(() => {
+    const c = byId(comp.id)!;
+    if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
+  }));
+  panel.append(field("Descrizione", labIn, FIELD_HELP.label));
+  if (REFERENCE_TYPES[comp.type]) panel.append(...referenceFields(comp, labIn));
+  if (!isJunctionType(comp.type)) {
+    const codeIn = document.createElement("input");
+    codeIn.value = comp.code || ""; codeIn.name = "code"; codeIn.placeholder = "facoltativo, per la distinta";
+    codeIn.addEventListener("change", () => mutate(() => {
+      const c = byId(comp.id)!;
+      if (codeIn.value.trim()) c.code = codeIn.value.trim(); else delete c.code;
+    }));
+    panel.append(field("Codice articolo", codeIn, FIELD_HELP.code));
+  }
+  const inBlock = blockOf(doc, comp.id);
+  if (inBlock) {
+    const p = document.createElement("p");
+    p.className = "help";
+    p.append(`Fa parte del blocco «${inBlock.name}». `);
+    const a = document.createElement("button");
+    a.className = "link"; a.textContent = "Seleziona il blocco";
+    a.addEventListener("click", () => select({ kind: "block", id: inBlock.id }));
+    p.append(a);
+    panel.append(p);
+  }
+
+  for (const opt of meta?.options ?? []) {
+    const sel = document.createElement("select");
+    sel.name = opt.name;
+    const choices = [...opt.choices];
+    // valvola con le caselle del configuratore: la sua funzione n/m non è tra quelle normalizzate
+    if (opt.name === "function" && comp.boxes) choices.unshift([comp.function ?? "", `${comp.function} personalizzata (configuratore)`]);
+    for (const [value, text] of choices) {
+      const o = document.createElement("option");
+      o.value = value; o.textContent = text;
+      sel.append(o);
+    }
+    sel.value = comp[opt.name] ?? opt.default;
+    sel.addEventListener("change", () => mutate(() => {
+      const c = byId(comp.id)!;
+      c[opt.name] = sel.value;
+      if (opt.name === "actuation_14" || opt.name === "actuation_12") {
+        const side = opt.name === "actuation_14" ? "14" : "12";
+        if (!isMechanical(sel.value as Actuation) && !isMechanical(c[`aux_${side}`] as Actuation | undefined)) delete c[`cam_${side}`];
+      }
+      if (c.type === "directional_valve") sanitizeValve(c, opt.name);
+      pruneConnections(comp.id);
+    }));
+    panel.append(field(opt.label, sel, optionHelp(comp.type, opt)));
+    // rullo: può essere premuto da un cilindro a fine corsa (anche come secondo comando del lato)
+    const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
+    if (side && (isMechanical((comp[opt.name] ?? opt.default) as Actuation) ||
+        isMechanical(comp[`aux_${side}`] as Actuation | undefined))) panel.append(camField(comp, side));
+  }
+  if (comp.type === "directional_valve") panel.append(valveConfigButton(comp));
+  if (CONFIGURABLE_CYLINDERS.has(comp.type)) panel.append(cylinderConfigButton(comp));
+
+  for (const f of electricRefFields(comp)) panel.append(f);
+
+  const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
+  const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
+  if (catalogParams.length) heading(more, "Parametri da catalogo");
+  if (partsFor(comp.type).length) more.append(...partField(comp));
+  if (comp.type.endsWith("_cylinder") && !NO_ISO_SIZES.has(comp.type)) more.append(cylinderSizeField(comp));
+  for (const p of catalogParams) more.append(paramInput(comp, p));
+  if (simParams.length) heading(more, "Parametri di simulazione");
+  for (const p of simParams) more.append(paramInput(comp, p));
+
+  const portsIn = Object.keys(geometry(comp).ports);
+  if (portsIn.length) {
+    heading(panel, "Porte");
+    const ul = document.createElement("ul");
+    ul.className = "port-list";
+    for (const name of portsIn) {
+      const ref = `${comp.id}.${name}`;
+      const li = document.createElement("li");
+      const pr = analysis.pressures[ref];
+      const n = doc.connections.filter((c) => c.from === ref || c.to === ref).length;
+      li.innerHTML = `<b></b><span>${n ? `${n} collegament${n > 1 ? "i" : "o"}` : "libera"}</span>` +
+        `<span class="pressure">${pr ? pr.text : "0 bar"}</span>`;
+      li.querySelector("b")!.textContent = name;
+      ul.append(li);
+    }
+    panel.append(ul);
+  }
+
+  if (comp.type.endsWith("_cylinder")) {
+    try {
+      const pr = analysis.pressures[`${comp.id}.A`]?.text || "6 bar";
+      const info = cylinderInfo(buildComponent(comp), Quantity.parse(pr));
+      if (info) {
+        const box = document.createElement("div");
+        box.className = "derived";
+        box.innerHTML = `<h3>Valori teorici a ${info.atPressure}</h3>
+          <dl><dt>Area pistone</dt><dd>${info.pistonArea}</dd>
+          <dt>Area anulare</dt><dd>${info.annularArea}</dd>
+          <dt>Forza in uscita</dt><dd>${info.forceExtend}</dd>
+          <dt>Forza in rientro</dt><dd>${info.forceRetract}</dd></dl>`;
+        panel.append(box);
+      }
+    } catch { /* parametri non validi: già segnalati */ }
+  }
+}
+
+// --- finestra delle proprietà ---------------------------------------------------------
+// I dati di un componente (o dello schema e del foglio) si modificano in una finestra come quelle dei
+// configuratori, aperta con il doppio clic. Le modifiche si vedono subito sul foglio; «OK» le tiene in un
+// solo passo annullabile, «Annulla» (o Esc) le scarta.
+
+type PropsTarget = { kind: "component"; id: string } | { kind: "schema" };
+let propsDlg: { target: PropsTarget; before: string; overlay: HTMLElement; dialog: HTMLElement } | null = null;
+
+function openPropsDialog(target: PropsTarget) {
+  if (sim || propsDlg) return;
+  if (target.kind === "component" && !byId(target.id)) return;
+  const overlay = document.createElement("div");
+  overlay.className = "overlay props-overlay";
+  const dialog = document.createElement("div");
+  dialog.className = "dialog props-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "props-title");
+  overlay.append(dialog);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closePropsDialog(false); });
+  document.body.append(overlay);
+  propsDlg = { target, before: snapshot(), overlay, dialog };
+  document.addEventListener("keydown", propsKey, true);
+  renderPropsDialog();
+  dialog.querySelector<HTMLElement>("input:not([type=checkbox]), select")?.focus();
+}
+
+/** OK: le modifiche restano (un passo di annulla). Annulla: si torna a com'era all'apertura. */
+function closePropsDialog(keep: boolean) {
+  if (!propsDlg) return;
+  const { before, overlay } = propsDlg;
+  // un campo ancora in modifica (senza Invio) conta come confermato con OK, come uscendo dal campo
+  if (keep) (document.activeElement as HTMLElement | null)?.blur?.();
+  propsDlg = null;
+  overlay.remove();
+  document.removeEventListener("keydown", propsKey, true);
+  if (keep) commit(before);
+  else if (before !== snapshot()) { restore(before); fixSelection(); changed(); }
+  svg.focus?.();
+}
+
+function propsKey(e: KeyboardEvent) {
+  if (!propsDlg) return;
+  // un configuratore aperto sopra la finestra gestisce i suoi tasti
+  const top = [...document.querySelectorAll(".overlay")].filter((o) => !(o as HTMLElement).hidden).at(-1);
+  if (top !== propsDlg.overlay) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closePropsDialog(false); return; }
+  const t = e.target as HTMLElement;
+  // Ctrl+Invio chiude con OK; Invio in un campo lo conferma soltanto
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); closePropsDialog(true); return; }
+  // le scorciatoie dello schema (annulla, elimina, ruota…) non passano sotto la finestra
+  if (!t.closest("input, select, textarea")) e.stopPropagation();
+}
+
+/** Ridisegno della finestra dopo una modifica: a fuoco ormai spostato (Tab), così il campo nuovo resta attivo. */
+let propsRenderQueued = false;
+function queuePropsRender() {
+  if (!propsDlg || propsRenderQueued) return;
+  propsRenderQueued = true;
+  setTimeout(() => { propsRenderQueued = false; renderPropsDialog(); }, 0);
+}
+
+function renderPropsDialog() {
+  if (!propsDlg) return;
+  const { target, dialog } = propsDlg;
+  if (target.kind === "component" && !byId(target.id)) { closePropsDialog(false); return; }
+  // il ridisegno non fa perdere il campo su cui si sta scrivendo né lo scorrimento
+  const focused = document.activeElement as HTMLElement | null;
+  const focusName = focused && dialog.contains(focused) ? focused.getAttribute("name") : null;
+  const scroller = dialog.querySelector(".props-body");
+  const scrollTop = scroller?.scrollTop ?? 0;
+  dialog.replaceChildren();
+
+  const header = document.createElement("header");
+  const h = document.createElement("h2");
+  h.id = "props-title";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "icon"; closeBtn.textContent = "✕"; closeBtn.setAttribute("aria-label", "Chiudi");
+  closeBtn.addEventListener("click", () => closePropsDialog(false));
+  header.append(h, closeBtn);
+
+  const body = document.createElement("div");
+  body.className = "props-body";
+  const left = document.createElement("section");
+  left.className = "props-col";
+  const right = document.createElement("section");
+  right.className = "props-col";
+  const title = document.createElement("span");
+  if (target.kind === "component") {
+    const comp = byId(target.id)!;
+    const preview = document.createElement("div");
+    preview.className = "vc-preview props-preview";
+    const g = geometry(comp);
+    const pad = 16;
+    preview.innerHTML = `<svg class="symbol" viewBox="${-g.w / 2 - pad - 30} ${-g.h / 2 - pad - 10} ${g.w + 2 * pad + 60} ${g.h + 2 * pad + 20}"
+      role="img" aria-label="Simbolo">${g.svg}</svg>`;
+    left.append(preview);
+    renderComponentFields(left, title, comp, right);
+    h.textContent = `${title.textContent} ${comp.id}`;
+  } else {
+    renderSchemaFields(left, title);
+    // il foglio va nella seconda colonna: si sposta la sua sezione (dal titolo «Foglio» in poi)
+    const sheetHead = left.querySelector("h3");
+    if (sheetHead) { const moved: Node[] = []; for (let n: Node | null = sheetHead; n; n = n.nextSibling) moved.push(n); right.append(...moved); }
+    h.textContent = "Schema e foglio";
+  }
+  body.append(left);
+  if (right.childElementCount) body.append(right); else body.classList.add("single");
+
+  const footer = document.createElement("div");
+  footer.className = "vc-footer";
+  const hint = document.createElement("span");
+  hint.className = "help";
+  hint.textContent = "Le modifiche si vedono subito sul foglio · Ctrl+Invio: OK · Esc: annulla";
+  const spacer = document.createElement("span");
+  spacer.className = "vc-spacer";
+  const cancel = document.createElement("button");
+  cancel.textContent = "Annulla";
+  cancel.addEventListener("click", () => closePropsDialog(false));
+  const ok = document.createElement("button");
+  ok.className = "primary"; ok.textContent = "OK"; ok.dataset.act = "props-ok";
+  ok.addEventListener("click", () => closePropsDialog(true));
+  footer.append(hint, spacer, cancel, ok);
+  dialog.append(header, body, footer);
+
+  body.scrollTop = scrollTop;
+  if (focusName) dialog.querySelector<HTMLElement>(`[name="${CSS.escape(focusName)}"]`)?.focus();
+}
+
+/** La colonna di destra compare solo quando serve: in Simula e per ciò che non ha una finestra. */
+function sideNeeded() {
+  if (sim) return true;
+  const k = selection?.kind;
+  // una linea appena disegnata non apre la colonna: il foglio non si restringe mentre si collega
+  if (k === "connection") return !selection!.quiet;
+  return k === "annotation" || k === "block" || k === "multi";
+}
+function updateSide() {
+  const app = $("#app");
+  const hide = !sideNeeded();
+  if (app.classList.contains("side-hidden") === hide) return;
+  app.classList.toggle("side-hidden", hide);
+  $("#side").setAttribute("aria-hidden", String(hide));
+  positionSelbar();
+}
+
+/** Nome dello schema e foglio aperto. */
+function renderSchemaFields(panel: HTMLElement, title: HTMLElement) {
+  title.textContent = "Schema";
+  const nameIn = document.createElement("input");
+  nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
+  nameIn.addEventListener("change", () => mutate(() => { setProjectName(nameIn.value); }));
+  panel.append(field("Nome", nameIn, FIELD_HELP["circuit-name"]));
+  renderSheetFields(panel);
 }
 
 const sameLength = (a?: string, b?: string) => {
@@ -2380,6 +2542,7 @@ function renameComponent(oldId: string, newId: string) {
       if (c.drives && splitRef(c.drives)[0] === oldId) c.drives = `${newId}.${splitRef(c.drives)[1]}`;
     }
   });
+  if (propsDlg?.target.kind === "component" && propsDlg.target.id === oldId) propsDlg.target = { kind: "component", id: newId };
   select({ kind: "component", id: newId });
 }
 
@@ -2401,7 +2564,7 @@ function connect(a: string, b: string) {
   }
   const tube = lastTube && !isElectricRef(a) ? lastTube : null;
   mutate(() => doc.connections.push(tube ? { from: a, to: b, tube: { ...tube } } : { from: a, to: b }));
-  select({ kind: "connection", index: doc.connections.length - 1 });
+  select({ kind: "connection", index: doc.connections.length - 1, quiet: true });
 }
 
 function deleteSelection() {
@@ -3779,6 +3942,12 @@ svg.addEventListener("pointerdown", (e) => {
     const cur = selectedIds();
     const ids = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
     select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+  } else if (!sim && comp && e.button === 0 && compClicked(comp.dataset.component!)) {
+    // doppio clic sul simbolo: la finestra dei suoi dati
+    const id = comp.dataset.component!;
+    drag = null;
+    select({ kind: "component", id });
+    openPropsDialog({ kind: "component", id });
   } else if (!sim && comp && e.button === 0) {
     const id = comp.dataset.component!;
     const block = blockOf(doc, id);
@@ -3803,12 +3972,17 @@ svg.addEventListener("pointerdown", (e) => {
     const id = blockEl.dataset.block!;
     if (selection?.kind !== "block" || selection.id !== id) select({ kind: "block", id });
     drag = groupDrag(selectedIds(), w);
+  } else if (!sim && e.button === 0 && !line && !spaceHeld && !e.shiftKey && compClicked("")) {
+    // doppio clic sul vuoto: la finestra dello schema e del foglio
+    drag = null;
+    select(null);
+    openPropsDialog({ kind: "schema" });
   } else if (!sim && e.button === 0 && !line && !spaceHeld) {
     // trascinando sul vuoto: riquadro di selezione (con Maiusc si aggiunge alla selezione)
     drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [], addAnns: e.shiftKey ? selectedAnns() : [] };
   } else if (!sim && line && e.button === 0) {
     const index = Number(line.dataset.connection);
-    if (selection?.kind !== "connection" || selection.index !== index) select({ kind: "connection", index });
+    if (selection?.kind !== "connection" || selection.index !== index || selection.quiet) select({ kind: "connection", index });
     drag = { mode: "bend", index, bend: -1, sx: e.clientX, sy: e.clientY, before: snapshot(), moved: false };
   } else {
     drag = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false };
@@ -3993,7 +4167,7 @@ function connectToLine(from: string, index: number, w: { x: number; y: number })
     const ref = splitLine(index, w);
     if (ref) doc.connections.push(lastTube && !isElectricRef(from) ? { from, to: ref, tube: { ...lastTube } } : { from, to: ref });
   });
-  select({ kind: "connection", index: doc.connections.length - 1 });
+  select({ kind: "connection", index: doc.connections.length - 1, quiet: true });
 }
 
 /** Trascinamento di più componenti: posizioni di partenza e pieghe delle linee tra loro. */
@@ -4076,6 +4250,15 @@ function annClicked(id: string): boolean {
   if (!field) return false;
   field.focus(); field.select();
   return true;
+}
+
+// doppio clic su un componente (o sul vuoto, id ""): si aprono i suoi dati (la cattura del puntatore assorbe "dblclick")
+let lastCompClick = { id: "", at: 0 };
+function compClicked(id: string): boolean {
+  const now = performance.now();
+  const double = lastCompClick.id === id && now - lastCompClick.at < 450;
+  lastCompClick = double ? { id: "", at: 0 } : { id, at: now };
+  return double;
 }
 
 // doppio clic sul testo di un componente: lo rimette nella posizione automatica
@@ -4190,6 +4373,7 @@ document.addEventListener("keydown", (e) => {
   else if (key === "h" && !mod) mirrorSelection("h");
   else if (key === "v" && !mod) mirrorSelection("v");
   else if (e.key === "Escape") select(null);
+  else if (e.key === "Enter" && selection?.kind === "component") { e.preventDefault(); openPropsDialog({ kind: "component", id: selection.id }); }
   else if (key === "f" && !mod) fitView();
 });
 
@@ -4726,6 +4910,7 @@ $("#selbar").addEventListener("click", (e) => {
     case "mirror-v": mirrorSelection("v"); break;
     case "duplicate": duplicateSelection(); break;
     case "delete": deleteSelection(); break;
+    case "props": if (selection?.kind === "component") openPropsDialog({ kind: "component", id: selection.id }); break;
   }
 });
 $("#view-tools").addEventListener("click", (e) => {
@@ -4752,7 +4937,7 @@ function setPaletteHidden(hidden: boolean) {
 $("#rail").addEventListener("click", (e) => {
   const where = target(e).closest<HTMLElement>("button")?.dataset.rail;
   if (!where || sim) return;
-  if (where === "sheet") { select(null); $("#properties").scrollTop = 0; return; }
+  if (where === "sheet") { openPropsDialog({ kind: "schema" }); return; }
   // clic sulla sezione già attiva: la palette si nasconde; con la palette nascosta si riapre
   const active = document.querySelector<HTMLElement>("#rail button.on")?.dataset.rail === where;
   if (!paletteHidden() && active) { setPaletteHidden(true); return; }
@@ -4989,7 +5174,7 @@ declare global {
 window.pneutrack = {
   get doc() { return doc; }, get pages() { return pages; }, get active() { return active; },
   get file() { return fileDoc(); }, goToPage: (i: number) => goToPage(i), addPage: () => addPage(),
-  get analysis() { return analysis; }, get project() { return project; },
+  get analysis() { return analysis; }, get project() { return project; }, get selection() { return selection; },
   get store() { return store?.kind; }, get sim() { return sim?.s ?? null; },
   isDirty, loadDoc, addComponent, connect: (a: string, b: string) => connect(a, b), saveProject,
   startSim, stopSim, pressCommand, releaseHeld,
