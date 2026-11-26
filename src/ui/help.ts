@@ -20,6 +20,7 @@ const UNITS: Record<string, string> = {
   angle: "gradi, deg o ° (anche rad)",
   voltage: "V (anche mV, kV)",
   dimensionless: "numero puro, senza unità",
+  percent: "% (0 % chiuso, 100 % tutto aperto); nei file vale anche la frazione, 0.3 = 30 %",
 };
 
 /** Parametri dei componenti. */
@@ -33,14 +34,28 @@ const PARAMS: Record<string, string> = {
   conductance:
     "Conduttanza sonica C (ISO 6358): quanta aria lascia passare il componente in regime sonico, per " +
     "bar di pressione a monte. Più è alta, più il componente è 'largo' e veloce. Si legge a catalogo; " +
-    "se non c'è si ricava dalla portata nominale (circa Qn [Nl/min] / 600 ≈ C [dm3/(s·bar)]). " +
-    "Serve solo alla simulazione: se lo lasci vuoto si usa il valore predefinito indicato nel campo.",
+    "se non c'è e scrivi la portata nominale Qn, la simulazione ricava C da quella (circa C ≈ Qn [Nl/min] / 260). " +
+    "Con entrambi vale C. Serve solo alla simulazione: se lasci vuoti C e Qn si usa il valore predefinito " +
+    "indicato nel campo.",
   critical_ratio:
     "Rapporto critico di pressione b (ISO 6358), tra 0 e 1: rapporto valle/monte sotto il quale il flusso " +
     "diventa sonico e non cresce più. Valori tipici 0,2–0,5. Serve solo alla simulazione.",
   flow:
-    "Portata nominale d'aria dichiarata a catalogo, di solito misurata a 6 bar con 1 bar di caduta. " +
-    "È un dato informativo; la simulazione usa la conduttanza C.",
+    "Portata nominale Qn dichiarata a catalogo (qnN di Festo), misurata con 6 bar a monte e 5 bar a valle. " +
+    "Se la conduttanza C è vuota, la simulazione ricava C da Qn con la formula ISO 6358 e il rapporto " +
+    "critico b; se scrivi anche C vale C.",
+  opening:
+    "Apertura della vite di regolazione, da 0 % (chiuso, l'aria non passa) a 100 % (tutto aperto). " +
+    "La conduttanza effettiva è apertura × C a tutta apertura: nel flusso sonico la portata è proporzionale, " +
+    "quindi 50 % dà circa metà della portata massima. Serve solo alla simulazione.",
+  static_friction:
+    "Attrito di primo distacco delle guarnizioni, da vincere per far partire lo stelo da fermo; di solito " +
+    "è più alto dell'attrito in movimento (1,2–2 volte). Oltre circa 1 cm/s l'attrito scende al valore " +
+    "di «Attrito». Se vuoto è uguale all'attrito. Serve solo alla simulazione.",
+  mounting_angle:
+    "Inclinazione del cilindro: 0° orizzontale, 90° verticale con lo stelo verso l'alto (il peso della massa " +
+    "mobile frena l'uscita), −90° verticale con lo stelo verso il basso (il peso aiuta l'uscita). La " +
+    "simulazione aggiunge la componente del peso lungo l'asse. Serve solo alla simulazione.",
   pressure: "Pressione relativa fornita dall'alimentazione (compressore o rete), ad esempio 6 bar.",
   volume:
     "Volume interno del serbatoio. Un volume grande smorza i picchi di consumo; un volume piccolo " +
@@ -70,8 +85,8 @@ const PARAMS: Record<string, string> = {
     "Lunghezza dell'ammortizzo: tratto finale di corsa in cui l'aria in uscita passa solo dalla vite " +
     "di regolazione e frena il pistone. Se vuoto vale circa 0,6 volte l'alesaggio.",
   cushion_opening:
-    "Apertura della vite di regolazione dell'ammortizzo, da 0 (chiusa: frenata massima, rischio di " +
-    "rimbalzo) a 1 (tutta aperta: quasi nessuna frenata). Serve solo alla simulazione.",
+    "Apertura della vite di regolazione dell'ammortizzo, da 0 % (chiusa: frenata massima, rischio di " +
+    "rimbalzo) a 100 % (tutta aperta: quasi nessuna frenata). Serve solo alla simulazione.",
   setpoint: "Pressione di taratura del componente.",
   cracking_pressure:
     "Differenza di pressione minima tra ingresso 1 e uscita 2 perché la valvola di non ritorno si apra " +
@@ -126,6 +141,20 @@ const TYPE_PARAMS: Record<string, string> = {
     "Pressione sul pilotaggio 12 dalla quale comincia a contare il ritardo. Serve solo alla simulazione.",
   "timer_relay.delay":
     "Tempo di ritardo del relè temporizzato: all'eccitazione o alla diseccitazione, secondo la funzione scelta.",
+  "flow_control_valve.flow":
+    "Portata nominale Qn del catalogo con la vite tutta aperta (6 bar a monte, 5 bar a valle). Se la " +
+    "conduttanza C a tutta apertura è vuota, la simulazione la ricava da qui; l'apertura la riduce.",
+  "one_way_flow_control.flow":
+    "Portata nominale Qn del catalogo nel verso strozzato (da 1 a 2) con la vite tutta aperta, misurata " +
+    "con 6 bar a monte e 5 bar a valle. Se la conduttanza C a tutta apertura è vuota, la simulazione la " +
+    "ricava da qui; l'apertura la riduce. Il verso libero non dipende dall'apertura.",
+  "flow_control_valve.conductance":
+    "Conduttanza sonica C (ISO 6358) con la vite tutta aperta, dal catalogo. La simulazione usa apertura × C. " +
+    "Se è vuota e scrivi la portata nominale Qn, C si ricava da quella (circa C ≈ Qn [Nl/min] / 260).",
+  "one_way_flow_control.conductance":
+    "Conduttanza sonica C (ISO 6358) nel verso strozzato (da 1 a 2) con la vite tutta aperta, dal catalogo. " +
+    "La simulazione usa apertura × C. Se è vuota e scrivi la portata nominale Qn, C si ricava da quella " +
+    "(circa C ≈ Qn [Nl/min] / 260).",
   "pressure_source.flow":
     "Portata massima che l'alimentazione può fornire. È un dato informativo.",
 };
@@ -230,7 +259,7 @@ export const FIELD_HELP: Record<string, string> = {
 export function paramHelp(type: string, p: ParamSpec): string {
   const base = TYPE_PARAMS[`${type}.${p.name}`] ?? PARAMS[p.name] ?? `${p.label}.`;
   const parts = [base];
-  const unit = UNITS[p.dimension];
+  const unit = UNITS[p.percent ? "percent" : p.dimension];
   if (unit) parts.push(`Unità: ${unit}; se scrivi solo il numero si usa l'unità principale.`);
   if (p.required) parts.push("Obbligatorio.");
   if (p.simDefault) parts.push(`Se vuoto: ${p.simDefault}.`);

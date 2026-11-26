@@ -118,7 +118,7 @@ describe("regolazione di portata e pressione", () => {
   });
 
   it("limitatrice: la linea non supera molto la taratura", () => {
-    const s = sim([src("P", "8 bar"), { id: "F", type: "flow_control_valve" }, { id: "VS", type: "relief_valve", params: { setpoint: "4 bar" } },
+    const s = sim([src("P", "8 bar"), { id: "F", type: "flow_control_valve", params: { opening: "20 %" } }, { id: "VS", type: "relief_valve", params: { setpoint: "4 bar" } },
                    { id: "SR", type: "air_reservoir", params: { volume: "0.2 l" } }],
       [["P.1", "F.1"], ["F.2", "VS.1"], ["F.2", "SR.1"]]);
     s.advance(3);

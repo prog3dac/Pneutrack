@@ -15,7 +15,7 @@ import {
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
-import { Quantity, type Dimension } from "../model/units";
+import { fmtG, Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
 import { compileSim } from "../sim/network";
 import { Simulator } from "../sim/simulator";
@@ -1118,12 +1118,19 @@ function standardList(name: string): string | null {
   return id;
 }
 
+/** Un'apertura scritta nel file come frazione (0.3) si mostra in percentuale (30 %). */
+function percentText(raw: string | undefined): string {
+  if (raw == null || raw === "") return "";
+  const t = raw.trim();
+  return /^[-+]?[\d.,]+$/.test(t) ? `${fmtG(parseFloat(t.replace(",", ".")) * 100)} %` : raw;
+}
+
 function paramInput(comp: ComponentData, p: ParamSpec) {
   const inp = document.createElement("input");
   inp.name = `param-${p.name}`;
   const list = comp.type.endsWith("_cylinder") ? standardList(p.name) : null;
   if (list) inp.setAttribute("list", list);
-  inp.value = comp.params?.[p.name] ?? "";
+  inp.value = p.percent ? percentText(comp.params?.[p.name]) : comp.params?.[p.name] ?? "";
   inp.placeholder = p.simDefault ? `predefinito ${p.simDefault}`
     : (p.required ? "obbligatorio, " : "") + `es. ${EXAMPLE_VALUE[p.dimension] ?? `1 ${PREF_UNIT[p.dimension]}`}`;
   inp.spellcheck = false;
@@ -1131,7 +1138,7 @@ function paramInput(comp: ComponentData, p: ParamSpec) {
     const c = byId(comp.id)!;
     c.params ??= {};
     const v = inp.value.trim();
-    const unit = PREF_UNIT[p.dimension];
+    const unit = p.percent ? "%" : PREF_UNIT[p.dimension];
     if (v) c.params[p.name] = /^[-+]?[\d.,]+$/.test(v) && unit ? `${v} ${unit}` : v;
     else delete c.params[p.name];
   }));
