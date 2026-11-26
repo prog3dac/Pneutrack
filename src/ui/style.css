@@ -426,6 +426,24 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 .sim-values { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12.5px; }
 .sim-values dt { color: var(--muted); }
 .sim-values dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+/* regolazioni in simulazione: cursori nel pannello e accanto al simbolo */
+.sim-tuners { display: grid; gap: 10px; margin-bottom: 6px; }
+.tuner { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: center; font-size: 12.5px; }
+.tuner label { font-weight: 600; }
+.tuner output { color: var(--air); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tuner input[type="range"] { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; accent-color: var(--air); }
+.tuner small { grid-column: 1 / -1; color: var(--muted); font-size: 11.5px; }
+.sim-tune-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tune-pop { display: grid; gap: 8px; width: 270px; padding: 10px 12px 10px; border: 1px solid var(--sel); }
+.tune-pop .tune-close { position: absolute; top: 2px; right: 2px; padding: 2px 6px; border: 0; background: none;
+  color: var(--muted); }
+.tune-pop .tuner { padding-right: 14px; }
+#app.simulating .component.tunable { cursor: pointer; }
+#app.simulating .component.tunable:hover .adjust line,
+#app.simulating .component.tune-open .adjust line { stroke: var(--sel); stroke-width: 2.4; }
+#app.simulating .component.tunable:hover .adjust .fill,
+#app.simulating .component.tune-open .adjust .fill { fill: var(--sel); }
+.symbol .needle { stroke: var(--air); stroke-width: 1.6; }
 
 /* tubi */
 .bend-handle { fill: var(--sheet); stroke: var(--accent); stroke-width: 1.6; cursor: move; }

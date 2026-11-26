@@ -54,7 +54,7 @@ export type OptionName =
   | "contact" | "operation" | "timer_mode" | "switch_actuation" | "sensor_kind" | "lamp_color"
   | "override" | "magnet" | "gripper_kind" | "coupling" | "coupling_state"
   | "check_spring" | "rotary_kind" | "motor_kind" | "filter_kind" | "frl_style" | "lub_drain" | "switch_kind"
-  | "indicator_kind" | "blowoff";
+  | "indicator_kind" | "blowoff" | "gauge_fitted";
 
 export interface OptionSpec {
   name: OptionName;
@@ -107,6 +107,8 @@ export interface ComponentData {
   indicator_kind?: string;
   /** generatore di vuoto: "yes" con il soffio di distacco (porta 4) */
   blowoff?: string;
+  /** riduttore e filtro riduttore: "yes" con il manometro sul corpo */
+  gauge_fitted?: string;
   // --- componenti elettrici ---
   /** contatto: "no" (NA), "nc" (NC), "co" (scambio) */
   contact?: string;
@@ -153,6 +155,7 @@ export interface Component {
   switch_kind?: "mechanical" | "electronic" | "vacuum";
   indicator_kind?: "optical" | "digital" | "acoustic";
   blowoff?: "no" | "yes";
+  gauge_fitted?: "no" | "yes";
   contact?: ContactKind;
   operation?: "momentary" | "latching";
   timer_mode?: "on_delay" | "off_delay";
@@ -223,6 +226,14 @@ const p = (name: string, label: string, dimension: Dimension, extra: Partial<Par
 
 const MAX_P = p("max_pressure", "Pressione max", "pressure");
 const MIN_P = p("min_pressure", "Pressione min", "pressure");
+/** campo di regolazione della taratura (catalogo): in simulazione il cursore resta tra questi due valori */
+const SET_MIN = p("setpoint_min", "Campo di regolazione min", "pressure");
+const SET_MAX = p("setpoint_max", "Campo di regolazione max", "pressure");
+/** campo di regolazione dei riduttori nuovi, come nei cataloghi più comuni */
+const REG_RANGE = { setpoint_min: "0.5 bar", setpoint_max: "10 bar" };
+/** manometro montato sul corpo del riduttore */
+const GAUGE_OPTION: OptionSpec = { name: "gauge_fitted", label: "Manometro", default: "no",
+  choices: [["no", "Senza manometro"], ["yes", "Con manometro"]] };
 const conductance = (def: string) =>
   p("conductance", "Conduttanza C", "conductance", { group: "sim", simDefault: def });
 const critical = (def: string) =>
@@ -441,11 +452,11 @@ const DEFS: TypeDef[] = [
   {
     type: "frl_unit", label: "Gruppo FRL", category: AIR,
     doc: "Gruppo filtro, riduttore con manometro e lubrificatore: l'uscita 2 non supera la pressione regolata.",
-    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1.5 dm3/(s·bar)"), critical("0.35")],
     options: [{ name: "frl_style", label: "Simbolo", default: "detailed", choices: [
       ["detailed", "Dettagliato (filtro, riduttore, manometro, lubrificatore)"], ["simplified", "Semplificato"]] }],
-    defaults: { setpoint: "6 bar", max_pressure: "16 bar" },
+    defaults: { setpoint: "6 bar", max_pressure: "16 bar", ...REG_RANGE },
     presets: [
       { label: "Gruppo FRL", options: { frl_style: "detailed" } },
       { label: "Gruppo FRL, simbolo semplificato", options: { frl_style: "simplified" } },
@@ -456,9 +467,14 @@ const DEFS: TypeDef[] = [
   {
     type: "pressure_regulator", label: "Riduttore di pressione", category: AIR,
     doc: "Riduttore di pressione: l'uscita 2 non supera la pressione regolata.",
-    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
-    defaults: { setpoint: "4 bar", max_pressure: "16 bar" },
+    options: [GAUGE_OPTION],
+    defaults: { setpoint: "4 bar", max_pressure: "16 bar", ...REG_RANGE },
+    presets: [
+      { label: "Riduttore di pressione", options: { gauge_fitted: "no" } },
+      { label: "Riduttore di pressione con manometro", options: { gauge_fitted: "yes" } },
+    ],
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
   },
@@ -466,9 +482,14 @@ const DEFS: TypeDef[] = [
     type: "filter_regulator", label: "Filtro riduttore", category: AIR,
     doc: "Filtro e riduttore di pressione in un solo corpo, con scarico della condensa: l'uscita 2 non supera la " +
       "pressione regolata.",
-    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1.5 dm3/(s·bar)"), critical("0.35")],
-    defaults: { setpoint: "6 bar", max_pressure: "16 bar" },
+    options: [GAUGE_OPTION],
+    defaults: { setpoint: "6 bar", max_pressure: "16 bar", ...REG_RANGE },
+    presets: [
+      { label: "Filtro riduttore", options: { gauge_fitted: "no" } },
+      { label: "Filtro riduttore con manometro", options: { gauge_fitted: "yes" } },
+    ],
     ports: () => [port("1", "supply"), port("2", "work")],
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }],
   },
@@ -787,9 +808,9 @@ const DEFS: TypeDef[] = [
     type: "relieving_regulator", label: "Riduttore di pressione con scarico", category: REGULATION,
     doc: "Riduttore con scarico (a tre vie): l'uscita 2 non supera la pressione regolata e, se la pressione a valle " +
       "sale oltre la taratura (per esempio quando la si abbassa), l'eccesso esce dallo scarico 3.",
-    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione regolata", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
-    defaults: { setpoint: "4 bar", max_pressure: "16 bar" },
+    defaults: { setpoint: "4 bar", max_pressure: "16 bar", ...REG_RANGE },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
     paths: (c) => [{ src: "1", dst: "2", cap: c.params.setpoint!.si }, oneWay("2", "3")],
   },
@@ -807,7 +828,7 @@ const DEFS: TypeDef[] = [
     type: "proportional_regulator", label: "Regolatore proporzionale di pressione", category: REGULATION,
     doc: "Riduttore con la taratura impostata da un segnale elettrico (solenoide proporzionale). In simulazione " +
       "l'uscita 2 resta alla pressione impostata.",
-    params: [p("setpoint", "Pressione impostata dal segnale", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione impostata dal segnale", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
     defaults: { setpoint: "3 bar", max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
@@ -826,7 +847,7 @@ const DEFS: TypeDef[] = [
   {
     type: "relief_valve", label: "Valvola limitatrice di pressione", category: REGULATION,
     doc: "Valvola di sicurezza: scarica da 1 a 3 quando la pressione supera la taratura.",
-    params: [p("setpoint", "Pressione di taratura", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione di taratura", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
     defaults: { setpoint: "7 bar", max_pressure: "16 bar" },
     ports: () => [port("1", "supply"), port("3", "exhaust", true)],
@@ -835,7 +856,7 @@ const DEFS: TypeDef[] = [
   {
     type: "sequence_valve", label: "Valvola di sequenza", category: REGULATION,
     doc: "3/2 NC che commuta quando il pilotaggio 12 raggiunge la pressione di taratura.",
-    params: [p("setpoint", "Pressione di commutazione", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione di commutazione", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              FLOW, conductance("1 dm3/(s·bar)"), critical("0.35")],
     defaults: { setpoint: "4 bar", max_pressure: "10 bar" },
     ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true), port("12", "pilot")],
@@ -1189,7 +1210,7 @@ const DEFS: TypeDef[] = [
     doc: "Pressostato: si collega alla linea pneumatica con la porta 1 e aziona i contatti che lo indicano " +
       "quando la pressione supera la taratura. Il vacuostato interviene quando il vuoto supera la taratura " +
       "(scritta come grado di vuoto, per esempio 0,5 bar).",
-    params: [p("setpoint", "Pressione di intervento", "pressure", { required: true }), MAX_P,
+    params: [p("setpoint", "Pressione di intervento", "pressure", { required: true }), SET_MIN, SET_MAX, MAX_P,
              p("hysteresis", "Isteresi", "pressure", { group: "sim", simDefault: "0.5 bar" })],
     options: [{ name: "switch_kind", label: "Tipo", default: "mechanical", choices: [
       ["mechanical", "Meccanico (a molla)"], ["electronic", "Elettronico"],
@@ -1332,7 +1353,8 @@ export function buildComponent(raw: ComponentData): Component {
 
 const CHOICE_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation", "sensor_kind", "lamp_color",
   "override", "magnet", "gripper_kind", "coupling", "coupling_state", "check_spring", "rotary_kind", "motor_kind",
-  "filter_kind", "frl_style", "lub_drain", "switch_kind", "indicator_kind", "blowoff"] as const;
+  "filter_kind", "frl_style", "lub_drain", "switch_kind", "indicator_kind", "blowoff",
+  "gauge_fitted"] as const;
 const CAM_RE = /^([A-Za-z0-9_-]+)([+-])$/;
 
 /** Opzioni e riferimenti per sigla dei componenti elettrici (la loro esistenza la controlla la validazione). */
@@ -1404,14 +1426,15 @@ export function conductanceFromFlow(qn: number, b: number): number {
 
 /**
  * Conduttanza C del passaggio principale [m³/(s·Pa)]: quella scritta, altrimenti quella ricavata dalla
- * portata nominale Qn, altrimenti il valore predefinito. Negli strozzatori è moltiplicata per l'apertura.
+ * portata nominale Qn, altrimenti il valore predefinito. Negli strozzatori è moltiplicata per l'apertura
+ * (`withOpening` falso: la conduttanza a tutta apertura).
  */
-export function conductanceOf(c: Component): number {
+export function conductanceOf(c: Component, withOpening = true): number {
   const spec = TYPES.get(c.type)!.params;
   const b = simParam(c, "critical_ratio").si;
   const flow = spec.some((s) => s.name === "flow") && c.type !== "pressure_source" ? c.params.flow : undefined;
   let C = c.params.conductance?.si ?? (flow ? conductanceFromFlow(flow.si, b) : simParam(c, "conductance").si);
-  if (spec.some((s) => s.name === "opening")) C *= simParam(c, "opening").si;
+  if (withOpening && spec.some((s) => s.name === "opening")) C *= simParam(c, "opening").si;
   return C;
 }
 

@@ -43,6 +43,7 @@ const BOM_CHOICES: Record<string, string> = {
   "frl_style.detailed": "", "frl_style.simplified": "",
   "lub_drain.no": "", "lub_drain.yes": "con scarico",
   "blowoff.no": "", "blowoff.yes": "con soffio di distacco",
+  "gauge_fitted.no": "", "gauge_fitted.yes": "con manometro",
 };
 
 function describe(c: ComponentData): string {

@@ -9,7 +9,7 @@
 import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
-import type { CylinderSpec, Position, SimNetwork, ValveSpec } from "./network";
+import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
 import { isElectric, isMechanical, isPilot, isReturn, isThreePosition } from "../model/components";
 
@@ -74,6 +74,23 @@ export class Simulator {
     this.electric = net.electric ? new ElectricState(net.electric) : null;
     this.updateElectric();
     this.updateValves();
+  }
+
+  /** Regolazione `param` del componente `id` (riduttore, strozzatore, ritardo...), se c'è. */
+  tunable(id: string, param: string): Tunable | undefined {
+    return this.net.tunables.find((t) => t.id === id && t.param === param);
+  }
+
+  /**
+   * Cambia una regolazione mentre la simulazione gira; il valore resta nel suo campo. Vale anche dopo
+   * un riavvio, perché sta nella rete compilata. Restituisce il valore applicato.
+   */
+  setTunable(id: string, param: string, value: number): number | null {
+    const t = this.tunable(id, param);
+    if (!t || !Number.isFinite(value)) return null;
+    t.value = Math.min(t.max, Math.max(t.min, value));
+    t.apply(t.value);
+    return t.value;
   }
 
   /** Aziona a mano un pulsante, un interruttore o un finecorsa elettrico (premuto o rilasciato). */

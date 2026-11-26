@@ -29,6 +29,8 @@ export interface SymbolState {
   /** sigle delle bobine che eccitano i solenoidi della valvola */
   coil14?: string;
   coil12?: string;
+  /** manometro integrato: lancetta, frazione del fondo scala 0..1 */
+  gauge?: number;
 }
 
 const S = 40; // lato di una casella di valvola
@@ -62,7 +64,19 @@ function hollowHead(x1: number, y1: number, x2: number, y2: number, size = 7) {
   return path(`M${x2},${y2} L${p1[0]},${p1[1]} L${p2[0]},${p2[1]} Z`, "body");
 }
 /** Molla regolabile: freccia obliqua che attraversa la molla (ISO 1219). */
-const adjustArrow = (x1: number, y1: number, x2: number, y2: number) => line(x1, y1, x2, y2) + arrowHead(x1, y1, x2, y2, 5);
+const adjustArrow = (x1: number, y1: number, x2: number, y2: number) =>
+  `<g class="adjust">${line(x1, y1, x2, y2) + arrowHead(x1, y1, x2, y2, 5)}</g>`;
+/**
+ * Manometro integrato in un gruppo: cerchio con la lancetta. In simulazione la lancetta va da −135°
+ * (zero) a +135° (fondo scala) secondo `frac`; fuori simulazione resta inclinata come nel simbolo.
+ */
+function dial(cx: number, cy: number, r: number, frac?: number) {
+  if (frac === undefined) return circle(cx, cy, r, "body") + line(cx, cy, cx + 0.6 * r, cy - 0.6 * r);
+  const a = ((-135 + 270 * Math.min(1, Math.max(0, frac))) * Math.PI) / 180;
+  const k = r - 1;
+  return circle(cx, cy, r, "body") +
+    line(cx, cy, +(cx + k * Math.sin(a)).toFixed(2), +(cy - k * Math.cos(a)).toFixed(2), "needle");
+}
 const arrow = (x1: number, y1: number, x2: number, y2: number) => line(x1, y1, x2, y2) + arrowHead(x1, y1, x2, y2);
 
 function zigzag(x1: number, y1: number, x2: number, y2: number, n = 6, amp = 5) {
@@ -440,12 +454,13 @@ const dryerGeometry = (): Geometry => ({
 /**
  * Filtro riduttore: filtro e riduttore nello stesso corpo, quindi cornice continua (5.9), non a tratto e punto.
  */
-function filterRegulatorGeometry(): Geometry {
+function filterRegulatorGeometry(gauge: boolean, state?: SymbolState): Geometry {
   const filter = diamond(-16, 0, 10) + line(-16, -10, -16, 5, "dash") + line(-20, 5, -12, 5) + line(-16, 10, -16, 16);
   const reg = rect(4, -10, 16, 20, "box") + arrow(12, 8, 12, -8) + zigzag(20, 4, 27, 4, 4, 3) + adjustArrow(20, 10, 27, -2);
   return {
     w: 84, h: 48, ports: { 1: { x: -40, y: 0, dir: left }, 2: { x: 40, y: 0, dir: right } },
-    svg: line(-40, 0, -26, 0) + line(-6, 0, 4, 0) + line(20, 0, 40, 0) + filter + reg + rect(-30, -18, 60, 38, "nofill"),
+    svg: line(-40, 0, -26, 0) + line(-6, 0, 4, 0) + line(20, 0, 40, 0) + filter + reg + rect(-30, -18, 60, 38, "nofill") +
+      (gauge ? line(35, 0, 35, -11) + dial(35, -16, 5, state?.gauge) : ""),
   };
 }
 
@@ -456,12 +471,12 @@ const frlSimplifiedGeometry = (): Geometry => ({
     line(-6, -8, -6, 4, "dash") + arrow(9, 10, 9, -10),
 });
 
-function frlGeometry(): Geometry {
+function frlGeometry(state?: SymbolState): Geometry {
   // linea di flusso a y = 0, porte a ±60: sui nodi della griglia
   const box = `<rect x="-46" y="-22" width="92" height="40" class="nofill dashdot"/>`;
   const filter = diamond(-28, 0, 10) + line(-28, -10, -28, 5, "dash") + line(-32, 5, -24, 5);
   const reg = rect(-9, -10, 18, 20, "box") + arrow(0, 8, 0, -8) + zigzag(9, 4, 16, 4, 4, 3) + adjustArrow(9, 10, 16, -2);
-  const gauge = circle(0, -17, 5, "body") + line(0, -17, 3, -20);
+  const gauge = dial(0, -17, 5, state?.gauge);
   const lub = diamond(28, 0, 10) + line(28, -10, 28, -4);
   const flow = line(-60, 0, -38, 0) + line(-18, 0, -9, 0) + line(9, 0, 18, 0) + line(38, 0, 60, 0);
   return {
@@ -636,14 +651,15 @@ const plugGeometry = (): Geometry => ({
   svg: line(0, -10, 0, 0) + line(-7, 0, 7, 0),
 });
 
-function regulatorGeometry(): Geometry {
+function regulatorGeometry(gauge: boolean, state?: SymbolState): Geometry {
   const h = S / 2;
   const svg = rect(-h, -h, S, S, "box") +
     line(0, h, 0, h + STUB) + line(0, -h, 0, -h - STUB) +
     arrow(0, h - 2, 0, -h + 2) +
     zigzag(h, 6, h + 16, 6, 5, 5) + adjustArrow(h + 2, 16, h + 14, -4) +
     line(-h, -h + 8, -h - 8, -h + 8, "dash") + line(-h - 8, -h + 8, -h - 8, -h - STUB + 2, "dash") +
-    line(-h - 8, -h - STUB + 2, 0, -h - STUB + 2, "dash");
+    line(-h - 8, -h - STUB + 2, 0, -h - STUB + 2, "dash") +
+    (gauge ? line(0, -h - 5, 14, -h - 5) + dial(19, -h - 5, 5, state?.gauge) : "");
   return {
     w: S + 30, h: S + 2 * STUB,
     ports: { 1: { x: 0, y: h + STUB, dir: down }, 2: { x: 0, y: -h - STUB, dir: up } },
@@ -1212,11 +1228,11 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "plug": return plugGeometry();
     case "junction": return junctionGeometry();
     case "exhaust": return exhaustGeometry();
-    case "pressure_regulator": return regulatorGeometry();
+    case "pressure_regulator": return regulatorGeometry(comp.gauge_fitted === "yes", state);
     case "flow_control_valve": return flowControlGeometry();
     case "compressor": return compressorGeometry();
     case "vacuum_pump": return vacuumPumpGeometry();
-    case "filter_regulator": return filterRegulatorGeometry();
+    case "filter_regulator": return filterRegulatorGeometry(comp.gauge_fitted === "yes", state);
     case "air_dryer": return dryerGeometry();
     case "roller_flow_control": return rollerThrottleGeometry(comp, state);
     case "relieving_regulator": return relievingRegulatorGeometry(false);
@@ -1256,7 +1272,7 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "air_reservoir": return reservoirGeometry();
     case "air_filter": return filterGeometry(comp.filter_kind);
     case "lubricator": return lubricatorGeometry(comp.lub_drain === "yes");
-    case "frl_unit": return comp.frl_style === "simplified" ? frlSimplifiedGeometry() : frlGeometry();
+    case "frl_unit": return comp.frl_style === "simplified" ? frlSimplifiedGeometry() : frlGeometry(state);
     case "pressure_gauge": return gaugeGeometry();
     case "check_valve": return checkGeometry(comp.check_spring === "yes");
     case "pilot_check_valve": return pilotCheckGeometry();

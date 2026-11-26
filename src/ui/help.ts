@@ -88,6 +88,12 @@ const PARAMS: Record<string, string> = {
     "Apertura della vite di regolazione dell'ammortizzo, da 0 % (chiusa: frenata massima, rischio di " +
     "rimbalzo) a 100 % (tutta aperta: quasi nessuna frenata). Serve solo alla simulazione.",
   setpoint: "Pressione di taratura del componente.",
+  setpoint_min:
+    "Valore più basso a cui si può regolare la taratura (campo di regolazione del catalogo, per esempio " +
+    "0,5 bar). In simulazione il cursore della regolazione parte da qui; se vuoto parte da 0.",
+  setpoint_max:
+    "Valore più alto a cui si può regolare la taratura (campo di regolazione del catalogo, per esempio " +
+    "10 bar). In simulazione il cursore della regolazione arriva fin qui; se vuoto arriva alla pressione max.",
   cracking_pressure:
     "Differenza di pressione minima tra ingresso 1 e uscita 2 perché la valvola di non ritorno si apra " +
     "(precarico della molla). Serve solo alla simulazione.",
@@ -276,9 +282,13 @@ const OPTIONS: Record<string, string> = {
     "Cambia il simbolo, non la simulazione.",
   frl_style:
     "Dettagliato: filtro, riduttore con manometro e lubrificatore, racchiusi nella cornice del gruppo. " +
-    "Semplificato: una sola casella, utile negli schemi piccoli. Non cambia la simulazione.",
+    "Semplificato: una sola casella, utile negli schemi piccoli. Non cambia la simulazione: in tutti e due i " +
+    "casi Simula mostra la pressione del manometro, a valle del riduttore.",
   lub_drain:
     "Lubrificatore con lo scarico manuale sul fondo della tazza (per scaricare la condensa o l'olio in eccesso).",
+  gauge_fitted:
+    "Manometro montato sul corpo del riduttore: compare nel simbolo e in simulazione mostra la pressione " +
+    "regolata, a valle (porta 2). Non cambia il passaggio dell'aria.",
   switch_kind:
     "Meccanico: contatto azionato contro una molla regolabile. Elettronico: sensore con uscita di commutazione " +
     "(con l'amplificatore nel simbolo). Vacuostato: interviene quando il vuoto sulla porta 1 supera la taratura, " +
