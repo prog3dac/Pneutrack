@@ -39,7 +39,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   air_motor: "Cerchio con due triangoli vuoti rivolti verso l'interno (l'energia entra) e albero sul lato: motore pneumatico a due sensi di rotazione.",
   shutoff_valve: "Due triangoli con i vertici affacciati sulla linea (ISO 1219-1 8.7.23): rubinetto di intercettazione, con la leva di comando. In simulazione, chiuso, la leva è di traverso e un tratto spesso sbarra il passaggio.",
   lockout_valve: "Valvola 3/2 con leva ad arresto e lucchetto sopra il comando (ISO 1219-1 X10260): aperta alimenta 2 da 1; chiusa, la molla la porta nello scarico 2→3 e il lucchetto la blocca.",
-  quick_coupling: "Presa (in basso) e spina (in alto), ciascuna con la sua bocca; innestate le bocche si sovrappongono, staccate sono separate. La sfera nella sede indica la metà con la valvola di non ritorno (ISO 1219-1 X11690–X11740).",
+  quick_coupling: "Ogni metà finisce con una punta rivolta verso l'altra: staccate, davanti alla punta c'è il tratto della faccia di accoppiamento; innestate, le punte si toccano. Nella metà con la valvola di non ritorno la sfera sta dentro la punta (ISO 1219-1 X11690–X11740).",
   double_pilot_check: "Due non ritorno racchiuse nello stesso corpo, con il pilotaggio tratteggiato a croce: la pressione su una linea apre il ritorno dell'altra (ISO 1219-1 X10730).",
   fixed_orifice: "Due archi che restringono la linea, senza freccia: strozzatore fisso, non regolabile (come nella ISO 1219-3, all. C).",
   soft_start_valve: "Valvola 2/2 normalmente chiusa pilotata dall'uscita contro una molla, con lo strozzatore regolabile di riempimento in parallelo; la cornice a tratto e punto indica un solo corpo (ISO 1219-1 X10250).",

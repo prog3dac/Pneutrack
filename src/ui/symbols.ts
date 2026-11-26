@@ -620,18 +620,29 @@ function lockoutGeometry(comp: ComponentData, state?: SymbolState): Geometry {
 }
 
 /**
- * Innesto rapido (ISO 1219-1 X11690–X11740): presa (1, in basso) e spina (2, in alto). Innestato le due bocche
- * si sovrappongono; staccato sono separate. Le metà con il non ritorno hanno la sfera nella sede.
+ * Innesto rapido (ISO 1219-1 X11690–X11740): ogni metà finisce con una punta rivolta verso l'altra. Staccate,
+ * davanti a ciascuna punta c'è il tratto della faccia di accoppiamento; innestate, le punte si toccano. Nella metà
+ * con la valvola di non ritorno la sfera sta dentro la punta, che fa da sede. Presa (1) in basso, spina (2) in alto.
  */
 function couplingGeometry(comp: ComponentData): Geometry {
   const coupled = comp.coupling_state !== "uncoupled";
   const check = comp.coupling ?? "check_one";
-  // presa: coppa aperta verso la spina; spina: punta rivolta verso la presa. Innestate, la punta sta nella coppa.
-  const cup = coupled ? 4 : 7, tip = coupled ? 0 : -7;
-  let svg = line(0, 30, 0, cup) + line(0, -30, 0, tip) +
-    path(`M-9,${cup - 8} L0,${cup} L9,${cup - 8}`, "nofill") + path(`M-6,${tip - 6} L0,${tip} L6,${tip - 6}`, "nofill");
-  if (check !== "plain") svg += checkElement(0, 21, -1);
-  if (check === "check_both") svg += checkElement(0, -21, 1);
+  const tip = coupled ? 1 : 8; // distanza della punta dal centro
+  /** metà verso la porta in y = 30·s (s = 1 presa in basso, -1 spina in alto) */
+  const half = (s: 1 | -1, withCheck: boolean) => {
+    const t = s * tip, arm = s * 7;
+    let svg = path(`M-6,${t + arm} L0,${t} L6,${t + arm}`, "nofill");
+    if (withCheck) {
+      const ball = t + s * 7;
+      svg += line(0, 30 * s, 0, ball + s * 3.5) + circle(0, ball, 3.5, "body");
+    } else {
+      svg += line(0, 30 * s, 0, t);
+    }
+    // staccata: tratto della faccia di accoppiamento davanti alla punta
+    if (!coupled) svg += line(0, t, 0, s * 4) + line(-5, s * 4, 5, s * 4);
+    return svg;
+  };
+  const svg = half(1, check !== "plain") + half(-1, check === "check_both");
   return { w: 30, h: 60, ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } }, svg };
 }
 
