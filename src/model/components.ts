@@ -58,7 +58,7 @@ export type OptionName =
   | "contact" | "operation" | "timer_mode" | "switch_actuation" | "sensor_kind" | "lamp_color"
   | "override" | "magnet" | "gripper_kind" | "coupling" | "coupling_state"
   | "check_spring" | "rotary_kind" | "motor_kind" | "filter_kind" | "frl_style" | "lub_drain" | "switch_kind"
-  | "indicator_kind" | "blowoff" | "gauge_fitted";
+  | "indicator_kind" | "blowoff" | "gauge_fitted" | "single_kind" | "spring_return" | "rodless_kind";
 
 export interface OptionSpec {
   name: OptionName;
@@ -96,6 +96,14 @@ export interface ComponentData {
   override?: string;
   /** pistone magnetico (per i sensori magnetici): "no" o "yes" */
   magnet?: string;
+  /** semplice effetto: "push" (l'aria fa uscire lo stelo) o "pull" (l'aria lo fa rientrare, la molla lo spinge fuori) */
+  single_kind?: string;
+  /** semplice effetto: "yes" con la molla di ritorno, "no" senza (ritorna per il carico) */
+  spring_return?: string;
+  /** cilindro senza stelo: "slide" (carrello trascinato attraverso la fessura) o "magnetic" (accoppiamento magnetico) */
+  rodless_kind?: string;
+  /** profilo di forza lungo la corsa, al posto del carico costante: "0 mm: 0 N; 50 mm: 200 N" */
+  load_profile?: string;
   /** pinza: "double" (doppio effetto) o "single" (semplice effetto, si apre a molla) */
   gripper_kind?: string;
   /** innesto rapido: "plain" (senza non ritorno), "check_one" (non ritorno nella presa), "check_both" */
@@ -162,6 +170,11 @@ export interface Component {
   cushioning?: Cushioning;
   override?: "none" | "push" | "detent";
   magnet?: "no" | "yes";
+  single_kind?: "push" | "pull";
+  spring_return?: "yes" | "no";
+  rodless_kind?: "slide" | "magnetic";
+  /** profilo di forza: punti (posizione dal fondello [m], forza [N]) in ordine di posizione */
+  loadProfile?: [number, number][];
   gripper_kind?: "double" | "single";
   coupling?: "plain" | "check_one" | "check_both";
   coupling_state?: "coupled" | "uncoupled";
@@ -382,6 +395,14 @@ const cushionOption: OptionSpec = {
 const magnetOption: OptionSpec = {
   name: "magnet", label: "Pistone magnetico", default: "no",
   choices: [["no", "No"], ["yes", "Sì (per sensori magnetici)"]],
+};
+const singleKindOption: OptionSpec = {
+  name: "single_kind", label: "Verso di lavoro", default: "push",
+  choices: [["push", "In spinta: l'aria fa uscire lo stelo"], ["pull", "In trazione: l'aria fa rientrare lo stelo"]],
+};
+const springReturnOption: OptionSpec = {
+  name: "spring_return", label: "Ritorno a molla", default: "yes",
+  choices: [["yes", "Sì"], ["no", "No (ritorna per il carico o la gravità)"]],
 };
 /** Comando manuale ausiliario dei solenoidi (ISO 1219-1 X10040, X10290). */
 export const OVERRIDE_CHOICES: [string, string][] = [
@@ -906,10 +927,16 @@ const DEFS: TypeDef[] = [
   // --- attuatori ------------------------------------------------------------------------------
   {
     type: "single_acting_cylinder", label: "Cilindro semplice effetto", category: ACTUATORS,
-    doc: "Cilindro a semplice effetto con ritorno a molla. Porta A: camera di spinta.",
+    doc: "Cilindro a semplice effetto. In spinta l'aria in A fa uscire lo stelo e la molla lo riporta dentro; in " +
+      "trazione A è sulla camera stelo, l'aria lo fa rientrare e la molla lo spinge fuori (a riposo è fuori). " +
+      "Senza molla torna indietro solo per il carico o la gravità.",
     params: [...cylinderParams, p("spring_force", "Forza molla", "force", { group: "sim", simDefault: "15 N" })],
-    options: [magnetOption],
+    options: [singleKindOption, springReturnOption, magnetOption],
     defaults: { bore: "20 mm", rod: "8 mm", stroke: "50 mm", max_pressure: "10 bar" },
+    presets: [
+      { label: "Cilindro semplice effetto" },
+      { label: "Cilindro semplice effetto in trazione", options: { single_kind: "pull" } },
+    ],
     actuator: true,
     ports: () => [port("A", "work")],
   },
@@ -944,8 +971,13 @@ const DEFS: TypeDef[] = [
     doc: "Cilindro a doppio effetto senza stelo: il pistone trascina un carrello che corre lungo la canna. Stessa " +
       "area e stessa forza nei due versi. A: camera che spinge il carrello verso destra, B: verso sinistra.",
     params: [...cylinderParams.filter((x) => x.name !== "rod"), ...cushionParams],
-    options: [cushionOption, magnetOption],
+    options: [cushionOption, magnetOption, { name: "rodless_kind", label: "Accoppiamento del carrello", default: "slide",
+      choices: [["slide", "Meccanico (carrello attraverso la fessura)"], ["magnetic", "Magnetico (canna chiusa)"]] }],
     defaults: { bore: "25 mm", stroke: "200 mm", max_pressure: "8 bar" },
+    presets: [
+      { label: "Cilindro senza stelo" },
+      { label: "Cilindro senza stelo ad accoppiamento magnetico", options: { rodless_kind: "magnetic" } },
+    ],
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
   },
@@ -1410,6 +1442,12 @@ export function buildComponent(raw: ComponentData): Component {
   if (isCylinder(def.type) && comp.params.rod && comp.params.rod.si >= comp.params.bore!.si) {
     throw new ParameterError(`${id}: lo stelo (${comp.params.rod}) deve essere minore dell'alesaggio (${comp.params.bore})`);
   }
+  if (raw.load_profile != null && raw.load_profile !== "") {
+    if (!def.params.some((s) => s.name === "load") || !comp.params.stroke) {
+      throw new ParameterError(`${id}: questo componente non ha il profilo di forza`);
+    }
+    comp.loadProfile = parseLoadProfile(String(raw.load_profile), comp.params.stroke.si, id);
+  }
   if (def.options?.some((o) => o.name === "cushioning")) {
     const cu = raw.cushioning ?? "none";
     if (!CUSHIONING_CHOICES.some(([v]) => v === cu)) throw new ParameterError(`${id}: ammortizzo '${cu}' non valido`);
@@ -1426,10 +1464,52 @@ export function buildComponent(raw: ComponentData): Component {
   return comp;
 }
 
+/**
+ * Profilo di forza lungo la corsa: coppie «posizione: forza» separate da «;», con la posizione dal fondello
+ * (0 = stelo dentro). Tra due punti la forza varia in linea retta, prima del primo e dopo l'ultimo resta costante.
+ * Una forza positiva si oppone all'uscita dello stelo, come il carico.
+ */
+export function parseLoadProfile(text: string, stroke: number, id = ""): [number, number][] {
+  const pre = id ? `${id}: ` : "";
+  const out: [number, number][] = [];
+  for (const part of text.split(";").map((s) => s.trim()).filter(Boolean)) {
+    const m = /^(.+?)\s*[:=]\s*(.+)$/.exec(part);
+    if (!m) throw new ParameterError(`${pre}punto del profilo '${part}' non valido (atteso per esempio '50 mm: 200 N')`);
+    let x: Quantity, f: Quantity;
+    try {
+      x = Quantity.coerce(/^[-+]?[\d.,]+$/.test(m[1]!) ? `${m[1]} mm` : m[1]!);
+      f = Quantity.coerce(/^[-+]?[\d.,]+$/.test(m[2]!) ? `${m[2]} N` : m[2]!);
+    } catch (e) {
+      throw new ParameterError(`${pre}profilo di forza: ${(e as Error).message}`);
+    }
+    if (x.dimension !== "length" || f.dimension !== "force") {
+      throw new ParameterError(`${pre}profilo di forza: ogni punto è una posizione e una forza ('50 mm: 200 N')`);
+    }
+    if (x.si < 0 || x.si > stroke + 1e-9) throw new ParameterError(`${pre}profilo di forza: la posizione ${x} è fuori dalla corsa`);
+    out.push([x.si, f.si]);
+  }
+  if (!out.length) throw new ParameterError(`${pre}profilo di forza vuoto`);
+  out.sort((a, b) => a[0] - b[0]);
+  return out;
+}
+
+/** Forza del profilo alla posizione `x` [m]: interpolata tra i punti, costante oltre gli estremi. */
+export function profileForce(profile: [number, number][], x: number): number {
+  if (x <= profile[0]![0]) return profile[0]![1];
+  for (let i = 1; i < profile.length; i++) {
+    const [x1, f1] = profile[i]!;
+    if (x <= x1) {
+      const [x0, f0] = profile[i - 1]!;
+      return x1 === x0 ? f1 : f0 + ((f1 - f0) * (x - x0)) / (x1 - x0);
+    }
+  }
+  return profile[profile.length - 1]![1];
+}
+
 const CHOICE_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation", "sensor_kind", "lamp_color",
   "override", "magnet", "gripper_kind", "coupling", "coupling_state", "check_spring", "rotary_kind", "motor_kind",
   "filter_kind", "frl_style", "lub_drain", "switch_kind", "indicator_kind", "blowoff",
-  "gauge_fitted"] as const;
+  "gauge_fitted", "single_kind", "spring_return", "rodless_kind"] as const;
 const CAM_RE = /^([A-Za-z0-9_-]+)([+-])$/;
 
 /** Opzioni e riferimenti per sigla dei componenti elettrici (la loro esistenza la controlla la validazione). */

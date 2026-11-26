@@ -617,3 +617,13 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
   .vc-mid { order: -1; }
   .vc-head { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* configuratore dei cilindri */
+.cc-radio { display: flex; align-items: center; gap: 6px; min-height: 30px; font-size: 13px; }
+.cc-sub { padding-left: 22px; color: var(--muted); }
+.cc-prow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; margin: 4px 0; }
+.cc-chart svg { width: 100%; height: auto; display: block; margin-top: 8px; }
+.cc-chart text { font-size: 11px; fill: var(--muted); }
+.cc-axis { stroke: var(--border); stroke-width: 1; }
+.cc-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.cc-dot { fill: var(--accent); }

@@ -67,7 +67,7 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `relief_valve` | Valvola limitatrice | 1, 3 | `setpoint` |
 | | `sequence_valve` | Valvola di sequenza | 1, 2, 3, 12 | `setpoint` |
 | | `time_delay_valve` | Temporizzatore | 1, 2, 3, 12 | `delay`, `pilot_pressure` |
-| Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `static_friction`?, `mounting_angle`?, `spring_force` |
+| Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `static_friction`?, `mounting_angle`?, `spring_force`, `single_kind`? (`push`, `pull`), `spring_return`? (`yes`, `no`), `load_profile`?: vedi «Cilindri: varianti e profilo di forza» |
 | | `double_acting_cylinder` | Cilindro a doppio effetto | A, B | come sopra |
 | | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod`, `rod2`? (secondo stelo, se diverso) |
 | | `locking_cylinder` | Cilindro con bloccaggio dello stelo: fermo finché L non è in pressione | A, B, L | come il doppio effetto, `unlock_pressure` |
@@ -416,3 +416,17 @@ due porte, `x3` una porta chiusa. Con tre caselle la centrale è la posizione di
   finecorsa `cam_14` / `cam_12` vale per il secondo comando.
 - `initial`: solo bistabili (due posizioni, nessun ritorno), casella in cui la valvola parte; predefinita `12`.
 - `dominant`: lato che vince quando 14 e 12 sono comandati insieme; solo se nessun lato ha il ritorno.
+
+## Cilindri: varianti e profilo di forza
+
+- `single_acting_cylinder`: `single_kind` `push` (predefinito, l'aria in A fa uscire lo stelo) o `pull` (A è
+  sulla camera stelo, la molla tiene lo stelo fuori); `spring_return` `yes` (predefinito) o `no`.
+- `rodless_cylinder`: `rodless_kind` `slide` (predefinito, carrello trascinato attraverso la fessura) o
+  `magnetic` (accoppiamento magnetico).
+- `load_profile` (cilindri con il parametro `load`): forza lungo la corsa, coppie «posizione: forza» separate
+  da `;`, con la posizione dal fondello. Tra i punti la forza varia in linea retta; sostituisce `load`.
+
+```json
+{"id": "C1", "type": "double_acting_cylinder", "params": {"bore": "32 mm", "stroke": "100 mm"},
+ "load_profile": "0 mm: 0 N; 60 mm: 50 N; 100 mm: 400 N"}
+```

@@ -717,15 +717,18 @@ const CYL_END = 55;
 const PISTON_LO = -CYL_END + M, PISTON_HI = CYL_END - M;
 
 function cylinderGeometry(double: boolean, state?: SymbolState, through = false, cushioning = "none",
-                          magnet = false, rod2 = 6): Geometry {
+                          magnet = false, rod2 = 6, single: { pull?: boolean; spring?: boolean } = {}): Geometry {
+  const pull = !double && !!single.pull;
+  const spring = !double && single.spring !== false;
   // Il pistone (con i tamponi degli ammortizzi) resta sempre dentro la camicia per tutta la corsa; lo stelo sporge
   // sempre dalla testata (e dal fondello, se passante): la camicia resta aperta dove passa lo stelo (RF045),
   // perché lo stelo, disegnato sopra, ne copre il bordo.
   const lo = PISTON_LO;
   const travel = PISTON_HI - PISTON_LO;
   const tip = CYL_END + M; // estremità dello stelo a pistone rientrato (1M oltre la testata)
-  // senza simulazione il simbolo mostra la posizione di riposo (5.4): pistone rientrato
-  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0));
+  // senza simulazione il simbolo mostra la posizione di riposo (5.4): pistone rientrato, o fuori se la molla
+  // di un semplice effetto in trazione lo spinge fuori
+  const frac = Math.min(1, Math.max(0, state?.stroke ?? (pull && spring ? 1 : 0)));
   const pistonX = lo + frac * travel;
   let svg = rect(-CYL_END, -15, 2 * CYL_END, 30, "body") +
     rect(pistonX, -3, tip - lo, 6, "rod") +
@@ -734,28 +737,38 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false,
   if (cushioning === "cap" || cushioning === "both") svg += cushionMark(pistonX, "cap");
   if (cushioning === "rod" || cushioning === "both") svg += cushionMark(pistonX, "rod");
   if (magnet) svg += magnetMark(pistonX);
-  const ports: Record<string, PortGeom> = { A: { x: -50, y: 30, dir: down } };
-  svg += line(-50, 15, -50, 30);
+  const ports: Record<string, PortGeom> = {};
   if (double) {
-    svg += line(50, 15, 50, 30);
+    svg += line(-50, 15, -50, 30) + line(50, 15, 50, 30);
+    ports.A = { x: -50, y: 30, dir: down };
     ports.B = { x: 50, y: 30, dir: down };
+  } else if (pull) {
+    // in trazione: porta sulla camera stelo, molla (2002V3) nella camera fondello, sfiato dal fondello
+    svg += line(50, 15, 50, 30);
+    ports.A = { x: 50, y: 30, dir: down };
+    if (spring) svg += zigzag(-CYL_END + 2, 0, pistonX - 2, 0, 8, 13);
+    svg += path("M-54,15 L-46,15 L-50,22 Z", "body");
   } else {
     // molla (2002V3) a tutta altezza nella camera stelo e sfiato senza raccordo (2174V1, RF002)
-    svg += zigzag(pistonX + 2, 0, CYL_END - 2, 0, 8, 13);
+    svg += line(-50, 15, -50, 30);
+    ports.A = { x: -50, y: 30, dir: down };
+    if (spring) svg += zigzag(pistonX + 2, 0, CYL_END - 2, 0, 8, 13);
     svg += path("M46,15 L54,15 L50,22 Z", "body");
   }
   return { w: through ? 250 : 152, h: 62, ports, svg };
 }
 
 /** Cilindro senza stelo (ISO 1219-1 X11520, X11530): canna chiusa ai due lati e carrello (101V20) trascinato dal pistone. */
-function rodlessGeometry(state?: SymbolState, cushioning = "none", magnet = false): Geometry {
+function rodlessGeometry(state?: SymbolState, cushioning = "none", magnet = false, magnetic = false): Geometry {
   const capCushion = cushioning === "cap" || cushioning === "both";
   const rodCushion = cushioning === "rod" || cushioning === "both";
   const lo = PISTON_LO, hi = PISTON_HI;
   const frac = Math.min(1, Math.max(0, state?.stroke ?? 0));
   const pistonX = lo + frac * (hi - lo);
+  // accoppiamento magnetico: nessun collegamento meccanico, magneti affacciati sul pistone e sul carrello
   let svg = rect(-CYL_END, -15, 2 * CYL_END, 30, "body") + line(pistonX, -15, pistonX, 15, "thick") +
-    line(pistonX, -15, pistonX, -21) + rect(pistonX - 14, -27, 28, 6, "body");
+    (magnetic ? rect(pistonX - 6, -15, 12, 4, "magnet") + rect(pistonX - 6, -25, 12, 4, "magnet")
+      : line(pistonX, -15, pistonX, -21)) + rect(pistonX - 14, -27, 28, 6, "body");
   if (capCushion) svg += cushionMark(pistonX, "cap");
   if (rodCushion) svg += cushionMark(pistonX, "rod");
   if (magnet) svg += magnetMark(pistonX, -15, 15);
@@ -1242,11 +1255,13 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "flow_meter": return flowMeterGeometry();
     case "differential_gauge": return differentialGaugeGeometry();
     case "thermometer": return thermometerGeometry();
-    case "single_acting_cylinder": return cylinderGeometry(false, state, false, "none", comp.magnet === "yes");
+    case "single_acting_cylinder":
+      return cylinderGeometry(false, state, false, "none", comp.magnet === "yes", 6,
+        { pull: comp.single_kind === "pull", spring: comp.spring_return !== "no" });
     case "double_acting_cylinder": return cylinderGeometry(true, state, false, comp.cushioning, comp.magnet === "yes");
     case "double_rod_cylinder":
       return cylinderGeometry(true, state, true, comp.cushioning, comp.magnet === "yes", rod2Height(comp));
-    case "rodless_cylinder": return rodlessGeometry(state, comp.cushioning, comp.magnet === "yes");
+    case "rodless_cylinder": return rodlessGeometry(state, comp.cushioning, comp.magnet === "yes", comp.rodless_kind === "magnetic");
     case "gripper": return gripperGeometry(comp, state);
     case "shutoff_valve": return shutoffGeometry(state);
     case "lockout_valve": return lockoutGeometry(comp, state);

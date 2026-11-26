@@ -92,8 +92,12 @@ export interface CylinderSpec {
   /** peso della massa mobile lungo l'asse, positivo se si oppone all'uscita dello stelo [N] */
   gravity: number;
   frictionViscous: number;
-  /** forza della molla di richiamo (semplice effetto) [N] */
+  /** forza della molla di richiamo (semplice effetto) [N]; negativa se spinge lo stelo fuori (in trazione) */
   spring: number;
+  /** posizione di partenza [m] (in trazione con la molla lo stelo parte fuori) */
+  x0?: number;
+  /** profilo di forza lungo la corsa: sostituisce `load` */
+  loadProfile?: [number, number][];
   /**
    * bloccaggio: con il nodo `node` sotto `threshold` (relativa, Pa) lo stelo è fermo in qualunque posizione
    * ("any") o solo a riposo, tutto rientrato ("cap")
@@ -537,6 +541,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const rod2 = c.params.rod2?.si ?? rod;
         const single = SINGLE_ACTING.has(c.type) || (c.type === "gripper" && c.gripper_kind === "single");
         const through = c.type === "double_rod_cylinder" || c.type === "rodless_cylinder";
+        // semplice effetto in trazione: A è la camera stelo, la camera fondello sfiata, la molla spinge fuori
+        const pull = c.type === "single_acting_cylinder" && c.single_kind === "pull";
+        const springForce = single && c.spring_return !== "no" ? simParam(c, "spring_force").si : 0;
         // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
         const cushions: Orifice[] = [];
         const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
@@ -554,8 +561,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         };
         cylinders.push({
           id: c.id,
-          capNode: chamber("A", "cap"),
-          rodNode: single ? atmosphere() : chamber("B", "rod"),
+          capNode: pull ? atmosphere() : chamber("A", "cap"),
+          rodNode: pull ? node(c, "A") : single ? atmosphere() : chamber("B", "rod"),
           // doppio stelo: la camera A ha l'area meno il secondo stelo (che può essere diverso)
           A1: c.type === "double_rod_cylinder" ? full - (Math.PI * rod2 * rod2) / 4 : through ? annulus : full,
           A2: annulus,
@@ -568,7 +575,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           frictionStatic: c.params.static_friction?.si ?? simParam(c, "friction").si,
           gravity: c.type === "gripper" ? 0 : simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
           frictionViscous: 20,
-          spring: single ? simParam(c, "spring_force").si : 0,
+          spring: pull ? -springForce : springForce,
+          x0: pull && springForce > 0 ? c.params.stroke!.si : 0,
+          loadProfile: c.loadProfile,
           lock: c.type === "locking_cylinder"
             ? { node: node(c, "L"), threshold: simParam(c, "unlock_pressure").si, at: "any" }
             : c.type === "end_lock_cylinder"

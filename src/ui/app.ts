@@ -46,6 +46,8 @@ import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } 
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 import { openValveDialog } from "./valveDialog";
+import { openCylinderDialog } from "./cylinderDialog";
+import { CONFIGURABLE_CYLINDERS } from "../model/cylinderConfig";
 import { sanitizeValve, valveTemplate } from "../model/valveConfig";
 import { labelSpot } from "./labels";
 import { initPwa } from "./pwa";
@@ -1428,6 +1430,40 @@ function configureValve(id: string) {
   });
 }
 
+/** Pulsante del configuratore dei cilindri, con il profilo di forza se c'è. */
+function cylinderConfigButton(comp: ComponentData) {
+  const box = document.createElement("div");
+  box.className = "valve-config";
+  if (comp.load_profile) {
+    const p = document.createElement("p");
+    p.className = "help";
+    p.textContent = `profilo di forza: ${comp.load_profile}`;
+    box.append(p);
+  }
+  box.append(button("Configura cilindro…", () => configureCylinder(comp.id),
+    "Tipo (semplice effetto in spinta o trazione, doppio effetto, stelo passante, senza stelo), molla, ammortizzo, misure e profilo di forza",
+    "", "wide"));
+  return box;
+}
+
+/** Apre il configuratore sul cilindro: anche il cambio di tipo è un solo passo annullabile. */
+function configureCylinder(id: string) {
+  const comp = byId(id);
+  if (!comp || sim) return;
+  openCylinderDialog({
+    comp: structuredClone(comp),
+    onApply: (data) => {
+      mutate(() => {
+        const c = byId(id);
+        if (!c) return;
+        for (const k of Object.keys(c) as (keyof ComponentData)[]) delete c[k];
+        Object.assign(c, data);
+        pruneConnections(id);
+      });
+    },
+  });
+}
+
 /** Nuova valvola dal configuratore, inserita al centro della vista. */
 function newConfiguredValve() {
   if (sim) return;
@@ -1968,6 +2004,7 @@ function renderProperties() {
           isMechanical(comp[`aux_${side}`] as Actuation | undefined))) panel.append(camField(comp, side));
     }
     if (comp.type === "directional_valve") panel.append(valveConfigButton(comp));
+    if (CONFIGURABLE_CYLINDERS.has(comp.type)) panel.append(cylinderConfigButton(comp));
 
     for (const f of electricRefFields(comp)) panel.append(f);
 

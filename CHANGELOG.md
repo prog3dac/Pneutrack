@@ -10,7 +10,11 @@ La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 - Valvole bistabili: si sceglie la casella in cui partono. Segnale dominante: con 14 e 12 comandati insieme vince il lato scelto; nel simbolo è marcato con «D» (la norma non ha un segno per questo).
 - «Le mie valvole»: le valvole configurate si salvano nella palette di questo browser, si inseriscono con un clic o trascinandole e si tolgono con ×.
 - Simbolo e simulazione leggono le stesse caselle: quello che si disegna è quello che si simula. Le valvole di sempre non cambiano; le monostabili con il ritorno sul lato 14 (per esempio la 3/2 NA) ora mostrano sotto le porte la casella di riposo, come vuole la norma. Le porte restano dove sono: le linee già disegnate non si spostano.
-- Nel file la valvola personalizzata porta le sue caselle nel campo `boxes` (`"1>4 2>3 | 1>4 1>2 x3 | 1>2 4>3"`); nuovi campi facoltativi `aux_14`, `aux_12`, `initial`, `dominant`. I file delle versioni precedenti si aprono come prima.
+- Configuratore dei cilindri: nel pannello del cilindro «Configura cilindro…». Una sola finestra per semplice effetto in spinta o in trazione, doppio effetto, stelo passante e senza stelo: cambiando tipo restano misure, codice e finecorsa. Si scelgono ammortizzo, pistone magnetico, alesaggio, stelo e corsa (con le misure normalizzate), massa, angolo di montaggio, carico; anteprima del simbolo e forze teoriche a 6 bar.
+- Cilindro a semplice effetto in trazione: l'aria in A fa rientrare lo stelo e la molla lo spinge fuori (a riposo è fuori). Semplice effetto senza molla: torna indietro solo per il carico o la gravità. Nuove voci della palette.
+- Cilindro senza stelo ad accoppiamento magnetico: nel simbolo i magneti affacciati di pistone e carrello al posto del collegamento meccanico.
+- Profilo di forza lungo la corsa: punti posizione → forza (per esempio una molla da comprimere o un carico che cresce), con il grafico nel configuratore; in simulazione sostituisce il carico costante, con la forza interpolata tra i punti.
+- Nel file la valvola personalizzata porta le sue caselle nel campo `boxes` (`"1>4 2>3 | 1>4 1>2 x3 | 1>2 4>3"`); nuovi campi facoltativi `aux_14`, `aux_12`, `initial`, `dominant` per le valvole e `single_kind`, `spring_return`, `rodless_kind`, `load_profile` per i cilindri. I file delle versioni precedenti si aprono come prima.
 
 ## 0.32.0 · 2026-11-26
 

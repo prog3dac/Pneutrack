@@ -258,6 +258,15 @@ const OPTIONS: Record<string, string> = {
   magnet:
     "Pistone con l'anello magnetico, necessario per i sensori magnetici (reed) montati sulla canna. Cambia solo " +
     "il simbolo e il codice da ordinare, non la simulazione.",
+  single_kind:
+    "In spinta l'aria entra dal fondello (A) e fa uscire lo stelo, la molla lo riporta dentro. In trazione A è " +
+    "sulla camera stelo: l'aria fa rientrare lo stelo e la molla lo spinge fuori, quindi a riposo è fuori.",
+  spring_return:
+    "Con la molla il cilindro torna da solo quando A scarica. Senza molla torna solo se lo spinge il carico, " +
+    "la gravità (angolo di montaggio) o il profilo di forza.",
+  rodless_kind:
+    "Meccanico: il pistone trascina il carrello attraverso la fessura della canna. Magnetico: la canna è chiusa " +
+    "e il carrello segue il pistone per attrazione magnetica; nel simbolo i magneti affacciati.",
   gripper_kind:
     "Doppio effetto: l'aria chiude da A e apre da B. Semplice effetto: l'aria chiude da A e una molla riapre " +
     "le griffe quando A scarica.",

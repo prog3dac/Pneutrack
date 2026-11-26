@@ -11,7 +11,7 @@ import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
-import { isElectric, isManual, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
+import { isElectric, isManual, profileForce, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -69,6 +69,7 @@ export class Simulator {
     this.y = new Array<number>(this.airIndex + 1).fill(0);
     this.supplyNodes = [...net.fixed].filter(([, p]) => p > P_ATM + 1).map(([n]) => n);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
+    net.cylinders.forEach((c, i) => { this.y[this.cylOffset + 2 * i] = c.x0 ?? 0; });
     this.positions = net.valves.map((v) => v.initial);
     for (const v of net.valves) for (const side of v.startCommands ?? []) this.commands.set(`${v.id}.${side}`, true);
     this.electric = net.electric ? new ElectricState(net.electric) : null;
@@ -336,7 +337,8 @@ export class Simulator {
       // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
       const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
       const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
-      let acc = (force - c.load - c.gravity - fr) / c.mass;
+      const load = c.loadProfile ? profileForce(c.loadProfile, x) : c.load;
+      let acc = (force - load - c.gravity - fr) / c.mass;
       // a fine corsa, spinto contro l'arresto: il pistone sta fermo. Senza questo nei passi intermedi
       // di RK4 entrerebbe nell'arresto e cambierebbe il volume delle camere a vuoto, e lo
       // scatto indietro a ogni passo farebbe passare aria che non esiste (consumo fantasma)
