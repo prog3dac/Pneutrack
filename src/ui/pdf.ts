@@ -67,3 +67,45 @@ export async function svgToPdf(svgEl: SVGSVGElement, mm: [number, number], title
   }
   return pdf.output("blob");
 }
+
+/** Distinta componenti in PDF (A4 verticale): intestazione, tabella con testo a capo, piè di pagina. */
+export async function bomToPdf(rows: string[][], headers: string[], title: string, subtitle: string): Promise<Blob> {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  pdf.setProperties({ title: `Distinta componenti · ${title}`, creator: "Pneutrack" });
+  const widths = [10, 26, 58, 46, 38, 12]; // somma 190 mm
+  const left = 10, top = 14, bottom = 285, pad = 1.5, line = 4;
+  let y = top;
+  const header = () => {
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(14);
+    pdf.text(`Distinta componenti · ${title}`, left, y + 5);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(9); pdf.setTextColor(100);
+    pdf.text(subtitle, left, y + 10);
+    pdf.setTextColor(0);
+    y += 15;
+    row(headers, true);
+  };
+  const row = (cells: string[], bold = false) => {
+    pdf.setFont("helvetica", bold ? "bold" : "normal"); pdf.setFontSize(8.5);
+    const wrapped = cells.map((c, i) => pdf.splitTextToSize(c, widths[i]! - 2 * pad) as string[]);
+    const h = Math.max(...wrapped.map((w) => w.length)) * line + 2 * pad;
+    if (!bold && y + h > bottom) { pdf.addPage(); y = top; header(); }
+    let x = left;
+    if (bold) { pdf.setFillColor(235, 238, 243); pdf.rect(left, y, 190, h, "F"); }
+    wrapped.forEach((w, i) => {
+      pdf.rect(x, y, widths[i]!, h);
+      const right = i === 0 || i === widths.length - 1;
+      pdf.text(w, right ? x + widths[i]! - pad : x + pad, y + pad + 3, { align: right ? "right" : "left" });
+      x += widths[i]!;
+    });
+    y += h;
+  };
+  header();
+  for (const r of rows) row(r);
+  const pages = pdf.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    pdf.setPage(p); pdf.setFontSize(8); pdf.setTextColor(120);
+    pdf.text(`Pagina ${p} di ${pages}`, 200, 292, { align: "right" });
+  }
+  return pdf.output("blob");
+}
