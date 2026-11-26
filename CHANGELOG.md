@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.23.1 · 2026-11-26
+
+- Simulazione: un cilindro fermo a fine corsa e spinto contro l'arresto non consuma più aria. Prima, nei passi intermedi del calcolo, il pistone entrava appena nell'arresto e tornava indietro a ogni passo, e a impianto fermo si contavano circa 0,9 Nl/min che non esistono.
+
 ## 0.23.0 · 2026-11-26
 
 - Esportazione DXF per AutoCAD (menu File → Esporta DXF): il foglio con cornice, cartiglio ed eventuale distinta, in millimetri reali e formato R12, che aprono anche LibreCAD, DraftSight e QCAD. Ogni tipo di elemento ha il suo layer (CORNICE, LINEE, PILOTAGGI a tratti, SCARICHI, FILI, SIMBOLI, TESTI, BLOCCHI); sigle e descrizioni restano testi modificabili.

@@ -271,17 +271,22 @@ export class Simulator {
     const dy = new Array<number>(y.length).fill(0);
     net.cylinders.forEach((c, i) => {
       const x = y[this.cylOffset + 2 * i]!;
-      const v = y[this.cylOffset + 2 * i + 1]!;
+      let v = y[this.cylOffset + 2 * i + 1]!;
       V[c.capNode]! += c.Vcap0 + c.A1 * x;
-      dV[c.capNode]! += c.A1 * v;
       V[c.rodNode]! += c.Vrod0 + c.A2 * (c.stroke - x);
-      dV[c.rodNode]! += -c.A2 * v;
       const force = P[c.capNode]! * c.A1 - P[c.rodNode]! * c.A2 - P_ATM * (c.A1 - c.A2) - c.spring;
       // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
       const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
       const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
+      let acc = (force - c.load - c.gravity - fr) / c.mass;
+      // a fine corsa, spinto contro l'arresto: il pistone sta fermo. Senza questo nei passi intermedi
+      // di RK4 entrerebbe nell'arresto e cambierebbe il volume delle camere a vuoto, e lo
+      // scatto indietro a ogni passo farebbe passare aria che non esiste (consumo fantasma)
+      if ((x <= 0 && v <= 0 && acc < 0) || (x >= c.stroke && v >= 0 && acc > 0)) { v = 0; acc = 0; }
+      dV[c.capNode]! += c.A1 * v;
+      dV[c.rodNode]! += -c.A2 * v;
       dy[this.cylOffset + 2 * i] = v;
-      dy[this.cylOffset + 2 * i + 1] = (force - c.load - c.gravity - fr) / c.mass;
+      dy[this.cylOffset + 2 * i + 1] = acc;
     });
     for (const n of this.freeNodes) {
       dy[this.stateOfNode[n]!] = ((KAPPA * this.RT) / V[n]!) * inflow[n]! - (KAPPA * P[n]! * dV[n]!) / V[n]!;
