@@ -56,6 +56,12 @@ function describe(c: ComponentData): string {
     if (c.override === "push" || c.override === "detent") {
       parts.push(c.override === "detent" ? "comando manuale ausiliario con arresto" : "comando manuale ausiliario");
     }
+    if (c.boxes) parts.push(`caselle ${c.boxes}`);
+    for (const side of ["14", "12"] as const) {
+      const aux = c[`aux_${side}`] as Actuation | undefined;
+      if (aux) parts.push(`più ${ACTUATION_SHORT[aux] ?? aux} sul lato ${side}`);
+    }
+    if (c.dominant) parts.push(`segnale dominante ${c.dominant}`);
   } else {
     for (const opt of def.options ?? []) {
       const v = (c as unknown as Record<string, string | undefined>)[opt.name] ?? opt.default;

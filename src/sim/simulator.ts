@@ -11,7 +11,7 @@ import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
-import { isElectric, isMechanical, isPilot, isReturn, isThreePosition } from "../model/components";
+import { isElectric, isManual, profileForce, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -69,6 +69,7 @@ export class Simulator {
     this.y = new Array<number>(this.airIndex + 1).fill(0);
     this.supplyNodes = [...net.fixed].filter(([, p]) => p > P_ATM + 1).map(([n]) => n);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
+    net.cylinders.forEach((c, i) => { this.y[this.cylOffset + 2 * i] = c.x0 ?? 0; });
     this.positions = net.valves.map((v) => v.initial);
     for (const v of net.valves) for (const side of v.startCommands ?? []) this.commands.set(`${v.id}.${side}`, true);
     this.electric = net.electric ? new ElectricState(net.electric) : null;
@@ -190,8 +191,39 @@ export class Simulator {
   /** da quando il pilotaggio di ogni temporizzatore è attivo (s), per lato */
   private readonly pilotSince = new Map<string, number>();
 
-  /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno). */
+  /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno, o il secondo comando del lato). */
   sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
+    return this.mainActive(v, side, P) || this.auxActive(v, side);
+  }
+
+  /** Secondo comando del lato: manuale (come il comando ausiliario) o meccanico (rullo premuto dal cilindro). */
+  auxActive(v: ValveSpec, side: "14" | "12"): boolean {
+    const aux = side === "14" ? v.aux14 : v.aux12;
+    if (!aux) return false;
+    const cam = side === "14" ? v.cam14 : v.cam12;
+    // un rullo senza cilindro si preme a mano, come il comando manuale
+    if (isManual(aux) || (isMechanical(aux) && !cam)) return this.override(v.id, side);
+    return isMechanical(aux) && !!cam && this.camPressed(aux, cam);
+  }
+
+  /** Rullo o tastatore premuto dal cilindro del finecorsa. */
+  private camPressed(act: Actuation, cam: Cam): boolean {
+    const c = this.cylinder(cam.cylinder);
+    if (!c) return false;
+    const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+    if (act === "roller_oneway") {
+      // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
+      const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
+      const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+      const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
+      return inZone && towards;
+    }
+    // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
+    const tol = 0.002 / stroke;
+    return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+  }
+
+  private mainActive(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (isReturn(act)) return false;
     if (isPilot(act)) {
@@ -204,21 +236,7 @@ export class Simulator {
       return this.t - this.pilotSince.get(key)! >= v.delay - 1e-9;
     }
     const cam = side === "14" ? v.cam14 : v.cam12;
-    if (isMechanical(act) && cam) {
-      const c = this.cylinder(cam.cylinder);
-      if (!c) return false;
-      const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
-      if (act === "roller_oneway") {
-        // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
-        const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
-        const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
-        const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
-        return inZone && towards;
-      }
-      // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
-      const tol = 0.002 / stroke;
-      return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
-    }
+    if (isMechanical(act) && cam) return this.camPressed(act, cam);
     const on = (this.electric?.drive(`${v.id}.${side}`) ?? this.command(v.id, side)) ||
       (!!v.override && isElectric(act) && this.override(v.id, side));
     if (act === "solenoid_pilot" || act === "solenoid_pilot_ext") {
@@ -258,7 +276,10 @@ export class Simulator {
     this.net.valves.forEach((v, i) => {
       const s14 = this.sideActive(v, "14", P), s12 = this.sideActive(v, "12", P);
       let pos = this.positions[i]!;
-      if (isThreePosition(v.fn)) {
+      if (s14 && s12 && v.dominant) {
+        // segnale dominante: con i due comandi insieme vince il lato indicato
+        pos = v.dominant;
+      } else if (isThreePosition(v.fn)) {
         pos = s14 && !s12 ? "14" : s12 && !s14 ? "12" : "0";
       } else if (s14 && !s12) {
         pos = "14";
@@ -316,7 +337,8 @@ export class Simulator {
       // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
       const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
       const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
-      let acc = (force - c.load - c.gravity - fr) / c.mass;
+      const load = c.loadProfile ? profileForce(c.loadProfile, x) : c.load;
+      let acc = (force - load - c.gravity - fr) / c.mass;
       // a fine corsa, spinto contro l'arresto: il pistone sta fermo. Senza questo nei passi intermedi
       // di RK4 entrerebbe nell'arresto e cambierebbe il volume delle camere a vuoto, e lo
       // scatto indietro a ogni passo farebbe passare aria che non esiste (consumo fantasma)

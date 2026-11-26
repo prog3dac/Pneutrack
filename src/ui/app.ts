@@ -22,13 +22,13 @@ import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
 import {
-  ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isManualDetent, isMechanical, isMomentary, isElectricType, typeList,
+  ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isManual, isManualDetent, isMechanical, isMomentary, isElectricType, typeList,
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
 import { fmtG, Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
-import { compileSim, type Tunable, type TunableKind } from "../sim/network";
+import { compileSim, type Tunable, type TunableKind, type ValveSpec } from "../sim/network";
 import { Simulator } from "../sim/simulator";
 import { Recorder } from "../sim/recorder";
 import { strokes, summarize } from "../sim/measures";
@@ -45,6 +45,10 @@ import {
 import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } from "./storage";
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
+import { openValveDialog } from "./valveDialog";
+import { openCylinderDialog } from "./cylinderDialog";
+import { CONFIGURABLE_CYLINDERS } from "../model/cylinderConfig";
+import { sanitizeValve, valveTemplate } from "../model/valveConfig";
 import { labelSpot } from "./labels";
 import { initPwa } from "./pwa";
 import { designationPrefix, paletteCategories, paletteItems } from "./palette";
@@ -1203,6 +1207,59 @@ function renderPalette() {
     groups.push(det);
     pal.append(det);
   }
+  // valvole del configuratore salvate nel browser
+  {
+    const valves = valveLibrary();
+    const det = document.createElement("details");
+    det.className = "palette-group";
+    const cat = "Le mie valvole";
+    det.dataset.cat = cat;
+    det.open = !closed.includes(cat);
+    const sum = document.createElement("summary");
+    sum.textContent = `${cat} (${valves.length})`;
+    const grid = document.createElement("div");
+    grid.className = "palette-grid";
+    det.append(sum, grid);
+    det.addEventListener("toggle", () => {
+      if (search.value) return;
+      const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
+      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(now)); } catch { /* non disponibile */ }
+    });
+    const add = document.createElement("button");
+    add.className = "palette-item";
+    add.dataset.search = "nuova valvola configuratore personalizzata distributrice";
+    add.title = "Configura una valvola distributrice: vie, caselle, comandi, posizione iniziale e segnale dominante";
+    add.innerHTML = `<svg class="thumb" viewBox="0 0 40 30" aria-hidden="true"><rect x="5" y="8" width="14" height="14" fill="none"
+      stroke="currentColor"/><rect x="19" y="8" width="14" height="14" fill="none" stroke="currentColor"/>
+      <path d="M26 2v8M22 6h8" stroke="currentColor" stroke-width="2"/></svg><span>Nuova valvola…</span>`;
+    add.addEventListener("click", newConfiguredValve);
+    grid.append(add);
+    valves.forEach((v, i) => {
+      const data: ComponentData = { ...v.data, id: "", type: "directional_valve" };
+      const b = document.createElement("button");
+      b.className = "palette-item library-item";
+      b.draggable = true;
+      b.dataset.search = `${v.name} valvola mia personalizzata`.toLowerCase();
+      b.title = `${v.name}\nClic: inserisci · trascina nel foglio`;
+      b.innerHTML = `${thumbnail(data)}<span></span>`;
+      b.querySelector("span")!.textContent = v.name;
+      b.addEventListener("click", (e) => {
+        if ((e.target as Element).closest(".remove")) return;
+        insertValve(v.data, viewCenter());
+      });
+      b.addEventListener("dragstart", (e) => {
+        e.dataTransfer!.setData("application/x-pneutrack-valve", String(i));
+        e.dataTransfer!.effectAllowed = "copy";
+      });
+      const rm = document.createElement("span");
+      rm.className = "remove"; rm.textContent = "×"; rm.title = "Togli da «Le mie valvole»"; rm.setAttribute("role", "button");
+      rm.addEventListener("click", (e) => { e.stopPropagation(); removeValveFromLibrary(i); });
+      b.append(rm);
+      grid.append(b);
+    });
+    groups.push(det);
+    pal.append(det);
+  }
   // blocchi salvati nella libreria del browser
   const lib = blockLibrary();
   {
@@ -1308,7 +1365,8 @@ function camField(comp: ComponentData, side: "14" | "12") {
   const sel = document.createElement("select");
   sel.name = key;
   const choices: [string, string][] = [["", "a mano (clic in simulazione)"]];
-  const what = ACTUATION_SHORT[(comp[`actuation_${side}`] ?? "mechanical") as Actuation];
+  const main = (comp[`actuation_${side}`] ?? "mechanical") as Actuation;
+  const what = ACTUATION_SHORT[isMechanical(main) ? main : (comp[`aux_${side}`] ?? "mechanical") as Actuation];
   for (const c of allComponents().filter((x) => x.type.endsWith("_cylinder"))) {
     choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)${elsewhere(c.id)}`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)${elsewhere(c.id)}`]);
   }
@@ -1327,6 +1385,98 @@ function camField(comp: ComponentData, side: "14" | "12") {
   const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel, FIELD_HELP.cam);
   if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
   return f;
+}
+
+/** Riassunto delle scelte del configuratore e pulsante che lo apre. */
+function valveConfigButton(comp: ComponentData) {
+  const box = document.createElement("div");
+  box.className = "valve-config";
+  const notes: string[] = [];
+  if (comp.boxes) notes.push(`caselle personalizzate: ${comp.boxes}`);
+  for (const side of ["14", "12"] as const) {
+    const aux = comp[`aux_${side}`];
+    if (aux) notes.push(`secondo comando ${side}: ${ACTUATION_SHORT[aux as Actuation] ?? aux}`);
+  }
+  if (comp.initial) notes.push(`parte nella casella ${comp.initial}`);
+  if (comp.dominant) notes.push(`segnale dominante ${comp.dominant}`);
+  if (notes.length) {
+    const p = document.createElement("p");
+    p.className = "help";
+    p.textContent = notes.join(" · ");
+    box.append(p);
+  }
+  box.append(button("Configura valvola…", () => configureValve(comp.id),
+    "Vie e caselle, due comandi per lato, posizione iniziale, segnale dominante e portata, con l'anteprima del simbolo",
+    "", "wide"));
+  return box;
+}
+
+/** Apre il configuratore sulla valvola: le scelte si applicano in un solo passo annullabile. */
+function configureValve(id: string) {
+  const comp = byId(id);
+  if (!comp || sim) return;
+  openValveDialog({
+    title: `Configura valvola ${id}`, comp: structuredClone(comp), applyLabel: "Applica",
+    onApply: (data, saveAs) => {
+      mutate(() => {
+        const c = byId(id);
+        if (!c) return;
+        for (const k of Object.keys(c) as (keyof ComponentData)[]) delete c[k];
+        Object.assign(c, data);
+        pruneConnections(id);
+      });
+      if (saveAs) saveValveToLibrary(saveAs, data);
+    },
+  });
+}
+
+/** Pulsante del configuratore dei cilindri, con il profilo di forza se c'è. */
+function cylinderConfigButton(comp: ComponentData) {
+  const box = document.createElement("div");
+  box.className = "valve-config";
+  if (comp.load_profile) {
+    const p = document.createElement("p");
+    p.className = "help";
+    p.textContent = `profilo di forza: ${comp.load_profile}`;
+    box.append(p);
+  }
+  box.append(button("Configura cilindro…", () => configureCylinder(comp.id),
+    "Tipo (semplice effetto in spinta o trazione, doppio effetto, stelo passante, senza stelo), molla, ammortizzo, misure e profilo di forza",
+    "", "wide"));
+  return box;
+}
+
+/** Apre il configuratore sul cilindro: anche il cambio di tipo è un solo passo annullabile. */
+function configureCylinder(id: string) {
+  const comp = byId(id);
+  if (!comp || sim) return;
+  openCylinderDialog({
+    comp: structuredClone(comp),
+    onApply: (data) => {
+      mutate(() => {
+        const c = byId(id);
+        if (!c) return;
+        for (const k of Object.keys(c) as (keyof ComponentData)[]) delete c[k];
+        Object.assign(c, data);
+        pruneConnections(id);
+      });
+    },
+  });
+}
+
+/** Nuova valvola dal configuratore, inserita al centro della vista. */
+function newConfiguredValve() {
+  if (sim) return;
+  const meta = catalogEntry("directional_valve");
+  const draft: ComponentData = { id: "", type: "directional_valve", params: { ...meta?.defaults } };
+  for (const o of meta?.options ?? []) draft[o.name] = o.default;
+  openValveDialog({
+    title: "Nuova valvola", comp: draft, applyLabel: "Inserisci", saveDefault: true,
+    onApply: (data, saveAs) => {
+      insertValve(data, viewCenter());
+      if (saveAs) saveValveToLibrary(saveAs, data);
+    },
+  });
 }
 
 /** Menu di un riferimento per sigla (bobina → solenoide, contatto → relè, finecorsa → cilindro). */
@@ -1828,7 +1978,10 @@ function renderProperties() {
     for (const opt of meta?.options ?? []) {
       const sel = document.createElement("select");
       sel.name = opt.name;
-      for (const [value, text] of opt.choices) {
+      const choices = [...opt.choices];
+      // valvola con le caselle del configuratore: la sua funzione n/m non è tra quelle normalizzate
+      if (opt.name === "function" && comp.boxes) choices.unshift([comp.function ?? "", `${comp.function} personalizzata (configuratore)`]);
+      for (const [value, text] of choices) {
         const o = document.createElement("option");
         o.value = value; o.textContent = text;
         sel.append(o);
@@ -1837,14 +1990,21 @@ function renderProperties() {
       sel.addEventListener("change", () => mutate(() => {
         const c = byId(comp.id)!;
         c[opt.name] = sel.value;
-        if (opt.name !== "function" && !isMechanical(sel.value as Actuation)) delete c[opt.name === "actuation_14" ? "cam_14" : "cam_12"];
+        if (opt.name === "actuation_14" || opt.name === "actuation_12") {
+          const side = opt.name === "actuation_14" ? "14" : "12";
+          if (!isMechanical(sel.value as Actuation) && !isMechanical(c[`aux_${side}`] as Actuation | undefined)) delete c[`cam_${side}`];
+        }
+        if (c.type === "directional_valve") sanitizeValve(c, opt.name);
         pruneConnections(comp.id);
       }));
       panel.append(field(opt.label, sel, optionHelp(comp.type, opt)));
-      // rullo: può essere premuto da un cilindro a fine corsa
+      // rullo: può essere premuto da un cilindro a fine corsa (anche come secondo comando del lato)
       const side = opt.name === "actuation_14" ? "14" : opt.name === "actuation_12" ? "12" : null;
-      if (side && isMechanical((comp[opt.name] ?? opt.default) as Actuation)) panel.append(camField(comp, side));
+      if (side && (isMechanical((comp[opt.name] ?? opt.default) as Actuation) ||
+          isMechanical(comp[`aux_${side}`] as Actuation | undefined))) panel.append(camField(comp, side));
     }
+    if (comp.type === "directional_valve") panel.append(valveConfigButton(comp));
+    if (CONFIGURABLE_CYLINDERS.has(comp.type)) panel.append(cylinderConfigButton(comp));
 
     for (const f of electricRefFields(comp)) panel.append(f);
 
@@ -2502,6 +2662,44 @@ function removeLibraryBlock(index: number) {
   if (gone) toast(`"${gone.name}" tolto dalla libreria`);
 }
 
+// --- libreria «Le mie valvole» (nel browser, come i blocchi) -------------------------------
+const VALVE_LIBRARY_KEY = "pneutrack.valves.v1";
+interface SavedValve { name: string; data: Partial<ComponentData> }
+function valveLibrary(): SavedValve[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VALVE_LIBRARY_KEY) || "[]");
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((v): v is SavedValve => !!v && typeof v.name === "string" && !!v.data && typeof v.data === "object")
+      .filter((v) => { try { buildComponent({ ...v.data, id: "V", type: "directional_valve" }); return true; } catch { return false; } });
+  } catch { return []; }
+}
+function saveValveToLibrary(name: string, data: ComponentData) {
+  const list = valveLibrary().filter((v) => v.name !== name);
+  list.push({ name, data: valveTemplate(data) });
+  try {
+    localStorage.setItem(VALVE_LIBRARY_KEY, JSON.stringify(list));
+    toast(`"${name}" salvata in «Le mie valvole»`);
+    renderPalette();
+  } catch { toast("Questo browser non permette di salvare la libreria"); }
+}
+function removeValveFromLibrary(index: number) {
+  const list = valveLibrary();
+  const [gone] = list.splice(index, 1);
+  try { localStorage.setItem(VALVE_LIBRARY_KEY, JSON.stringify(list)); } catch { /* non disponibile */ }
+  renderPalette();
+  if (gone) toast(`"${gone.name}" tolta da «Le mie valvole»`);
+}
+/** Inserisce una valvola con i campi dati (dal configuratore o dalla libreria). */
+function insertValve(data: Partial<ComponentData>, at: { x: number; y: number }) {
+  if (sim) return;
+  const comp: ComponentData = { ...structuredClone(data), id: nextId("directional_valve"), type: "directional_valve" };
+  mutate(() => {
+    doc.components.push(comp);
+    doc.layout[comp.id] = { x: snap(at.x), y: snap(at.y), rot: 0 };
+  });
+  select({ kind: "component", id: comp.id });
+}
+
 function select(sel: Selection) {
   selection = sel;
   render();
@@ -2613,7 +2811,7 @@ function resetSim() {
     .filter((side) => sim!.s.command(v.id, side)).map((side) => [v.id, side] as const));
   const latched = manualSwitches().filter((x) => x.latching && sim!.s.switchState(x.id)).map((x) => x.id);
   const overrides = sim.s.net.valves.flatMap((v) => (["14", "12"] as const)
-    .filter((side) => v.override === "detent" && sim!.s.override(v.id, side)).map((side) => [v.id, side] as const));
+    .filter((side) => overrideKind(v, side) === "detent" && sim!.s.override(v.id, side)).map((side) => [v.id, side] as const));
   sim.s = new Simulator(sim.s.net);
   for (const [id, side] of overrides) sim.s.setOverride(id, side, true);
   // interruttori con ritenuta e solenoidi restano come li ha lasciati l'utente
@@ -2674,14 +2872,27 @@ function simFrame(ts: number) {
   sim.raf = requestAnimationFrame(simFrame);
 }
 
+/**
+ * Comando che si aziona a mano accanto a quello principale: il secondo comando manuale del lato (configuratore)
+ * o il comando manuale ausiliario del solenoide. A impulso ("push") o con arresto ("detent").
+ */
+function overrideKind(v: ValveSpec, side: "14" | "12"): "push" | "detent" | null {
+  const aux = side === "14" ? v.aux14 : v.aux12;
+  if (aux && isManual(aux)) return isManualDetent(aux) ? "detent" : "push";
+  // rullo come secondo comando, senza cilindro che lo prema: si tiene premuto a mano
+  if (aux && isMechanical(aux) && !(side === "14" ? v.cam14 : v.cam12)) return "push";
+  return v.override && isElectric(side === "14" ? v.act14 : v.act12) ? v.override : null;
+}
+
 /** Lati di valvola che l'utente può comandare: solenoide (interruttore), pulsante e rullo (a pressione). */
 function commandSides() {
   if (!sim) return [];
   return sim.s.net.valves.flatMap((v) => (["14", "12"] as const).flatMap((side) => {
     const act = side === "14" ? v.act14 : v.act12;
     const cam = side === "14" ? v.cam14 : v.cam12;
-    // comando manuale ausiliario: si aziona anche quando il solenoide segue la sua bobina
-    const ovr = v.override && isElectric(act) ? [{ id: v.id, side, act, override: true }] : [];
+    const aux = side === "14" ? v.aux14 : v.aux12;
+    // comando manuale ausiliario o secondo comando manuale: si aziona anche quando il solenoide segue la bobina
+    const ovr = overrideKind(v, side) ? [{ id: v.id, side, act: aux && !isElectric(act) ? aux : act, override: true }] : [];
     if (sim!.s.isDriven(v.id, side)) return ovr; // il solenoide segue la sua bobina
     return [...(isLatching(act) || (isMomentary(act) && !cam) ? [{ id: v.id, side, act, override: false }] : []), ...ovr];
   }));
@@ -2691,8 +2902,9 @@ function commandSides() {
 function pressOverride(id: string, side: "14" | "12") {
   if (!sim) return;
   const v = sim.s.net.valves.find((x) => x.id === id);
-  if (!v?.override) return;
-  if (v.override === "detent") {
+  const kind = v ? overrideKind(v, side) : null;
+  if (!kind) return;
+  if (kind === "detent") {
     sim.s.setOverride(id, side, !sim.s.override(id, side));
   } else {
     releaseHeld();
@@ -2787,10 +2999,12 @@ function renderSimPanel() {
     box.className = "sim-commands";
     for (const c of cmds) {
       const b = document.createElement("button");
-      const detent = sim.s.net.valves.find((v) => v.id === c.id)?.override === "detent";
+      const spec = sim.s.net.valves.find((v) => v.id === c.id);
+      const detent = !!spec && overrideKind(spec, c.side) === "detent";
+      const aux = c.side === "14" ? spec?.aux14 : spec?.aux12;
       b.dataset.cmd = c.override ? `${c.id}|${c.side}|ovr` : `${c.id}|${c.side}`;
       b.className = `sim-cmd ${c.act}`;
-      b.textContent = `${c.id} · ${c.side} · ${c.override ? "comando manuale" : ACTUATION_SHORT[c.act]}`;
+      b.textContent = `${c.id} · ${c.side} · ${c.override ? (aux ? ACTUATION_SHORT[aux] : "comando manuale") : ACTUATION_SHORT[c.act]}`;
       b.title = c.override ? (detent ? "Clic: aziona / rilascia il comando manuale" : "Tieni premuto per azionare")
         : isElectric(c.act) ? "Clic: eccita / diseccita" : isLatching(c.act) ? "Clic: sposta la leva"
         : "Tieni premuto per azionare";
@@ -3906,7 +4120,8 @@ svg.addEventListener("wheel", (e) => {
 svg.addEventListener("dragover", (e) => {
   if (!sim && (e.dataTransfer?.types.includes("application/x-pneutrack-type") ||
                e.dataTransfer?.types.includes("application/x-pneutrack-annotation") ||
-               e.dataTransfer?.types.includes("application/x-pneutrack-block"))) {
+               e.dataTransfer?.types.includes("application/x-pneutrack-block") ||
+               e.dataTransfer?.types.includes("application/x-pneutrack-valve"))) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   }
@@ -3916,6 +4131,13 @@ svg.addEventListener("drop", (e) => {
   if (annKey) { e.preventDefault(); addAnnotation(annKey, toWorld(e)); return; }
   const lib = e.dataTransfer?.getData("application/x-pneutrack-block");
   if (lib) { e.preventDefault(); insertLibraryBlock(Number(lib), toWorld(e)); return; }
+  const valve = e.dataTransfer?.getData("application/x-pneutrack-valve");
+  if (valve) {
+    e.preventDefault();
+    const saved = valveLibrary()[Number(valve)];
+    if (saved) insertValve(saved.data, toWorld(e));
+    return;
+  }
   const data = e.dataTransfer?.getData("application/x-pneutrack-type");
   if (!data) return;
   e.preventDefault();
