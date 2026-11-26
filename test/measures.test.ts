@@ -34,9 +34,10 @@ describe("aria consumata", () => {
     for (const b of ["S1", "S2", "S1", "S2"]) { s.setCommand(b, "14", true); run(0.3); s.setCommand(b, "14", false); run(1.7); }
     const list = rec.tracker.cycles;
     expect(list).toHaveLength(2);
-    // alesaggio 32, stelo 12, corsa 100 a 5 bar: (A1 + A2)·corsa·(5 + 1,013) / 1 bar ≈ 0,90 Nl, più linee e pilotaggi
+    // alesaggio 32, stelo 12, corsa 100, da 0 a 5 bar relativi: (A1 + A2)·corsa·5 bar / 1 bar ≈ 0,75 Nl,
+    // più volumi morti, linee e pilotaggi
     for (const c of list) {
-      expect(c.air).toBeGreaterThan(0.9);
+      expect(c.air).toBeGreaterThan(0.75);
       expect(c.air).toBeLessThan(1.1);
     }
     const sum = summarize(list);
