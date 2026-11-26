@@ -3,6 +3,15 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.30.0 · 2026-11-26
+
+- Più fogli nello stesso progetto: schede sotto l'area di lavoro per aprire, aggiungere, rinominare (doppio clic), riordinare (trascinando), duplicare ed eliminare i fogli. Ogni foglio ha il suo disegno e il suo cartiglio, con «Foglio n di N» e il nome del foglio. *PagSu* e *PagGiù* passano da un foglio all'altro, anche in simulazione.
+- I rimandi collegano i fogli: quelli con la stessa descrizione sono lo stesso punto del circuito. Nuovo rimando elettrico per i fili; accanto a ogni rimando compare il foglio dove prosegue, e un clic ci porta. Nel pannello del rimando i nomi già usati si scelgono da un elenco.
+- Validazione, simulazione e distinta vedono tutti i fogli insieme: un pulsante su un foglio comanda la bobina su un altro, un finecorsa può indicare un cilindro di un altro foglio. Nella distinta le sigle sono raggruppate per foglio; nella validazione ogni problema indica il foglio e un clic ci porta.
+- Copia e incolla tra fogli con sigle nuove; annulla e ripeti valgono per tutto il progetto e riportano al foglio della modifica.
+- Esportazione con più fogli: si sceglie il foglio aperto o tutti. Il PDF ha una pagina per foglio, l'SVG un file per foglio, il DXF i fogli affiancati nello stesso file.
+- I file a foglio singolo restano uguali e si aprono come prima; con più fogli il file indica il foglio di ogni componente.
+
 ## 0.29.0 · 2026-11-26
 
 - Completate le voci a priorità media e bassa dell'elenco dalla ISO 1219-1, con simbolo, simulazione dove ha senso, descrizioni e scheda nel catalogo dei simboli.

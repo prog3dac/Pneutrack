@@ -593,7 +593,7 @@ const DEFS: TypeDef[] = [
     type: "sheet_reference", label: "Rimando ad altro foglio", category: CONNECTIONS,
     doc: "Rimando: la linea continua su un altro foglio o in un'altra parte dello schema. Tutti i rimandi con la " +
       "stessa descrizione sono collegati tra loro, anche in simulazione; scrivi nella descrizione il nome del " +
-      "rimando e, se vuoi, il foglio, per esempio «A1 → foglio 2».",
+      "rimando, per esempio «A1»: accanto al simbolo compare il foglio dove prosegue.",
     params: [], defaults: {},
     ports: () => [port("1", "work", true)],
   },
@@ -1205,6 +1205,14 @@ const DEFS: TypeDef[] = [
   {
     type: "wire_junction", label: "Punto di connessione elettrico", category: ELECTRIC, domain: "electric", hidden: true,
     doc: "Punto di connessione (morsetto comune) di più fili. Trascina un filo su un altro per crearne uno.",
+    params: [], defaults: {},
+    ports: () => [eport("1", true)],
+  },
+  {
+    type: "wire_reference", label: "Rimando elettrico", category: ELECTRIC, domain: "electric",
+    doc: "Rimando di un filo: il filo continua su un altro foglio o in un'altra parte dello schema. Tutti i " +
+      "rimandi elettrici con la stessa descrizione sono collegati tra loro, anche in simulazione; scrivi nella " +
+      "descrizione il nome del potenziale o del filo, per esempio «L+», «0V» o «13».",
     params: [], defaults: {},
     ports: () => [eport("1", true)],
   },

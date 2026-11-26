@@ -1035,6 +1035,12 @@ const sheetReferenceGeometry = (): Geometry => ({
   svg: line(0, -20, 0, -10) + path("M-14,-10 L14,-10 L14,6 L0,16 L-14,6 Z", "nofill"),
 });
 
+/** Rimando elettrico: la stessa freccia, più piccola, in fondo al filo. */
+const wireReferenceGeometry = (): Geometry => ({
+  w: 30, h: 30, ports: { 1: { x: 0, y: -10, dir: up } },
+  svg: line(0, -10, 0, -4) + path("M-9,-4 L9,-4 L9,5 L0,11 L-9,5 Z", "nofill"),
+});
+
 // --- misura e segnalazione -----------------------------------------------------------------
 
 /** Sensore di pressione analogico (X11780): riquadro con il segno P e l'uscita del segnale. */
@@ -1263,6 +1269,7 @@ export function geometry(comp: ComponentData, state?: SymbolState): Geometry {
     case "time_delay_valve": return pilotedValveGeometry(comp, state, "delay");
     case "air_motor": return motorGeometry(comp.motor_kind === "one_way");
     case "wire_junction": return junctionGeometry();
+    case "wire_reference": return wireReferenceGeometry();
     case "electric_supply": return supplyGeometry(comp);
     case "pushbutton":
     case "relay_contact":

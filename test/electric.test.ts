@@ -30,7 +30,7 @@ describe("componenti elettrici", () => {
     const electric = typeList().filter((t) => t.domain === "electric");
     expect(electric.map((t) => t.type).sort()).toEqual([
       "electric_supply", "limit_switch", "pressure_switch", "proximity_sensor", "pushbutton", "relay_coil",
-      "relay_contact", "signal_lamp", "timer_relay", "valve_solenoid", "wire_junction"]);
+      "relay_contact", "signal_lamp", "timer_relay", "valve_solenoid", "wire_junction", "wire_reference"]);
     expect(electric.every((t) => t.category === "Elettrico")).toBe(true);
     expect(electric.filter((t) => t.hidden).map((t) => t.type)).toEqual(["wire_junction"]);
     expect(buildComponent({ id: "G", type: "electric_supply", params: { voltage: "24 V" } }).ports
