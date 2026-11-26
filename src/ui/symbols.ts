@@ -447,12 +447,18 @@ function cushionMark(pistonX: number, end: "cap" | "rod") {
 }
 
 function cylinderGeometry(double: boolean, state?: SymbolState, through = false, cushioning = "none"): Geometry {
+  // Camicia da -60 a 60. Il pistone (con i tamponi degli ammortizzi) resta sempre dentro la camicia
+  // per tutta la corsa; lo stelo sporge sempre dalla testata (e dal fondello, se passante).
+  const capCushion = cushioning === "cap" || cushioning === "both";
+  const lo = capCushion ? -44 : -56; // pistone a corsa 0: il tampone lato fondello sta dentro la camicia
+  const travel = 80;
+  const tip = 68; // estremità dello stelo a pistone rientrato (8 oltre la testata)
   // senza simulazione il pistone è disegnato a un quarto di corsa
-  const frac = state?.stroke ?? 0.35;
-  const pistonX = -56 + frac * 80;
+  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0.35));
+  const pistonX = lo + frac * travel;
   let svg = rect(-60, -15, 120, 30, "body") +
-    rect(pistonX, -3, 115, 6, "rod") +
-    (through ? rect(pistonX - 75, -3, 75, 6, "rod") : "") +
+    rect(pistonX, -3, tip - lo, 6, "rod") +
+    (through ? rect(pistonX - (lo + travel + tip), -3, lo + travel + tip, 6, "rod") : "") +
     line(pistonX, -15, pistonX, 15, "thick");
   if (cushioning === "cap" || cushioning === "both") svg += cushionMark(pistonX, "cap");
   if (cushioning === "rod" || cushioning === "both") svg += cushionMark(pistonX, "rod");
