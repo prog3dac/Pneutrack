@@ -421,6 +421,15 @@ await waitLive("valve:V1", "v === '12'");
 await page.mouse.up();
 await waitLive("cyl:C1", "Number(v) < 0.01");
 
+// misure: uscita e rientro sono un ciclo, con l'aria delle due camere (≈ 0,75 Nl a 5 bar, più le linee)
+await waitLive("cycle:count", "Number(v) >= 1");
+assert.ok(Number(await live("air:total")) > 0.75, "l'aria consumata comprende il ciclo");
+assert.ok(Number(await live("stroke:C1")) > 0, "tempo di uscita di C1");
+assert.ok(await page.getAttribute('#properties [data-live="cycle:flow"]', "title"), "le misure si spiegano al passaggio del mouse");
+await page.waitForSelector('#diagram [data-cycle="1"]');
+assert.ok(await page.locator("#diagram .dg-dur").count() >= 1, "tempi di corsa nel diagramma");
+if (shots) await page.screenshot({ path: `${shots}/misure.png` });
+
 await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim === undefined);
 

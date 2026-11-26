@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.22.0 · 2026-11-26
+
+- Simula: nuova sezione «Misure» nel pannello, con la pressione dei manometri, l'aria consumata e la portata attuale in litri normali (Nl e Nl/min, ANR), i cicli completati con durata e aria dell'ultimo ciclo, la media per ciclo, il consumo medio in Nl/min e il tempo dell'ultima uscita e dell'ultimo rientro di ogni cilindro. Ogni voce si spiega al passaggio del mouse.
+- Diagramma delle fasi: una corsia per ogni manometro con la pressione nel tempo, il tempo di ogni corsa accanto all'arrivo a fine corsa e la fascia «Cicli» con durata e aria di ogni ciclo.
+
 ## 0.21.0 · 2026-11-25
 
 - Distinta componenti (menu File): i pezzi dello schema raggruppati per tipo, varianti, dati da catalogo e codice articolo, con sigle e quantità. Si scarica in CSV (si apre con Excel o LibreOffice) o in PDF su A4.
