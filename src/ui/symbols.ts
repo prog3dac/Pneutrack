@@ -492,8 +492,12 @@ const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
 const checkGeometry = (spring = false): Geometry => ({
   w: 30, h: 60,
   ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
-  svg: line(0, 30, 0, 6) + checkElement(0, -2) +
-    (spring ? zigzag(0, -7, 0, -23, 6, 5) + line(0, -23, 0, -30) : line(0, -7, 0, -30)),
+  svg: spring
+    // X10700: la linea attraversa tutto il simbolo; la sfera poggia nella sede a V aperta verso l'alto e la
+    // molla, a tratti quasi orizzontali attorno alla linea, la preme dall'alto
+    ? line(0, 30, 0, -30) + path("M-9,1.5 L0,10.5 L9,1.5", "nofill") + circle(0, 5, 4, "body") +
+      path("M-8,-19.6 L8,-16 L-8,-12.4 L8,-8.8 L-8,-5.2 L8,-1.6", "nofill")
+    : line(0, 30, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -30),
 });
 
 const pilotCheckGeometry = (): Geometry => ({
