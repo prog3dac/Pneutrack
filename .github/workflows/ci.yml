@@ -37,3 +37,4 @@ jobs:
           for i in $(seq 30); do curl -sf http://127.0.0.1:4173/Pneutrack/ > /dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:4173/Pneutrack/ > /dev/null || { cat preview.log; exit 1; }
           npm run e2e -- http://127.0.0.1:4173/Pneutrack/
+          npm run e2e:pwa -- http://127.0.0.1:4173/Pneutrack/

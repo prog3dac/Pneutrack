@@ -255,6 +255,8 @@ centrale del mouse per spostare la vista.
 | `src/ui/symbols.ts` | simboli in stile ISO 1219, posizione delle porte, stato animato |
 | `src/ui/app.ts` | stato, disegno, interazioni, annulla/ripeti, progetti, simulazione |
 | `src/ui/storage.ts` | archivio dei progetti (database della pagina, browser, memoria) |
+| `src/ui/pwa.ts` | app installabile: registrazione del service worker, «Installa l'app…», avviso di versione nuova, file aperti dal sistema |
+| `tools/pwa.ts`, `tools/sw.js` | in `npm run build` generano `dist/sw.js`, il service worker che tiene in memoria tutti i file della build per l'uso senza rete; manifest e icone sono in `public/` |
 | `src/examples/` | esempi del menu *Esempi…* (ogni `.json` aggiunto qui compare da solo) |
 
 ## Test
@@ -264,5 +266,7 @@ centrale del mouse per spostare la vista.
   Playwright per costruire uno schema nel browser, verificarne la validazione, annulla/ripeti,
   rinomina, rotazione, tubi e pieghe delle linee, esempi, esportazione, tutto il ciclo dei progetti e la simulazione
   (pulsante che fa uscire il cilindro, bistabile che resta commutata, ritorno).
+- `npm run e2e:pwa`: con lo stesso server, `test/e2e/pwa.mjs` controlla manifest e icone, che il
+  service worker metta in memoria l'app e che editor, catalogo, simulazione e PDF funzionino senza rete.
 
 La CI (`.github/workflows/ci.yml`) esegue typecheck, test, build ed e2e a ogni pull request.

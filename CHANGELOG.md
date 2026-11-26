@@ -3,6 +3,13 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.31.0 · 2026-11-26
+
+- Pneutrack si installa come app: nel menu *File* c'è «Installa l'app…» (in Chrome ed Edge apre la richiesta del browser, in Safari e negli altri mostra come fare). Installata, si apre dal menu Start, dal Dock o dalla schermata Home in una finestra sua, con la sua icona.
+- Funziona anche senza rete: dopo la prima apertura l'editor, il catalogo dei simboli, la simulazione e le esportazioni restano disponibili offline, nel browser come nell'app installata. I progetti restano quelli salvati in questo browser.
+- Quando esce una versione nuova compare l'avviso «È pronta una versione nuova» con il pulsante *Aggiorna*: la pagina si ricarica senza perdere il lavoro aperto e mostra le novità. Con ✕ si aggiorna alla prossima apertura.
+- Con l'app installata in Chrome o Edge i file .pneu.json si aprono anche dal sistema (*Apri con* → Pneutrack).
+
 ## 0.30.1 · 2026-11-26
 
 - Catalogo dei simboli allineato alla palette: stesse sezioni e stesso ordine dei componenti, una scheda per ogni voce della palette (le voci con lo stesso disegno, come i serbatoi di volume diverso, stanno nella stessa scheda con i nomi di tutte) e la sigla di ogni componente (V1, C1…).
