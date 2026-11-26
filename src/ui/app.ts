@@ -23,7 +23,8 @@ import { Recorder } from "../sim/recorder";
 import { diagramHeight, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
-import { sheetSvg, svgToPdf } from "./pdf";
+import { bomToPdf, sheetSvg, svgToPdf } from "./pdf";
+import { BOM_HEADERS, billOfMaterials, bomCells, bomCsv } from "../model/bom";
 import {
   centeredOrigin, drawingArea, FRAME, SHEET_FORMATS, sheetRect, sheetSizeMm, smallestFormat, TITLE_BLOCK, UNITS_PER_MM,
   type Orientation, type Rect, type SheetData, type SheetFormat,
@@ -617,6 +618,39 @@ function renderSheet() {
     val.textContent = value;
     g.append(cap, val);
   }
+  if (sheet.bom) renderSheetBom(g, tx, ty);
+}
+
+/** Distinta sopra il cartiglio (ISO 7573): intestazione in basso, posizioni crescenti verso l'alto. */
+function renderSheetBom(g: Element, tx: number, ty: number) {
+  const u = UNITS_PER_MM, rh = 6 * u, pad = 1.5 * u, charW = 4.5;
+  const cols: [number, number][] = [[10, 0], [30, 1], [85, 2], [45, 4], [10, 5]]; // mm, colonna di bomCells
+  const fit = (t: string, w: number) => {
+    const n = Math.floor((w - 2 * pad) / charW);
+    return t.length > n ? t.slice(0, Math.max(1, n - 1)) + "…" : t;
+  };
+  const rowAt = (cells: string[], y: number, head: boolean) => {
+    let x = tx;
+    for (const [mm, i] of cols) {
+      const w = mm * u;
+      g.append(el("rect", { x, y, width: w, height: rh, class: "cell" }));
+      const num = i === 0 || i === 5;
+      const t = el("text", { x: num ? x + w - pad : x + pad, y: y + rh - 2 * u, class: head ? "bom-head" : "bom-text",
+                             "text-anchor": num ? "end" : "start" });
+      t.textContent = fit(cells[i] ?? "", w);
+      g.append(t);
+      x += w;
+    }
+  };
+  const rows = billOfMaterials(doc);
+  let y = ty - rh;
+  rowAt(BOM_HEADERS, y, true);
+  for (const r of rows) {
+    y -= rh;
+    const cells = bomCells(r);
+    if (r.data) cells[2] = `${r.description} · ${r.data}`;
+    rowAt(cells, y, false);
+  }
 }
 
 /** Sezione "Foglio" nel pannello dello schema. */
@@ -673,6 +707,10 @@ function renderSheetFields(panel: HTMLElement) {
     }));
     panel.append(field(label, inp, FIELD_HELP[`sheet-${key}`]));
   }
+  const bomOn = document.createElement("input");
+  bomOn.type = "checkbox"; bomOn.name = "sheet-bom"; bomOn.checked = !!doc.sheet.bom;
+  bomOn.addEventListener("change", () => mutate(() => { if (bomOn.checked) doc.sheet!.bom = true; else delete doc.sheet!.bom; }));
+  panel.append(field("Distinta sul foglio", bomOn, FIELD_HELP["sheet-bom"]));
   const box = contentBox(), area = drawingArea(currentSheet()!);
   if (box && (box.x < area.x || box.y < area.y || box.x + box.w > area.x + area.w || box.y + box.h > area.y + area.h)) {
     const warn = document.createElement("p");
@@ -1171,6 +1209,15 @@ function renderProperties() {
       if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
     }));
     panel.append(field("Descrizione", labIn, FIELD_HELP.label));
+    if (!isJunctionType(comp.type)) {
+      const codeIn = document.createElement("input");
+      codeIn.value = comp.code || ""; codeIn.name = "code"; codeIn.placeholder = "facoltativo, per la distinta";
+      codeIn.addEventListener("change", () => mutate(() => {
+        const c = byId(comp.id)!;
+        if (codeIn.value.trim()) c.code = codeIn.value.trim(); else delete c.code;
+      }));
+      panel.append(field("Codice articolo", codeIn, FIELD_HELP.code));
+    }
     const inBlock = blockOf(doc, comp.id);
     if (inBlock) {
       const p = document.createElement("p");
@@ -2546,6 +2593,7 @@ document.addEventListener("keydown", (e) => {
   if (mod && key === "s") { e.preventDefault(); saveProject({ asNew: e.shiftKey }); return; }
   if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
   if (e.key === "Escape" && !$("#news-dialog").hidden) { closeNews(); return; }
+  if (e.key === "Escape" && !$("#bom-dialog").hidden) { closeBom(); return; }
   if (e.key === "Escape" && (!$("#issues-panel").hidden || document.querySelector("details.menu[open]"))) { closePopups(); return; }
   if (typing) return;
   if (sim) {
@@ -3030,6 +3078,7 @@ $("#toolbar").addEventListener("click", (e) => {
     case "save-as": saveProject({ asNew: true }); break;
     case "export": exportCurrent(); break;
     case "pdf": exportPdf(); break;
+    case "bom": openBom(); break;
     case "undo": undo(); break;
     case "copy": copySelection(); break;
     case "cut": cutSelection(); break;
@@ -3065,6 +3114,66 @@ function openNews() {
   try { localStorage.setItem(VERSION_KEY, APP_VERSION); } catch { /* nessuna memoria */ }
 }
 function closeNews() { $("#news-dialog").hidden = true; }
+
+// --- distinta componenti --------------------------------------------------------------
+function openBom() {
+  const rows = billOfMaterials(doc);
+  const table = $("#bom-table");
+  table.replaceChildren();
+  const head = document.createElement("tr");
+  BOM_HEADERS.forEach((h, i) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    if (i === 0 || i === 5) th.className = "num";
+    head.append(th);
+  });
+  table.append(head);
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    bomCells(r).forEach((c, i) => {
+      const td = document.createElement("td");
+      td.textContent = c;
+      if (i === 0 || i === 5) td.className = "num";
+      tr.append(td);
+    });
+    table.append(tr);
+  }
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="6">Nessun componente da ordinare nello schema.</td>`;
+    table.append(tr);
+  }
+  const onSheet = $<HTMLInputElement>("#bom-on-sheet");
+  onSheet.checked = !!doc.sheet?.bom;
+  onSheet.disabled = !!sim;
+  $("#bom-dialog").hidden = false;
+}
+function closeBom() { $("#bom-dialog").hidden = true; }
+const bomBase = () => fileName().replace(/\.pneu\.json$/, "") + "-distinta";
+async function downloadBom(kind: "csv" | "pdf") {
+  const rows = billOfMaterials(doc);
+  if (!rows.length) { toast("Nessun componente da ordinare nello schema"); return; }
+  const name = `${bomBase()}.${kind}`;
+  try {
+    const blob = kind === "csv"
+      ? new Blob([bomCsv(rows)], { type: "text/csv;charset=utf-8" })
+      : await bomToPdf(rows.map(bomCells), BOM_HEADERS, doc.name || "Senza nome",
+                       `${rows.reduce((n, r) => n + r.qty, 0)} pezzi · ${today()} · Pneutrack v${APP_VERSION}`);
+    if ((await exportFile(name, blob)) === "saved") toast(`Esportato ${name}`);
+  } catch (err) {
+    toast(`Esportazione non riuscita: ${(err as Error).message}`);
+  }
+}
+$("#bom-dialog").addEventListener("click", (e) => {
+  const act = target(e).closest<HTMLElement>("[data-bact]")?.dataset.bact;
+  if (target(e).id === "bom-dialog" || act === "close") closeBom();
+  else if (act === "csv" || act === "pdf") void downloadBom(act);
+});
+$("#bom-on-sheet").addEventListener("change", () => {
+  const on = $<HTMLInputElement>("#bom-on-sheet").checked;
+  if (on && !doc.sheet) fitSheetToDrawing();
+  mutate(() => { if (!doc.sheet) return; if (on) doc.sheet.bom = true; else delete doc.sheet.bom; });
+});
 $("#news-dialog").addEventListener("click", (e) => {
   if (target(e).id === "news-dialog" || target(e).closest("[data-nact=close]")) closeNews();
 });

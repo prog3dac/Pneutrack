@@ -23,6 +23,8 @@
           <button data-act="import" title="Apri un file .pneu.json">Importa file…</button>
           <button data-act="export" title="Scarica lo schema come file .pneu.json">Esporta file .pneu.json</button>
           <hr>
+          <button data-act="bom" title="Elenco dei pezzi dello schema con sigle, dati, codici e quantità; si scarica in CSV o PDF">Distinta componenti…</button>
+          <hr>
           <a class="menu-link" href="simboli.html" target="_blank" rel="noopener" title="Tutti i componenti con simbolo, descrizione e porte">Catalogo dei simboli ↗</a>
         </div>
       </details>
@@ -172,6 +174,21 @@
       </header>
       <p class="news-link"><a href="simboli.html" target="_blank" rel="noopener">Catalogo dei simboli</a>: tutti i componenti con simbolo, descrizione e porte.</p>
       <div id="news-body" class="news"></div>
+    </div>
+  </div>
+  <div id="bom-dialog" class="overlay" hidden>
+    <div class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="bom-title">
+      <header>
+        <h2 id="bom-title">Distinta componenti</h2>
+        <button data-bact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <p class="store-label">Pezzi uguali (stesso tipo, varianti, dati da catalogo e codice) sono raggruppati. Il codice articolo si scrive nel pannello di ogni componente. Non compaiono i simboli che non si ordinano: punti di connessione, scarichi liberi, alimentazioni, contatti dei relè e bobine delle elettrovalvole.</p>
+      <div class="dialog-bar">
+        <button data-bact="csv" title="File di testo con il punto e virgola, si apre con Excel o LibreOffice">Scarica CSV</button>
+        <button data-bact="pdf" title="Tabella su A4 verticale, pronta da stampare o allegare">Scarica PDF</button>
+        <label class="check" title="Disegna la distinta sopra il cartiglio del foglio di disegno, così compare anche nel PDF del foglio"><input type="checkbox" id="bom-on-sheet"> Mostra sul foglio</label>
+      </div>
+      <div class="bom-scroll"><table id="bom-table" class="bom-table"></table></div>
     </div>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>

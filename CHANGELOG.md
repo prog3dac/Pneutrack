@@ -3,6 +3,13 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.21.0 · 2026-11-25
+
+- Distinta componenti (menu File): i pezzi dello schema raggruppati per tipo, varianti, dati da catalogo e codice articolo, con sigle e quantità. Si scarica in CSV (si apre con Excel o LibreOffice) o in PDF su A4.
+- Nuovo campo «Codice articolo» nel pannello di ogni componente, con la descrizione al passaggio del mouse: compare nella distinta e non cambia la simulazione.
+- Distinta sul foglio: con «Distinta sul foglio» (pannello Foglio o finestra della distinta) la tabella compare sopra il cartiglio, come vuole la ISO 7573, e finisce anche nel PDF del foglio.
+- Restano fuori dalla distinta i simboli che non si ordinano: punti di connessione, scarichi liberi, alimentazioni, contatti dei relè e bobine delle elettrovalvole.
+
 ## 0.20.0 · 2026-11-25
 
 - Allineamento dei componenti selezionati (almeno 2), dal menu Modifica o dal pannello della selezione multipla: bordi a sinistra, a destra, in alto, in basso, oppure centri sulla stessa verticale (valvola sotto il suo cilindro) o sulla stessa orizzontale (fila di valvole). Le posizioni restano sulla griglia e Ctrl+Z annulla.
