@@ -3,11 +3,16 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
-## 0.22.0 · 2026-11-26
+## 0.23.0 · 2026-11-26
 
 - Esportazione DXF per AutoCAD (menu File → Esporta DXF): il foglio con cornice, cartiglio ed eventuale distinta, in millimetri reali e formato R12, che aprono anche LibreCAD, DraftSight e QCAD. Ogni tipo di elemento ha il suo layer (CORNICE, LINEE, PILOTAGGI a tratti, SCARICHI, FILI, SIMBOLI, TESTI, BLOCCHI); sigle e descrizioni restano testi modificabili.
 - Esportazione SVG (menu File → Esporta SVG): il foglio in grafica vettoriale per Inkscape, Illustrator o il browser.
 - Nel menu File c'è anche «Esporta PDF», oltre al pulsante PDF nella barra in alto.
+
+## 0.22.0 · 2026-11-26
+
+- Simula: nuova sezione «Misure» nel pannello, con la pressione dei manometri, l'aria consumata e la portata attuale in litri normali (Nl e Nl/min, ANR), i cicli completati con durata e aria dell'ultimo ciclo, la media per ciclo, il consumo medio in Nl/min e il tempo dell'ultima uscita e dell'ultimo rientro di ogni cilindro. Ogni voce si spiega al passaggio del mouse.
+- Diagramma delle fasi: una corsia per ogni manometro con la pressione nel tempo, il tempo di ogni corsa accanto all'arrivo a fine corsa e la fascia «Cicli» con durata e aria di ogni ciclo.
 
 ## 0.21.0 · 2026-11-25
 

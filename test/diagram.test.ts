@@ -46,7 +46,7 @@ describe("registrazione", () => {
 describe("passi del ciclo", () => {
   const ch: Channel[] = [{ id: "A", label: "A", kind: "cyl" }, { id: "B", label: "B", kind: "cyl" }];
   const pos = [[0, 0], [0.5, 0], [1, 0], [1, 0.5], [1, 1], [1, 0.5], [1, 0], [0.5, 0], [0, 0]];
-  const samples: Sample[] = pos.map((v, k) => ({ t: k, v }));
+  const samples: Sample[] = pos.map((v, k) => ({ t: k, v, air: k, flow: 0 }));
 
   it("un passo per ogni arrivo a fine corsa: A+ B+ B- A-", () => {
     expect(stepTimes(ch, samples)).toEqual([0, 2, 4, 6, 8]);
@@ -62,7 +62,8 @@ describe("passi del ciclo", () => {
 
   it("disegna una corsia per canale e la griglia dei passi", () => {
     const svg = renderDiagram(ch, samples, "step", 600);
-    expect(svg.match(/class="dg-lane/g)).toHaveLength(2);
+    expect(svg.match(/class="dg-lane cyl/g)).toHaveLength(2);
+    expect(svg).toContain('data-channel="cicli"');
     expect(svg).toContain('data-steps="5"');
     expect(renderDiagram(ch, samples, "time", 600)).toContain("dg-trace");
   });

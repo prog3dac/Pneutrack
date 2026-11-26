@@ -20,7 +20,8 @@ import { analyze, type Analysis } from "../model/validation";
 import { compileSim } from "../sim/network";
 import { Simulator } from "../sim/simulator";
 import { Recorder } from "../sim/recorder";
-import { diagramHeight, renderDiagram, type DiagramMode } from "./diagram";
+import { strokes, summarize } from "../sim/measures";
+import { diagramHeight, fmt as fmtNum, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
 import { bomToPdf, sheetSvg, svgToPdf } from "./pdf";
@@ -1935,7 +1936,8 @@ function resetSim() {
 function newRecorder(s: Simulator): Recorder {
   const labels: Record<string, string> = {};
   for (const c of doc.components) if (c.label) labels[c.id] = c.label;
-  return new Recorder(s, labels);
+  const gauges = doc.components.filter((c) => c.type === "pressure_gauge").map((c) => c.id);
+  return new Recorder(s, labels, gauges);
 }
 
 /** Apre o chiude il diagramma delle fasi (solo durante la simulazione). */
@@ -1957,7 +1959,7 @@ function renderDiagramPanel() {
   if (!r.channels.length) {
     body.innerHTML = `<p class="dg-empty">Nello schema non ci sono cilindri, valvole o bobine da tracciare.</p>`;
   } else {
-    body.innerHTML = renderDiagram(r.channels, r.samples, diagramMode, Math.max(320, body.clientWidth - 4));
+    body.innerHTML = renderDiagram(r.channels, r.samples, diagramMode, Math.max(320, body.clientWidth - 4), r.tracker.cycles);
     body.style.height = `${Math.min(diagramHeight(r.channels), Math.round(window.innerHeight * 0.28))}px`;
   }
 }
@@ -2121,6 +2123,35 @@ function renderSimPanel() {
     for (const name of Object.keys(geometry(comp).ports)) row(`${comp.id}.${name}`, `port:${comp.id}.${name}`);
   }
   if (dl.childElementCount) { heading(panel, comp ? `Valori (${comp.id})` : "Valori"); panel.append(dl); }
+
+  // misure: manometri, aria consumata, tempi di corsa e di ciclo
+  const ml = document.createElement("dl");
+  ml.className = "sim-values sim-measures";
+  const measure = (label: string, key: string, help: string) => {
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    dt.title = help;
+    const dd = document.createElement("dd");
+    dd.dataset.live = key;
+    dd.title = help;
+    ml.append(dt, dd);
+  };
+  for (const g of doc.components.filter((c) => c.type === "pressure_gauge")) {
+    measure(`Manometro ${g.id}`, `port:${g.id}.1`, "Pressione relativa letta dal manometro in questo istante; la sua traccia è nel diagramma delle fasi.");
+  }
+  measure("Aria consumata", "air:total", "Aria uscita dalle alimentazioni dall'inizio della simulazione, in litri normali (ANR, ISO 8778: 20 °C e 1 bar assoluto). Comprende il riempimento iniziale delle linee.");
+  measure("Portata attuale", "air:flow", "Aria che esce adesso dalle alimentazioni, in litri normali al minuto.");
+  if (sim.s.net.cylinders.length) {
+    measure("Cicli completati", "cycle:count", "Un ciclo va dalla partenza del primo cilindro dalla posizione di riposo (quella all'avvio) al ritorno di tutti i cilindri a riposo.");
+    measure("Ultimo ciclo", "cycle:last", "Durata e aria consumata dell'ultimo ciclo completo. Il consumo parte dall'ultimo istante a portata ferma prima della partenza.");
+    measure("Media per ciclo", "cycle:mean", "Tempo e aria medi dei cicli completati finora.");
+    measure("Consumo medio", "cycle:flow", "Aria dei cicli divisa per la loro durata, in litri normali al minuto: il dato per dimensionare il compressore con il ciclo che gira di continuo.");
+    for (const c of sim.s.net.cylinders) {
+      measure(`Corse ${c.id}`, `stroke:${c.id}`, `Tempo dell'ultima uscita (+) e dell'ultimo rientro (−) di ${c.id}, dalla partenza dal fine corsa all'arrivo a quello opposto.`);
+    }
+  }
+  heading(panel, "Misure");
+  panel.append(ml);
   updateSimPanel();
 }
 
@@ -2131,6 +2162,7 @@ function updateSimPanel() {
   document.body.dataset.simTime = s.t.toFixed(3);
   const POS: Record<string, string> = { "14": "lato 14 (azionata)", "12": "lato 12", "0": "centrale" };
   const el = s.electricState();
+  let strokeCache: ReturnType<typeof strokes> | null = null;
   for (const dd of document.querySelectorAll<HTMLElement>("#properties [data-live]")) {
     const [kind, key] = [dd.dataset.live!.slice(0, dd.dataset.live!.indexOf(":")),
                          dd.dataset.live!.slice(dd.dataset.live!.indexOf(":") + 1)];
@@ -2164,6 +2196,24 @@ function updateSimPanel() {
       const bar = s.gauge(key);
       dd.textContent = fmtBar(bar);
       dd.dataset.value = bar.toFixed(3);
+    } else if (kind === "air") {
+      const v = key === "total" ? s.airUsed() : s.airFlow();
+      dd.textContent = key === "total" ? `${fmtNum(v, 2)} Nl` : `${fmtNum(Math.max(0, v), 1)} Nl/min`;
+      dd.dataset.value = v.toFixed(4);
+    } else if (kind === "cycle") {
+      const sum = summarize(sim!.recorder.tracker.cycles);
+      dd.dataset.value = String(sum.count);
+      dd.textContent = key === "count" ? String(sum.count)
+        : key === "last" ? (sum.last ? `${fmtNum(sum.last.end - sum.last.start, 2)} s · ${fmtNum(sum.last.air, 2)} Nl` : "—")
+        : key === "mean" ? (sum.count ? `${fmtNum(sum.meanTime!, 2)} s · ${fmtNum(sum.meanAir!, 2)} Nl` : "—")
+        : sum.meanFlow !== undefined ? `${fmtNum(sum.meanFlow, 1)} Nl/min` : "—";
+      if (key === "last" && sum.last) dd.dataset.value = (sum.last.end - sum.last.start).toFixed(3);
+    } else if (kind === "stroke") {
+      const r = strokeCache ?? (strokeCache = strokes(sim!.recorder.channels, sim!.recorder.samples));
+      const last = (dir: "+" | "-") => r.filter((x) => x.id === key && x.dir === dir).pop();
+      const p = last("+"), m = last("-");
+      dd.textContent = `+ ${p ? `${fmtNum(p.end - p.start, 2)} s` : "—"} · − ${m ? `${fmtNum(m.end - m.start, 2)} s` : "—"}`;
+      dd.dataset.value = p ? (p.end - p.start).toFixed(3) : "";
     }
   }
   for (const b of document.querySelectorAll<HTMLElement>("#properties [data-cmd]")) {
