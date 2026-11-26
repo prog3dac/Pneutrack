@@ -273,7 +273,8 @@ assert.equal(s.doc.connections.length, 1);
 await openProps("V1");
 await page.fill(`${D} input[name="id"]`, "Y1");
 await page.press(`${D} input[name="id"]`, "Enter");
-assert.match(await page.textContent(`${D} h2`), /Y1/, "la finestra segue la sigla nuova");
+// la finestra si ridisegna subito dopo la modifica e segue la sigla nuova
+await page.waitForFunction((d) => /Y1/.test(document.querySelector(`${d} h2`)?.textContent ?? ""), D);
 await page.keyboard.press("Control+Enter");
 await page.waitForSelector(D, { state: "detached" });
 await page.click("#canvas", { position: { x: 40, y: 40 } });
