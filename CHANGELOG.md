@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.24.1 · 2026-11-26
+
+- Simboli dei cilindri in simulazione: il pistone e i tamponi degli ammortizzi restano sempre dentro la camicia per tutta la corsa, anche nei cilindri ammortizzati (prima, a cilindro rientrato, il tampone lato fondello usciva dal fondo). Lo stelo sporge sempre dalla testata, anche a cilindro tutto rientrato, e nel cilindro a stelo passante sporge da entrambi i lati anche a fine corsa. Vale per singolo e doppio effetto, ammortizzati e stelo passante, negli schemi, negli esempi e nel catalogo dei simboli.
+
 ## 0.24.0 · 2026-11-26
 
 - Libreria di componenti da catalogo: nel pannello di valvole distributrici, regolatori di flusso unidirezionali e cilindri a doppio effetto il menu «Codice da catalogo» compila in un colpo i dati della scheda tecnica e le opzioni. Ci sono i regolatori Festo GRLA (M5–1/2), le elettrovalvole Festo VUVG-L14 e L18 e SMC SY3000, SY5000 e SY7000 (monostabili e bistabili), i cilindri ISO 15552 Festo DSBC e SMC CP96 (Ø32–125).
