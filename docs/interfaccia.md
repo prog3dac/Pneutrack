@@ -159,6 +159,24 @@ a riposo). «Tempo» mette in orizzontale i secondi (diagramma spostamento-tempo
 gli istanti in cui un cilindro arriva a fine corsa (diagramma spostamento-passo). Si registrano gli ultimi 60 s;
 «Ricomincia» azzera il diagramma. L'etichetta di un componente compare accanto alla sua sigla.
 
+Ogni manometro ha una corsia con la pressione (da 0 alla pressione di alimentazione più alta, arrotondata al bar).
+Accanto a ogni arrivo a fine corsa c'è il tempo della corsa, dalla partenza dal fine corsa opposto all'arrivo.
+La fascia «Cicli» in basso mostra ogni ciclo con durata e aria consumata: un ciclo va dalla partenza del primo
+cilindro dalla posizione che avevano all'avvio al ritorno di tutti in quella posizione (un cilindro è a fine corsa
+entro l'1 % della corsa, o entro 2,5 mm, la zona in cui un rullo è già azionato).
+
+## Misure
+
+Nel pannello della simulazione la sezione «Misure» riporta, con la spiegazione al passaggio del mouse:
+
+- la pressione di ogni manometro;
+- l'aria consumata dall'inizio e la portata attuale, in litri normali (Nl e Nl/min, condizioni ANR della ISO 8778:
+  20 °C e 1 bar assoluto). È l'aria che esce dalle alimentazioni, compreso il riempimento iniziale delle linee;
+- i cicli completati, la durata e l'aria dell'ultimo ciclo, la media per ciclo e il consumo medio in Nl/min (aria dei
+  cicli divisa per la loro durata). L'aria di un ciclo parte dall'ultimo istante a portata ferma prima della
+  partenza e arriva a quando la portata si ferma dopo il ritorno (o alla partenza del ciclo dopo);
+- per ogni cilindro il tempo dell'ultima uscita e dell'ultimo rientro.
+
 ## Selezione, copia e incolla
 
 - Un clic seleziona un componente; `Maiusc`+clic aggiunge o toglie un componente dalla selezione.
@@ -192,7 +210,7 @@ centrale del mouse per spostare la vista.
 | `src/model/` | unità, componenti, schema, validazione ([modello-dati.md](modello-dati.md)) |
 | `src/sim/` | dallo schema alla rete fisica, simulazione interattiva |
 | `src/solver/` | solutore di riferimento (orifizi ISO 6358, RK4) |
-| `src/ui/diagram.ts` | diagramma delle fasi (registrazione in `src/sim/recorder.ts`) |
+| `src/ui/diagram.ts` | diagramma delle fasi (registrazione in `src/sim/recorder.ts`, tempi di corsa e cicli in `src/sim/measures.ts`) |
 | `src/ui/symbols.ts` | simboli in stile ISO 1219, posizione delle porte, stato animato |
 | `src/ui/app.ts` | stato, disegno, interazioni, annulla/ripeti, progetti, simulazione |
 | `src/ui/storage.ts` | archivio dei progetti (database della pagina, browser, memoria) |
