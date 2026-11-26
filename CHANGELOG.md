@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.24.0 · 2026-11-26
+
+- Libreria di componenti da catalogo: nel pannello di valvole distributrici, regolatori di flusso unidirezionali e cilindri a doppio effetto il menu «Codice da catalogo» compila in un colpo i dati della scheda tecnica e le opzioni. Ci sono i regolatori Festo GRLA (M5–1/2), le elettrovalvole Festo VUVG-L14 e L18 e SMC SY3000, SY5000 e SY7000 (monostabili e bistabili), i cilindri ISO 15552 Festo DSBC e SMC CP96 (Ø32–125).
+- Il codice scelto finisce nel campo «Codice articolo», quindi anche nella distinta; sotto il menu compaiono il costruttore, come sono stati ricavati i valori e il collegamento alla scheda tecnica.
+
 ## 0.23.1 · 2026-11-26
 
 - Simulazione: un cilindro fermo a fine corsa e spinto contro l'arresto non consuma più aria. Prima, nei passi intermedi del calcolo, il pistone entrava appena nell'arresto e tornava indietro a ogni passo, e a impianto fermo si contavano circa 0,9 Nl/min che non esistono.

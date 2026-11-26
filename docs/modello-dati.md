@@ -104,6 +104,17 @@ velocità quasi nulla l'attrito vale quello statico e oltre circa 1 cm/s scende 
 (curva di Stribeck). `mounting_angle` è l'inclinazione: 0° orizzontale, 90° stelo verso l'alto,
 −90° verso il basso; la simulazione aggiunge `mass × g × sin(angolo)` contro l'uscita dello stelo.
 
+### Libreria da catalogo
+
+`src/model/parts.ts` elenca articoli reali (`PARTS`): codice, costruttore, serie, tipo di
+componente, opzioni (funzione e comandi della valvola, ammortizzo) e parametri presi dalla scheda
+tecnica, con il collegamento in `source` e in `note` come sono stati ricavati i valori dove la
+scheda dà un intervallo. `applyPart` imposta opzioni e parametri del codice, toglie gli altri
+parametri di catalogo (`PART_PARAMS`) e scrive il codice in `code`, il campo facoltativo del
+componente con il codice articolo: `{"id": "V1", "type": "directional_valve", "code": "SY5120", …}`.
+Per aggiungere un articolo basta una voce in `PARTS`; il test `test/parts.test.ts` controlla che
+ogni voce dia un componente valido.
+
 ### Misure normalizzate dei cilindri
 
 `src/model/cylinders.ts` elenca le coppie alesaggio/stelo delle serie ISO 6432 (minicilindri,
