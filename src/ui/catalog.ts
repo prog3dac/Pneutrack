@@ -22,7 +22,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
   plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
   directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione; il pulsante oltre il solenoide è il comando manuale ausiliario, con la tacca se ha l'arresto.",
-  check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera.",
+  check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera. Con la molla, la molla sta sulla linea sopra la sfera e la preme sulla sede (ISO 1219-1 X10700).",
   pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
   shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
   and_valve: "Casella con un otturatore tra due sedi: l'uscita è in pressione solo se lo sono entrambi gli ingressi (funzione E).",

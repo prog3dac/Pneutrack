@@ -485,12 +485,15 @@ const gaugeGeometry = (): Geometry => ({
 const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
   path(`M${x - 10},${y - 5 * dir} L${x},${y + 8 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
 
-/** Non ritorno (X10690); con la molla (X10700) la molla preme la sfera sulla sede. */
+/**
+ * Non ritorno (X10690); con la molla (X10700) la molla sta sull'asse della linea, sopra la sfera, e la preme
+ * sulla sede.
+ */
 const checkGeometry = (spring = false): Geometry => ({
   w: 30, h: 60,
   ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
-  svg: line(0, 30, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -30) +
-    (spring ? zigzag(-3.5, -5.5, -11, -12, 4, 2.5) : ""),
+  svg: line(0, 30, 0, 6) + checkElement(0, -2) +
+    (spring ? zigzag(0, -7, 0, -23, 6, 5) + line(0, -23, 0, -30) : line(0, -7, 0, -30)),
 });
 
 const pilotCheckGeometry = (): Geometry => ({
