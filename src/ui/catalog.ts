@@ -1,51 +1,52 @@
 /**
  * Catalogo dei simboli: tutti i componenti della palette, con le varianti, la descrizione
- * del componente, la lettura del simbolo e le porte. Generato dagli stessi dati dell'editor,
- * così un componente nuovo compare qui senza altro lavoro.
+ * del componente, la lettura del simbolo, la sigla e le porte. Generato dalle stesse voci della
+ * palette dell'editor (./palette), nello stesso ordine, così un componente nuovo compare qui senza altro lavoro.
  */
 import {
   ACTUATIONS, ACTUATION_LABELS, isReturn, typeList, type ComponentData, type PortKind, type TypeDef,
 } from "../model/components";
+import { designationPrefix, paletteCategories, paletteItems } from "./palette";
 import { geometry } from "./symbols";
 
 /** Come si legge il simbolo (pneumatici: ISO 1219-1; elettrici: CEI EN 60617). */
 export const SYMBOL_NOTES: Record<string, string> = {
   pressure_source: "Triangolo vuoto con la punta sulla linea: sorgente di energia pneumatica (il triangolo vuoto indica l'aria, quello pieno l'olio).",
   air_reservoir: "Rettangolo con i lati corti arrotondati, disteso: serbatoio d'aria.",
-  air_filter: "Rombo (elemento di trattamento) con il tratteggio della cartuccia perpendicolare al flusso; in basso il separatore di condensa con scarico manuale.",
-  lubricator: "Rombo attraversato dalla linea di flusso, con il tubo di pescaggio che scende dal vertice superiore.",
-  frl_unit: "Filtro, riduttore con manometro e lubrificatore racchiusi da una linea a tratto e punto, che delimita un gruppo montato come unità unica.",
+  air_filter: "Rombo dell'elemento di trattamento (ISO 1219-1 X12100–X12280): il tratteggio perpendicolare al flusso è la cartuccia, il tratto orizzontale in basso il separatore di condensa con lo scarico dal vertice inferiore, libero se manuale, con il galleggiante se automatico. A coalescenza la cartuccia è doppia, a carboni attivi è piena e senza separatore; il separatore di condensa non ha cartuccia, quello centrifugo ha la freccia curva del ciclone; l'indicatore di intasamento è uno strumento differenziale collegato a monte e a valle della cartuccia.",
+  lubricator: "Rombo dell'elemento di trattamento con il tubo di pescaggio che sale dal vertice superiore (ISO 1219-1 X12290); con lo scarico manuale, il tratto dal vertice inferiore.",
+  frl_unit: "Filtro, riduttore con manometro e lubrificatore racchiusi da una linea a tratto e punto, che delimita un gruppo di componenti montati come unità (ISO 1219-1 5.10). Il simbolo semplificato è una casella con il rombo del trattamento e la freccia della regolazione (X12330).",
   pressure_regulator: "Casella con freccia in linea con le porte (valvola normalmente aperta), molla regolabile (freccia obliqua) e pilotaggio tratteggiato dall'uscita sul lato opposto alla molla.",
   pressure_gauge: "Cerchio con freccia obliqua: strumento di misura della pressione.",
   silencer: "Triangolo di scarico con l'elemento silenziatore.",
   exhaust: "Triangolo vuoto con la punta sulla linea: uscita d'aria in atmosfera, senza raccordo.",
   junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
   plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
-  directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione; il pulsante oltre il solenoide è il comando manuale ausiliario, con la tacca se ha l'arresto.",
+  directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo: nelle valvole a tre posizioni è quella centrale, a centri chiusi (tutte le porte chiuse), in scarico (gli utilizzi collegati agli scarichi) o in pressione (gli utilizzi collegati all'alimentazione). Le valvole a cinque vie hanno la casella più larga, con le porte a 2M l'una dall'altra. Ai lati, i comandi che portano in ciascuna posizione (vedi «Comandi delle valvole»); il pulsante oltre il solenoide è il comando manuale ausiliario, con la tacca se ha l'arresto.",
   check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera. Con la molla, la molla sta sulla linea sopra la sfera e la preme sulla sede (ISO 1219-1 X10700).",
-  pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
-  shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
+  pilot_check_valve: "Non ritorno con la molla racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede (ISO 1219-1 X10720).",
+  shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due, e il punto di connessione interno verso l'uscita: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O, ISO 1219-1 X10740).",
   and_valve: "Casella con un otturatore tra due sedi: l'uscita è in pressione solo se lo sono entrambi gli ingressi (funzione E).",
-  quick_exhaust_valve: "Casella con la sfera appoggiata alla sede dell'alimentazione 1 e una seconda sede verso lo scarico 3: quando 1 si svuota, 2 scarica direttamente da 3.",
+  quick_exhaust_valve: "Casella con la sfera appoggiata alla sede dell'alimentazione 1, una seconda sede verso lo scarico 3 e il punto di connessione interno verso 2: quando 1 si svuota, 2 scarica direttamente da 3 (ISO 1219-1 X10750).",
   flow_control_valve: "Due archi che restringono la linea (strozzamento) attraversati dalla freccia obliqua di regolazione.",
-  one_way_flow_control: "Strozzatore regolabile in parallelo a un non ritorno, racchiusi da una cornice a tratto e punto perché stanno nello stesso corpo: strozza in un verso, nell'altro l'aria passa libera dalla valvola di ritegno.",
+  one_way_flow_control: "Strozzatore regolabile in parallelo a un non ritorno, con i punti di connessione dove il ramo si stacca, racchiusi da una cornice continua perché sono un solo componente con due funzioni (ISO 1219-1 5.9): strozza in un verso, nell'altro l'aria passa libera dalla valvola di ritegno.",
   relief_valve: "Casella con freccia spostata rispetto alle porte (normalmente chiusa), molla regolabile e pilotaggio dall'ingresso sul lato opposto alla molla.",
   sequence_valve: "Valvola 3/2 normalmente chiusa comandata da un pilotaggio che agisce contro una molla tarabile: commuta alla pressione impostata.",
   time_delay_valve: "Valvola 3/2 normalmente chiusa pilotata attraverso uno strozzatore e un piccolo serbatoio: commuta con ritardo.",
   single_acting_cylinder: "Rettangolo (camicia), linea spessa (pistone) e stelo; la molla occupa la camera stelo e riporta indietro il pistone. Una sola porta; il triangolo sotto la camera stelo è lo sfiato in atmosfera senza raccordo.",
   double_acting_cylinder: "Camicia, pistone e stelo, con una porta per camera. Con l'ammortizzo: tampone sul pistone e freccia obliqua di regolazione sulla testata. Con il pistone magnetico: due piccoli rettangoli pieni sul bordo del pistone.",
-  double_rod_cylinder: "Cilindro a doppio effetto con lo stelo che esce dai due lati.",
-  rotary_actuator: "Cerchio con freccia curva a due punte: attuatore rotante ad angolo limitato, nei due versi.",
-  air_motor: "Cerchio con due triangoli vuoti rivolti verso l'interno (l'energia entra) e albero sul lato: motore pneumatico a due sensi di rotazione.",
+  double_rod_cylinder: "Cilindro a doppio effetto con lo stelo che esce dai due lati; se il secondo stelo ha un diametro diverso è disegnato più sottile o più grosso del primo.",
+  rotary_actuator: "Cerchio con la freccia curva: attuatore rotante ad angolo limitato. A doppio effetto la freccia ha due punte (ruota nei due versi, porte A e B); a semplice effetto una punta sola e la molla di richiamo, con la sola porta A.",
+  air_motor: "Cerchio con l'albero sul lato e un triangolo vuoto rivolto verso l'interno (l'energia entra) per ogni senso di rotazione: due nel motore reversibile, uno solo in quello a un senso (ISO 1219-1 X11400, X11410).",
   shutoff_valve: "Due triangoli con i vertici affacciati sulla linea (ISO 1219-1 8.7.23): rubinetto di intercettazione, con la leva di comando. In simulazione, chiuso, la leva è di traverso e un tratto spesso sbarra il passaggio.",
   lockout_valve: "Valvola 3/2 con leva ad arresto e lucchetto sopra il comando (ISO 1219-1 X10260): aperta alimenta 2 da 1; chiusa, la molla la porta nello scarico 2→3 e il lucchetto la blocca.",
   quick_coupling: "Ogni metà ha una punta rivolta verso l'altra e, oltre la punta, il tratto della faccia di accoppiamento: staccate, le facce sono separate e la linea è interrotta; innestate, la linea è continua con un solo tratto al centro. Nella metà con la valvola di non ritorno la sfera sta dentro la punta (ISO 1219-1 X11690–X11740).",
   double_pilot_check: "Due non ritorno racchiuse nello stesso corpo, con il pilotaggio tratteggiato a croce: la pressione su una linea apre il ritorno dell'altra (ISO 1219-1 X10730).",
   fixed_orifice: "Due archi che restringono la linea, senza freccia: strozzatore fisso, non regolabile (come nella ISO 1219-3, all. C).",
-  soft_start_valve: "Valvola 2/2 normalmente chiusa pilotata dall'uscita contro una molla, con lo strozzatore regolabile di riempimento in parallelo; la cornice a tratto e punto indica un solo corpo (ISO 1219-1 X10250).",
+  soft_start_valve: "Valvola 2/2 normalmente chiusa pilotata dall'uscita contro una molla, con lo strozzatore regolabile di riempimento in parallelo; la cornice continua indica un solo componente con due funzioni (ISO 1219-1 5.9, X10250).",
   rodless_cylinder: "Canna chiusa ai due lati con il pistone che trascina il carrello disegnato sopra la canna (ISO 1219-1 X11480, 8.4.16).",
   gripper: "Corpo della pinza con le due griffe parallele in alto, che si chiudono verso il centro; nella pinza a semplice effetto la molla nel corpo riapre le griffe (ISO 1219-1 X11630–X11660).",
-  vacuum_ejector: "Casella con l'ugello convergente e il diffusore tra l'alimentazione 1 e lo scarico 3; la freccia indica l'aria aspirata dalla porta del vuoto 2 (ISO 1219-1 X12380).",
+  vacuum_ejector: "Corpo con lo strozzatore sulla via dall'alimentazione 1 allo scarico 3; l'aspirazione dalla porta del vuoto 2 arriva alla strozzatura (ISO 1219-1 X12380). Con il soffio di distacco, l'aria della porta 4 passa da un non ritorno e arriva nella linea del vuoto (X12390).",
   suction_cup: "Campana aperta verso il pezzo, con il bordo di tenuta (ISO 1219-1 X12420).",
   compressor: "Cerchio con il triangolo vuoto rivolto verso l'esterno, sulla mandata, e l'albero del motore (ISO 1219-1 X11380).",
   vacuum_pump: "Cerchio con il triangolo vuoto rivolto verso lo scarico e l'aspirazione in alto: pompa del vuoto (ISO 1219-1 X12370).",
@@ -79,7 +80,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   valve_solenoid: "Rettangolo con la diagonale: bobina di un'elettrovalvola.",
   limit_switch: "Contatto azionato da un rullo (o da un rullo su leva ribaltabile).",
   proximity_sensor: "Riquadro con il rombo del sensore: sensore senza contatto a tre fili.",
-  pressure_switch: "Pilotaggio pneumatico (triangolo vuoto) contro una molla regolabile che aziona un contatto elettrico.",
+  pressure_switch: "Riquadro con il contatto di chiusura e la molla regolabile; l'aria arriva dalla porta 1 con una linea continua (ISO 1219-1 X11750). Elettronico: l'amplificatore (triangolo) al posto della molla (X11760). Vacuostato: il segno meno del vuoto accanto alla molla.",
   signal_lamp: "Cerchio con la croce: lampada di segnalazione.",
   wire_junction: "Pallino pieno: morsetto comune di più fili.",
   wire_reference: "Freccia in fondo al filo con il nome del potenziale: il filo prosegue nel rimando elettrico con lo stesso nome, su un altro foglio o altrove nello schema.",
@@ -99,8 +100,8 @@ export const ACTUATION_NOTES: Record<string, string> = {
   plunger: "Tastatore: asta a testa arrotondata.",
   roller_oneway: "Rullo su leva ribaltabile: aziona la valvola in un solo verso di passaggio.",
   spring: "Molla di ritorno.",
-  air_return: "Molla pneumatica: riquadro con triangolo vuoto, alimentata dall'interno della valvola.",
-  air_return_ext: "Molla pneumatica con la linea tratteggiata dell'alimentazione esterna.",
+  air_return: "Molla pneumatica: riquadro con triangolo vuoto, alimentata dall'interno della valvola con una linea continua (ISO 1219-1 X10080).",
+  air_return_ext: "Molla pneumatica con la linea continua dell'alimentazione dalla porta esterna (ISO 1219-1 X10100).",
   proportional: "Solenoide attraversato dalla freccia obliqua: solenoide proporzionale (ISO 1219-1 X10170).",
   piezo: "Rettangolo con la pila di dischi: attuatore piezoelettrico.",
   stepper: "Cerchio del motore con il gradino: motore passo passo.",
@@ -127,37 +128,45 @@ function symbolSvg(comp: ComponentData, scale = 1.4): string {
     `height="${Math.round(h * scale)}" role="img">${g.svg}</svg>`;
 }
 
-/** Varianti di un tipo: una per voce della palette, oppure la sola configurazione predefinita. */
-export function variants(def: TypeDef): { label: string; comp: ComponentData }[] {
-  const base = (opts: Record<string, string | undefined> = {}): ComponentData => {
-    const c: ComponentData = { id: "X", type: def.type, params: { ...def.defaults } };
-    for (const o of def.options ?? []) (c as unknown as Record<string, string>)[o.name] = o.default;
-    for (const [k, v] of Object.entries(opts)) if (v !== undefined) (c as unknown as Record<string, string>)[k] = v;
-    return c;
-  };
-  if (!def.presets?.length) return [{ label: def.label, comp: base() }];
-  return def.presets.map((p) => ({ label: p.label, comp: base(p.options) }));
+/** Simbolo del catalogo: una o più voci della palette dello stesso tipo che hanno lo stesso disegno. */
+export interface CatalogEntry {
+  /** nomi delle voci della palette, il primo è il titolo della scheda */
+  labels: string[];
+  /** indici delle configurazioni predefinite (-1 per un tipo senza configurazioni) */
+  presets: number[];
+  comp: ComponentData;
 }
 
-/** Varianti con simbolo diverso: le voci che cambiano solo i parametri (es. il volume) hanno lo stesso disegno. */
-export function distinctVariants(def: TypeDef): { label: string; comp: ComponentData }[] {
-  const seen = new Set<string>();
-  return variants(def).filter((v) => {
-    const svg = geometry(v.comp).svg;
-    if (seen.has(svg)) return false;
-    seen.add(svg);
-    return true;
-  });
+/**
+ * Schede di un tipo: le sue voci della palette, nello stesso ordine; quelle che cambiano solo i
+ * parametri (es. il volume del serbatoio) hanno lo stesso disegno e stanno nella stessa scheda.
+ */
+export function catalogEntries(def: TypeDef): CatalogEntry[] {
+  const out: (CatalogEntry & { svg: string })[] = [];
+  for (const it of paletteItems([def])) {
+    const comp = { ...it.data, id: designationPrefix(def.type) + "1" };
+    const svg = geometry(comp).svg;
+    const same = out.find((e) => e.svg === svg);
+    if (same) { same.labels.push(it.label); same.presets.push(it.preset); }
+    else out.push({ labels: [it.label], presets: [it.preset], comp, svg });
+  }
+  return out.map(({ svg: _svg, ...e }) => e);
 }
 
-function card(def: TypeDef, label: string, comp: ComponentData, showDoc: boolean): string {
+const sigla = (def: TypeDef) => `<p class="cat-sigla">Sigla <b>${esc(designationPrefix(def.type))}</b>1, ` +
+  `${esc(designationPrefix(def.type))}2…</p>`;
+
+function card(def: TypeDef, e: CatalogEntry, single: boolean): string {
   // le porte dipendono solo dalle opzioni, che hanno gli stessi nomi nel file e nel componente validato
-  const ports = def.ports(comp as never);
+  const ports = def.ports(e.comp as never);
   const portList = ports.map((p) => `<span class="cat-port"><b>${esc(p.name)}</b> ${PORT_KIND[p.kind]}</span>`).join(" ");
-  return `<article class="cat-card" data-type="${def.type}">` +
-    `<div class="cat-symbol">${symbolSvg(comp)}</div>` +
-    `<h3>${esc(label)}</h3>` +
-    (showDoc ? `<p class="cat-doc">${esc(def.doc)}</p><p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>` : "") +
+  const also = e.labels.length > 1
+    ? `<p class="cat-also">Stesso simbolo: ${e.labels.slice(1).map(esc).join(", ")}</p>` : "";
+  return `<article class="cat-card" data-type="${def.type}" data-presets="${e.presets.join(" ")}">` +
+    `<div class="cat-symbol">${symbolSvg(e.comp)}</div>` +
+    `<h3>${esc(e.labels[0]!)}</h3>` + also +
+    (single ? `<p class="cat-doc">${esc(def.doc)}</p><p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>` +
+      sigla(def) : "") +
     `<p class="cat-ports">${portList}</p>` +
     `</article>`;
 }
@@ -165,26 +174,26 @@ function card(def: TypeDef, label: string, comp: ComponentData, showDoc: boolean
 /** Corpo HTML del catalogo. */
 export function renderCatalog(): string {
   const defs = typeList().filter((d) => !d.hidden);
-  const categories = [...new Set(defs.map((d) => d.category))];
   let html = "";
   const toc: string[] = [];
-  categories.forEach((cat, i) => {
+  // stesse sezioni, nello stesso ordine, della palette dell'editor
+  paletteCategories(defs).forEach((cat, i) => {
     const id = `cat-${i}`;
     toc.push(`<a href="#${id}">${esc(cat)}</a>`);
-    html += `<section id="${id}"><h2>${esc(cat)}</h2>`;
-    // i componenti con un solo simbolo stanno in un'unica griglia; quelli con più varianti hanno un blocco proprio
-    let singles = "", groups = "";
+    html += `<section id="${id}" data-category="${esc(cat)}"><h2>${esc(cat)}</h2>`;
+    // stesso ordine della palette: i componenti con un solo simbolo consecutivi stanno in un'unica griglia,
+    // quelli con più varianti hanno un blocco proprio
+    let singles = "";
+    const flush = () => { if (singles) html += `<div class="cat-grid">${singles}</div>`; singles = ""; };
     for (const def of defs.filter((d) => d.category === cat)) {
-      const vs = distinctVariants(def);
-      if (vs.length === 1) singles += card(def, def.label, vs[0]!.comp, true);
-      else {
-        groups += `<div class="cat-type"><h3>${esc(def.label)}</h3><p class="cat-doc">${esc(def.doc)}</p>` +
-          `<p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>` +
-          `<div class="cat-grid">${vs.map((v) => card(def, v.label, v.comp, false)).join("")}</div></div>`;
-      }
+      const es = catalogEntries(def);
+      if (es.length === 1) { singles += card(def, es[0]!, true); continue; }
+      flush();
+      html += `<div class="cat-type"><h3>${esc(def.label)}</h3><p class="cat-doc">${esc(def.doc)}</p>` +
+        `<p class="cat-note">${esc(SYMBOL_NOTES[def.type] ?? "")}</p>${sigla(def)}` +
+        `<div class="cat-grid">${es.map((e) => card(def, e, false)).join("")}</div></div>`;
     }
-    if (singles) html += `<div class="cat-grid">${singles}</div>`;
-    html += groups;
+    flush();
     html += `</section>`;
   });
   // comandi delle valvole, ciascuno disegnato su una 3/2

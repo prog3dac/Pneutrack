@@ -20,3 +20,6 @@ body.catalog { overflow: auto; padding: 0 24px 48px; max-width: 1280px; margin: 
 .cat-ports { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .cat-port { display: inline-block; margin-right: 8px; white-space: nowrap; }
 .cat-port b { color: var(--text); }
+.cat-sigla { margin: 2px 0 4px; font-size: 12px; color: var(--muted); }
+.cat-sigla b { color: var(--text); }
+.cat-also { margin: 0 0 4px; font-size: 12px; color: var(--muted); }

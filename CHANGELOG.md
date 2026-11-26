@@ -3,6 +3,12 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.30.1 · 2026-11-26
+
+- Catalogo dei simboli allineato alla palette: stesse sezioni e stesso ordine dei componenti, una scheda per ogni voce della palette (le voci con lo stesso disegno, come i serbatoi di volume diverso, stanno nella stessa scheda con i nomi di tutte) e la sigla di ogni componente (V1, C1…).
+- Letture dei simboli aggiornate dopo la verifica sulla ISO 1219-1: tipi di filtro, lubrificatore con scarico, FRL semplificato, motore a un senso, attuatore rotante a semplice effetto, generatore di vuoto con soffio di distacco, pressostato elettronico e vacuostato, valvole a tre posizioni, cornice continua dello strozzatore unidirezionale e dell'avviamento progressivo, punto di connessione interno di selettore e scarico rapido, molla pneumatica con alimentazione a linea continua.
+- Un test verifica che ogni voce della palette compaia nel catalogo, con lettura del simbolo e sigla, nella sezione e nell'ordine giusti.
+
 ## 0.30.0 · 2026-11-26
 
 - Più fogli nello stesso progetto: schede sotto l'area di lavoro per aprire, aggiungere, rinominare (doppio clic), riordinare (trascinando), duplicare ed eliminare i fogli. Ogni foglio ha il suo disegno e il suo cartiglio, con «Foglio n di N» e il nome del foglio. *PagSu* e *PagGiù* passano da un foglio all'altro, anche in simulazione.
