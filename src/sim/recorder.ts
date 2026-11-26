@@ -1,17 +1,31 @@
 /**
  * Registrazione della simulazione per il diagramma delle fasi: corsa dei cilindri
- * (0 dentro, 1 fuori) e stato di bobine, relè, lampade e valvole nel tempo.
+ * (0 dentro, 1 fuori), pressione dei manometri, stato di bobine, relè, lampade e
+ * valvole, e aria consumata nel tempo.
  */
+import { BAR, P_ATM } from "../solver/constants";
+import { CycleTracker } from "./measures";
 import type { Simulator } from "./simulator";
 
 export interface Channel {
   id: string;
   label: string;
-  /** "cyl": corsa 0..1; "bool": acceso/spento */
-  kind: "cyl" | "bool";
+  /** "cyl": corsa 0..1; "bool": acceso/spento; "bar": pressione relativa [bar] */
+  kind: "cyl" | "bool" | "bar";
+  /** fondo scala dei canali "bar" [bar] */
+  max?: number;
+  /** cilindri: frazione di corsa entro cui lo stelo è a fine corsa (vedi sim/measures) */
+  endTol?: number;
 }
 
-export interface Sample { t: number; v: number[] }
+export interface Sample {
+  t: number;
+  v: number[];
+  /** aria consumata dall'inizio [Nl] */
+  air: number;
+  /** portata istantanea dalle alimentazioni [Nl/min] */
+  flow: number;
+}
 
 /** campionamento [s] di tempo simulato */
 export const RECORD_EVERY = 0.005;
@@ -21,14 +35,26 @@ export const RECORD_SPAN = 60;
 export class Recorder {
   readonly channels: Channel[];
   samples: Sample[] = [];
+  /** cicli completati dall'inizio (anche quelli più vecchi dei campioni conservati) */
+  tracker: CycleTracker;
   private readonly read: (() => number)[];
 
-  constructor(s: Simulator, labels: Record<string, string> = {}) {
+  /** `gauges`: sigle dei manometri da tracciare (la pressione si legge sulla loro porta 1). */
+  constructor(private readonly s: Simulator, labels: Record<string, string> = {}, gauges: string[] = []) {
     const ch: Channel[] = [], read: (() => number)[] = [];
     const lab = (id: string, what: string) => labels[id] ? `${id} · ${labels[id]}` : `${id} ${what}`.trim();
     for (const c of s.net.cylinders) {
-      ch.push({ id: c.id, label: lab(c.id, ""), kind: "cyl" });
+      // a fine corsa entro 1% o entro i 2,5 mm in cui un rullo è già azionato (2 mm, più il ritardo)
+      ch.push({ id: c.id, label: lab(c.id, ""), kind: "cyl", endTol: Math.max(0.01, 0.0025 / c.stroke) });
       read.push(() => s.cylinder(c.id)!.fraction);
+    }
+    // fondo scala dei manometri: la pressione di alimentazione più alta
+    const supply = Math.max(0, ...[...s.net.fixed.values()].map((p) => (p - P_ATM) / BAR));
+    const max = supply > 0.5 ? Math.ceil(supply) : 10;
+    for (const g of gauges) {
+      if (s.net.portNode[`${g}.1`] === undefined) continue;
+      ch.push({ id: g, label: lab(g, "bar"), kind: "bar", max });
+      read.push(() => s.gauge(`${g}.1`));
     }
     const el = s.electric;
     if (el) {
@@ -49,19 +75,22 @@ export class Recorder {
     }
     this.channels = ch;
     this.read = read;
+    this.tracker = new CycleTracker(ch);
   }
 
   /** Registra l'istante `t` se è passato almeno {@link RECORD_EVERY} dall'ultimo campione. */
   record(t: number): void {
     let last = this.samples[this.samples.length - 1];
-    if (last && t < last.t) { this.samples = []; last = undefined; } // ricominciata
+    if (last && t < last.t) { this.clear(); last = undefined; } // ricominciata
     if (last && t - last.t < RECORD_EVERY - 1e-9) return;
-    this.samples.push({ t, v: this.read.map((f) => f()) });
+    const sample = { t, v: this.read.map((f) => f()), air: this.s.airUsed(), flow: this.s.airFlow() };
+    this.samples.push(sample);
+    this.tracker.push(sample);
     const first = this.samples[0]!;
     if (t - first.t > RECORD_SPAN * 1.1) this.samples = this.samples.filter((x) => x.t >= t - RECORD_SPAN);
   }
 
-  clear(): void { this.samples = []; }
+  clear(): void { this.samples = []; this.tracker = new CycleTracker(this.channels); }
 }
 
 /**

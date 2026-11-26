@@ -276,7 +276,7 @@ assert.equal(s.doc.sheet.format, "A3");
 assert.equal(s.doc.sheet.origin.length, 2);
 assert.equal(await page.locator("#sheet .paper").count(), 1);
 assert.match(await page.textContent("#sheet"), /Pneutrack v/);
-const [pdf] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click('[data-act="pdf"]')]);
+const [pdf] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click('.tb-right [data-act="pdf"]')]);
 assert.match(pdf.suggestedFilename(), /\.pdf$/);
 const pdfBytes = Buffer.concat(await (await pdf.createReadStream()).toArray());
 assert.equal(pdfBytes.subarray(0, 5).toString(), "%PDF-");
@@ -307,6 +307,32 @@ assert.match(await page.textContent("#sheet"), /DSBC-32-100/);
 await page.click('[data-bact="close"]');
 assert.ok(await page.locator("#bom-dialog").isHidden());
 if (shots) await page.screenshot({ path: `${shots}/09c-distinta-foglio.png` });
+// 9d. SVG e DXF (con la distinta sul foglio) del foglio dal menu File
+const [svgDl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), menuAct("export-svg")]);
+assert.match(svgDl.suggestedFilename(), /\.svg$/);
+const svgText = Buffer.concat(await (await svgDl.createReadStream()).toArray()).toString();
+assert.match(svgText, /^<\?xml/);
+assert.match(svgText, /width="420mm" height="297mm"/);
+assert.match(svgText, />C1</);
+assert.ok(!svgText.includes('class="halo"'), "niente elementi dell'editor nell'SVG");
+const [dxfDl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), menuAct("export-dxf")]);
+assert.match(dxfDl.suggestedFilename(), /\.dxf$/);
+const dxfText = Buffer.concat(await (await dxfDl.createReadStream()).toArray()).toString("latin1");
+if (shots) (await import("node:fs")).writeFileSync(`${shots}/schema.dxf`, dxfText, "latin1");
+const dxfLines = dxfText.split("\r\n");
+assert.equal(dxfLines[dxfLines.length - 2], "EOF");
+for (const layer of ["CORNICE", "LINEE", "PILOTAGGI", "SIMBOLI", "TESTI"]) assert.ok(dxfLines.includes(layer), `layer ${layer}`);
+const textAt = dxfLines.indexOf("C1");
+assert.ok(textAt > 0 && dxfLines[textAt - 1] === "1", "la sigla C1 è un testo");
+assert.ok(dxfLines.filter((l) => l === "LINE").length > 20, "linee del disegno");
+assert.ok(dxfLines.includes("DSBC-32-100"), "la distinta sul foglio finisce nel DXF");
+// tutto dentro il foglio A3 (420 × 297 mm)
+const xs = [], ys = [];
+for (let i = dxfLines.indexOf("ENTITIES"); i < dxfLines.length - 1; i += 2) {
+  if (dxfLines[i] === "10") xs.push(Number(dxfLines[i + 1]));
+  if (dxfLines[i] === "20") ys.push(Number(dxfLines[i + 1]));
+}
+assert.ok(Math.min(...xs) >= -0.01 && Math.max(...xs) <= 420.01 && Math.min(...ys) >= -0.01 && Math.max(...ys) <= 297.01);
 await page.selectOption('#properties select[name="sheet-format"]', "");
 await settled();
 assert.equal((await state()).doc.sheet, undefined);
@@ -420,6 +446,15 @@ await page.mouse.down();
 await waitLive("valve:V1", "v === '12'");
 await page.mouse.up();
 await waitLive("cyl:C1", "Number(v) < 0.01");
+
+// misure: uscita e rientro sono un ciclo, con l'aria delle due camere (≈ 0,75 Nl a 5 bar, più le linee)
+await waitLive("cycle:count", "Number(v) >= 1");
+assert.ok(Number(await live("air:total")) > 0.75, "l'aria consumata comprende il ciclo");
+assert.ok(Number(await live("stroke:C1")) > 0, "tempo di uscita di C1");
+assert.ok(await page.getAttribute('#properties [data-live="cycle:flow"]', "title"), "le misure si spiegano al passaggio del mouse");
+await page.waitForSelector('#diagram [data-cycle="1"]');
+assert.ok(await page.locator("#diagram .dg-dur").count() >= 1, "tempi di corsa nel diagramma");
+if (shots) await page.screenshot({ path: `${shots}/misure.png` });
 
 await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim === undefined);

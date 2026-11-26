@@ -6,7 +6,7 @@
  *   dp/dt = κRT/V · ṁ − κ p/V · dV/dt
  *   m ẍ = p_A A1 − p_B A2 − p_atm (A1 − A2) − carico − attrito − molla
  */
-import { BAR, KAPPA, P_ATM, R_AIR } from "../solver/constants";
+import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { Position, SimNetwork, ValveSpec } from "./network";
@@ -40,6 +40,10 @@ export class Simulator {
   private readonly stateOfNode: number[];
   private readonly freeNodes: number[] = [];
   private readonly cylOffset: number;
+  /** indice dello stato che integra la massa d'aria uscita dalle alimentazioni [kg] */
+  private readonly airIndex: number;
+  /** nodi a pressione imposta sopra l'atmosfera: le alimentazioni */
+  private readonly supplyNodes: number[];
   private readonly RT: number;
   /** posizione corrente di ogni valvola */
   readonly positions: Position[];
@@ -59,7 +63,9 @@ export class Simulator {
       }
     }
     this.cylOffset = this.freeNodes.length;
-    this.y = new Array<number>(this.cylOffset + 2 * net.cylinders.length).fill(0);
+    this.airIndex = this.cylOffset + 2 * net.cylinders.length;
+    this.y = new Array<number>(this.airIndex + 1).fill(0);
+    this.supplyNodes = [...net.fixed].filter(([, p]) => p > P_ATM + 1).map(([n]) => n);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
     this.positions = net.valves.map((v) => v.initial);
     this.electric = net.electric ? new ElectricState(net.electric) : null;
@@ -134,6 +140,16 @@ export class Simulator {
     if (i < 0) return undefined;
     const x = this.y[this.cylOffset + 2 * i]!, v = this.y[this.cylOffset + 2 * i + 1]!;
     return { x, v, fraction: x / this.net.cylinders[i]!.stroke };
+  }
+
+  /** Aria consumata dall'inizio della simulazione, in litri normali ANR (ISO 8778: 20 °C, 1 bar ass.). */
+  airUsed(): number {
+    return (this.y[this.airIndex]! / RHO_ANR) * 1000;
+  }
+
+  /** Portata istantanea che esce dalle alimentazioni [Nl/min, ANR]. */
+  airFlow(): number {
+    return (this.deriv(this.t, this.y)[this.airIndex]! / RHO_ANR) * 1000 * 60;
   }
 
   valvePosition(id: string): Position | undefined {
@@ -255,21 +271,28 @@ export class Simulator {
     const dy = new Array<number>(y.length).fill(0);
     net.cylinders.forEach((c, i) => {
       const x = y[this.cylOffset + 2 * i]!;
-      const v = y[this.cylOffset + 2 * i + 1]!;
+      let v = y[this.cylOffset + 2 * i + 1]!;
       V[c.capNode]! += c.Vcap0 + c.A1 * x;
-      dV[c.capNode]! += c.A1 * v;
       V[c.rodNode]! += c.Vrod0 + c.A2 * (c.stroke - x);
-      dV[c.rodNode]! += -c.A2 * v;
       const force = P[c.capNode]! * c.A1 - P[c.rodNode]! * c.A2 - P_ATM * (c.A1 - c.A2) - c.spring;
       // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
       const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
       const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
+      let acc = (force - c.load - c.gravity - fr) / c.mass;
+      // a fine corsa, spinto contro l'arresto: il pistone sta fermo. Senza questo nei passi intermedi
+      // di RK4 entrerebbe nell'arresto e cambierebbe il volume delle camere a vuoto, e lo
+      // scatto indietro a ogni passo farebbe passare aria che non esiste (consumo fantasma)
+      if ((x <= 0 && v <= 0 && acc < 0) || (x >= c.stroke && v >= 0 && acc > 0)) { v = 0; acc = 0; }
+      dV[c.capNode]! += c.A1 * v;
+      dV[c.rodNode]! += -c.A2 * v;
       dy[this.cylOffset + 2 * i] = v;
-      dy[this.cylOffset + 2 * i + 1] = (force - c.load - c.gravity - fr) / c.mass;
+      dy[this.cylOffset + 2 * i + 1] = acc;
     });
     for (const n of this.freeNodes) {
       dy[this.stateOfNode[n]!] = ((KAPPA * this.RT) / V[n]!) * inflow[n]! - (KAPPA * P[n]! * dV[n]!) / V[n]!;
     }
+    // consumo: aria che esce dalle alimentazioni (quella che vi rientra si sottrae)
+    for (const n of this.supplyNodes) dy[this.airIndex]! -= inflow[n]!;
     return dy;
   };
 
