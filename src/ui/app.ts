@@ -23,6 +23,7 @@ import { diagramHeight, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
 import { sheetSvg, svgToPdf } from "./pdf";
+import { dxfBytes, viewportToDxf } from "./dxf";
 import {
   centeredOrigin, drawingArea, FRAME, SHEET_FORMATS, sheetRect, sheetSizeMm, smallestFormat, TITLE_BLOCK, UNITS_PER_MM,
   type Orientation, type Rect, type SheetData, type SheetFormat,
@@ -2694,8 +2695,11 @@ async function newDocument(data: Partial<CircuitDoc> = emptyCircuit(), message =
 }
 
 /** PDF vettoriale del foglio (se non è scelto, il formato più piccolo che contiene il disegno). */
-async function exportPdf() {
-  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+/**
+ * Disegno pulito per le esportazioni: tema chiaro, senza selezione, sul foglio dello schema
+ * (o sul formato più piccolo che lo contiene). `take` legge #viewport in quello stato.
+ */
+function withPrintView<T>(take: (viewport: SVGGElement, sheet: SheetData & { origin: [number, number] }) => T): T {
   const saved = { selection, sheet: doc.sheet, theme: document.documentElement.dataset.theme };
   let sheet = currentSheet();
   if (!sheet) {
@@ -2704,14 +2708,12 @@ async function exportPdf() {
     const format = smallestFormat(box, orientation);
     sheet = { format, orientation, origin: centeredOrigin({ format, orientation }, box) };
   }
-  let svgOut: SVGSVGElement;
-  // disegno pulito, in tema chiaro, senza selezione
   try {
     selection = null;
     doc.sheet = sheet;
     document.documentElement.dataset.theme = "light";
     render();
-    svgOut = sheetSvg($("#viewport") as unknown as SVGGElement, sheetRect(sheet), sheetSizeMm(sheet));
+    return take($("#viewport") as unknown as SVGGElement, sheet as SheetData & { origin: [number, number] });
   } finally {
     selection = saved.selection;
     doc.sheet = saved.sheet;
@@ -2719,6 +2721,44 @@ async function exportPdf() {
     else delete document.documentElement.dataset.theme;
     render();
   }
+}
+
+const exportBase = () => fileName().replace(/\.pneu\.json$/, "");
+
+/** SVG vettoriale del foglio, con gli stili scritti sugli elementi (si apre in Inkscape, Illustrator, browser). */
+async function exportSvg() {
+  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  const { svg, format } = withPrintView((vp, sheet) => {
+    const out = sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet));
+    for (const t of out.querySelectorAll("text")) t.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+    out.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+    return { svg: new XMLSerializer().serializeToString(out), format: sheet.format };
+  });
+  const name = `${exportBase()}.svg`;
+  try {
+    const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}\n`], { type: "image/svg+xml" });
+    if ((await exportFile(name, blob)) === "saved") toast(`Esportato ${name} (${format})`);
+  } catch (err) {
+    toast(`SVG non riuscito: ${(err as Error).message}`);
+  }
+}
+
+/** DXF in millimetri per AutoCAD e altri CAD, con un layer per tipo di elemento. */
+async function exportDxf() {
+  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  const { text, format } = withPrintView((vp, sheet) => ({ text: viewportToDxf(vp, sheetRect(sheet)), format: sheet.format }));
+  const name = `${exportBase()}.dxf`;
+  try {
+    if ((await exportFile(name, new Blob([dxfBytes(text)], { type: "application/dxf" }))) === "saved") toast(`Esportato ${name} (${format}, mm)`);
+  } catch (err) {
+    toast(`DXF non riuscito: ${(err as Error).message}`);
+  }
+}
+
+async function exportPdf() {
+  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  const { svgOut, sheet } = withPrintView((vp, sheet) => ({
+    svgOut: sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet)), sheet }));
   try {
     toast("Preparo il PDF…");
     const blob = await svgToPdf(svgOut, sheetSizeMm(sheet), doc.name || "Schema");
@@ -2995,6 +3035,8 @@ $("#toolbar").addEventListener("click", (e) => {
     case "save-as": saveProject({ asNew: true }); break;
     case "export": exportCurrent(); break;
     case "pdf": exportPdf(); break;
+    case "export-svg": exportSvg(); break;
+    case "export-dxf": exportDxf(); break;
     case "undo": undo(); break;
     case "copy": copySelection(); break;
     case "cut": cutSelection(); break;
