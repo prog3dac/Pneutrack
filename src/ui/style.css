@@ -577,3 +577,43 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
   box-shadow: 0 8px 28px rgba(0, 0, 0, .16); padding: 8px 8px 8px 14px; font-size: 13px;
 }
 .update-bar[hidden] { display: none; }
+
+/* configuratore delle valvole */
+.symbol .dominant-label { font-size: 9px; fill: var(--accent); stroke: none; font-weight: 700; }
+.valve-config { margin: 6px 0 10px; }
+.valve-config .help { margin: 0 0 6px; }
+.valve-config button.wide { width: 100%; }
+.vc-dialog { width: min(1080px, 100%); max-height: 92vh; overflow: auto; }
+.vc-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr); gap: 12px; margin-top: 10px; }
+.vc-side { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px 10px; margin: 0; align-self: start; }
+.vc-side legend { font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 0 4px; }
+.vc-row { display: grid; gap: 3px; margin: 6px 0; font-size: 12.5px; color: var(--muted); }
+.vc-row select, .vc-row input { width: 100%; color: var(--text); }
+.vc-head { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.vc-caption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.vc-cells { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 4px 0 8px; }
+.vc-cell { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.vc-cell select { width: 100%; color: var(--text); }
+.vc-preview { background: var(--sheet); border: 1px solid var(--border); border-radius: 8px; height: 160px;
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1.2px); background-size: 12px 12px; }
+.vc-preview svg { width: 100%; height: 100%; display: block; }
+.vc-extra { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: end; margin-top: 6px; }
+.vc-extra .vc-row { min-width: 160px; }
+.vc-radios { display: flex; gap: 12px; align-items: center; font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+.vc-radios label { display: inline-flex; gap: 4px; align-items: center; color: var(--text); }
+.vc-msgs { list-style: none; margin: 8px 0; padding: 0; font-size: 12.5px; }
+.vc-msgs li { padding: 4px 8px; border-radius: 6px; background: var(--accent-soft); margin-bottom: 4px; }
+.vc-msgs li.warn { background: var(--warning-soft); color: var(--warning); }
+.vc-msgs li.error { background: var(--error-soft); color: var(--error); }
+.vc-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.vc-table th, .vc-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.vc-table th { color: var(--muted); font-weight: 600; }
+.vc-footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 -16px; padding: 10px 0 14px;
+  position: sticky; bottom: -16px; background: var(--panel); border-top: 1px solid var(--border); }
+.vc-footer .check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.vc-spacer { flex: 1 1 auto; }
+@media (max-width: 760px) {
+  .vc-body { grid-template-columns: minmax(0, 1fr); }
+  .vc-mid { order: -1; }
+  .vc-head { grid-template-columns: minmax(0, 1fr); }
+}

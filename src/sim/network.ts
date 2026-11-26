@@ -9,14 +9,15 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { conductanceOf, cushionLength, hasPilotPort, isElectricType, isReturn, isThreePosition, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { conductanceOf, cushionLength, hasPilotPort, isElectricType, restPosition, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { boxPaths, STANDARD_BOXES, type BoxPosition } from "../model/valveBody";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { analyze, build, pneumaticPorts } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
 import { compileElectric, type ElectricNetwork } from "./electric";
 
 /** Posizione di una valvola: casella lato 14, lato 12, o centrale (5/3). */
-export type Position = "14" | "12" | "0";
+export type Position = BoxPosition;
 
 export interface Orifice {
   a: number;
@@ -65,6 +66,11 @@ export interface ValveSpec {
   cam12?: Cam;
   /** comando manuale ausiliario dei solenoidi: a impulso o con arresto */
   override?: "push" | "detent";
+  /** secondo comando sullo stesso lato (manuale o meccanico): si aziona come il comando ausiliario */
+  aux14?: Actuation;
+  aux12?: Actuation;
+  /** lato che vince quando 14 e 12 sono comandati insieme */
+  dominant?: "14" | "12";
   /** lati comandati all'avvio della simulazione (rubinetti e sezionatori partono aperti) */
   startCommands?: ("14" | "12")[];
 }
@@ -167,19 +173,6 @@ const CUSHION_MAX_C = 0.3e-3 / BAR;
 /** apertura minima: anche a vite chiusa resta un piccolo trafilamento */
 const CUSHION_MIN_OPENING = 0.01;
 
-// collegamenti attivi in ogni casella, come nei simboli (ui/symbols.ts)
-const VALVE_PATHS: Record<ValveFunction, Partial<Record<Position, [string, string][]>>> = {
-  "2/2": { "14": [["1", "2"]] },
-  "3/2": { "14": [["1", "2"]], "12": [["2", "3"]] },
-  "3/3": { "14": [["1", "2"]], "12": [["2", "3"]] },
-  "4/2": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]] },
-  "4/3": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]] },
-  "4/3E": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]], "0": [["2", "3"], ["4", "3"]] },
-  "5/2": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]] },
-  "5/3": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]] },
-  "5/3E": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]], "0": [["2", "3"], ["4", "5"]] },
-  "5/3P": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]], "0": [["1", "2"], ["1", "4"]] },
-};
 
 export interface CompileOptions {
   /** volume di ogni nodo di raccordo [m³] (predefinito 1 cm³) */
@@ -237,7 +230,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   const pilotedThreeTwo = (c: Component, threshold: number, delay?: number): number => {
     const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
     const vi = valves.length;
-    for (const [pos, pairs] of Object.entries(VALVE_PATHS["3/2"]) as [Position, [string, string][]][]) {
+    for (const [pos, pairs] of Object.entries(boxPaths(STANDARD_BOXES["3/2"]!)) as [Position, [string, string][]][]) {
       for (const [x, y] of pairs) orifices.push({ a: node(c, x), b: node(c, y), C, bcrit, valve: vi, positions: [pos] });
     }
     valves.push({ id: c.id, fn: "3/2", act14: "pilot", act12: "spring", pilot14: node(c, "12"),
@@ -371,7 +364,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const fn: ValveFunction = c.type === "shutoff_valve" ? "2/2" : "3/2";
         const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
         const vi = valves.length;
-        for (const [pos, pairs] of Object.entries(VALVE_PATHS[fn]) as [Position, [string, string][]][]) {
+        for (const [pos, pairs] of Object.entries(boxPaths(STANDARD_BOXES[fn]!)) as [Position, [string, string][]][]) {
           for (const [x, y] of pairs) orifices.push({ a: node(c, x), b: node(c, y), C, bcrit, valve: vi, positions: [pos] });
         }
         // leva con arresto sul lato 14 (aperto), molla sul 12: parte aperto, un clic lo chiude
@@ -507,13 +500,15 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const fn = c.function!;
         const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
         const vi = valves.length;
-        for (const [pos, pairs] of Object.entries(VALVE_PATHS[fn]) as [Position, [string, string][]][]) {
+        // collegamenti attivi in ogni casella, letti dalle stesse caselle del simbolo
+        const boxes = c.boxes ?? STANDARD_BOXES[fn]!;
+        for (const [pos, pairs] of Object.entries(boxPaths(boxes)) as [Position, [string, string][]][]) {
           for (const [x, y] of pairs) {
             orifices.push({ a: node(c, x), b: node(c, y), C, bcrit, valve: vi, positions: [pos] });
           }
         }
         const act14 = c.actuation_14!, act12 = c.actuation_12!;
-        const initial: Position = isThreePosition(fn) ? "0" : isReturn(act14) ? "14" : "12";
+        const initial: Position = restPosition(c);
         valves.push({
           id: c.id, fn, act14, act12,
           // pilotaggio pneumatico o alimentazione della valvola pilota (esterna: 14/12, interna: 1)
@@ -522,6 +517,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           pilotThreshold: c.params.min_pressure?.si ?? DEFAULT_PILOT_THRESHOLD,
           initial, cam14: c.cam_14, cam12: c.cam_12,
           override: c.override === "push" || c.override === "detent" ? c.override : undefined,
+          aux14: c.aux_14, aux12: c.aux_12, dominant: c.dominant,
         });
         break;
       }

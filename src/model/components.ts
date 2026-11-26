@@ -7,6 +7,7 @@
  * il comportamento in sim/compile.ts.
  */
 import { Quantity, UnitError, type Dimension } from "./units";
+import { parseBoxes, waysOf, WAY_PORTS, type BoxItem, type BoxPosition } from "./valveBody";
 
 /** "electric": morsetto di un componente elettrico; le sue linee sono fili, non tubi. */
 export type PortKind = "supply" | "work" | "exhaust" | "pilot" | "electric";
@@ -16,7 +17,10 @@ export type Actuation =
   | "manual" | "pushpull_detent" | "rotary_knob" | "key" | "lever" | "lever_detent" | "pedal" | "pedal_double"
   | "mechanical" | "plunger" | "plunger_adjustable" | "roller_oneway"
   | "spring" | "air_return" | "air_return_ext" | "spring_air_return";
-export type ValveFunction = "2/2" | "3/2" | "3/3" | "4/2" | "4/3" | "4/3E" | "5/2" | "5/3" | "5/3E" | "5/3P";
+/** Funzioni normalizzate (con il loro contenuto delle caselle) e funzioni n/m dei corpi personalizzati. */
+export type StandardFunction = "2/2" | "3/2" | "3/3" | "4/2" | "4/3" | "4/3E" | "5/2" | "5/3" | "5/3E" | "5/3P";
+export type ValveFunction = StandardFunction | `${2 | 3 | 4 | 5}/${2 | 3}`;
+export const STANDARD_FUNCTIONS: StandardFunction[] = ["2/2", "3/2", "3/3", "4/2", "4/3", "4/3E", "5/2", "5/3", "5/3E", "5/3P"];
 
 export interface PortSpec {
   name: string;
@@ -77,6 +81,15 @@ export interface ComponentData {
   /** rullo azionato da un cilindro: "C1+" a fine corsa in uscita, "C1-" in rientro */
   cam_14?: string;
   cam_12?: string;
+  /** corpo personalizzato: caselle da sinistra (14) a destra (12), "1>4 2>3 x5 | 1>2 4>5 x3" (vedi valveBody.ts) */
+  boxes?: string;
+  /** valvola bistabile: casella in cui parte, "14" o "12" (predefinita 12) */
+  initial?: string;
+  /** lato che vince quando 14 e 12 sono comandati insieme: "14" o "12" */
+  dominant?: string;
+  /** secondo comando sullo stesso lato, manuale o meccanico (oltre a actuation_14 / actuation_12) */
+  aux_14?: string;
+  aux_12?: string;
   /** ammortizzo pneumatico regolabile: "none", "both", "cap" (fondello), "rod" (testata) */
   cushioning?: string;
   /** comando manuale ausiliario dei solenoidi: "none", "push" (a impulso), "detent" (con arresto) */
@@ -138,6 +151,12 @@ export interface Component {
   function?: ValveFunction;
   actuation_14?: Actuation;
   actuation_12?: Actuation;
+  /** caselle del corpo personalizzato (assenti nelle funzioni normalizzate) */
+  boxes?: BoxItem[][];
+  initial?: BoxPosition;
+  dominant?: "14" | "12";
+  aux_14?: Actuation;
+  aux_12?: Actuation;
   cam_14?: Cam;
   cam_12?: Cam;
   cushioning?: Cushioning;
@@ -246,18 +265,8 @@ const FLOW_MAX = p("flow", "Portata nominale Qn a tutta apertura", "flow");
 const maxConductance = (def: string) =>
   p("conductance", "Conduttanza C a tutta apertura", "conductance", { group: "sim", simDefault: def });
 
-export const VALVE_PORTS: Record<ValveFunction, [string, PortKind][]> = {
-  "2/2": [["1", "supply"], ["2", "work"]],
-  "3/2": [["1", "supply"], ["2", "work"], ["3", "exhaust"]],
-  "3/3": [["1", "supply"], ["2", "work"], ["3", "exhaust"]],
-  "4/2": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"]],
-  "4/3": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"]],
-  "4/3E": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"]],
-  "5/2": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
-  "5/3": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
-  "5/3E": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
-  "5/3P": [["1", "supply"], ["2", "work"], ["4", "work"], ["3", "exhaust"], ["5", "exhaust"]],
-};
+/** Porte di una valvola distributrice: dipendono solo dal numero di vie. */
+export const valvePorts = (fn: string | undefined): [string, PortKind][] => WAY_PORTS[waysOf(fn)];
 /** Comandi secondo ISO 1219-1, nell'ordine in cui compaiono nel menu. */
 export const ACTUATIONS: Actuation[] = [
   "solenoid", "solenoid_pilot", "solenoid_pilot_ext", "proportional", "piezo", "stepper", "pilot", "pilot_differential",
@@ -325,6 +334,27 @@ export const hasPilotPort = (a?: Actuation) => isPilot(a) || a === "solenoid_pil
 /** Comandi di ritorno: riportano la valvola a riposo quando l'altro lato non è azionato. */
 export const isReturn = (a?: Actuation) =>
   a === "spring" || a === "air_return" || a === "air_return_ext" || a === "spring_air_return";
+/** Comandi manuali: si azionano a mano, anche come secondo comando dello stesso lato. */
+export const isManual = (a?: Actuation) => a === "manual" || a === "lever" || a === "pedal" || a === "pedal_double" ||
+  isManualDetent(a);
+/** Secondi comandi ammessi sullo stesso lato (configuratore): manuali e meccanici. */
+export const AUX_ACTUATIONS: Actuation[] = ACTUATIONS.filter((a) => isManual(a) || isMechanical(a));
+
+/**
+ * Casella di riposo, in cui la valvola parte: la centrale con tre posizioni, quella del ritorno nelle
+ * monostabili, quella scelta (`initial`, predefinita 12) nelle bistabili.
+ */
+export function restPosition(c: { function?: string; actuation_14?: string; actuation_12?: string; initial?: string }): BoxPosition {
+  if (isThreePosition(c.function ?? "5/2")) return "0";
+  const a14 = (c.actuation_14 ?? "solenoid") as Actuation, a12 = (c.actuation_12 ?? "spring") as Actuation;
+  if (isReturn(a14) && !isReturn(a12)) return "14";
+  if (isReturn(a12)) return "12";
+  return c.initial === "14" ? "14" : "12";
+}
+/** Valvola bistabile: due posizioni e nessun ritorno, resta dove l'ultimo comando l'ha portata. */
+export const isBistable = (c: { function?: string; actuation_14?: string; actuation_12?: string }): boolean =>
+  !isThreePosition(c.function ?? "5/2") && !isReturn((c.actuation_14 ?? "solenoid") as Actuation) &&
+  !isReturn((c.actuation_12 ?? "spring") as Actuation);
 
 const cylinderParams: ParamSpec[] = [
   p("bore", "Alesaggio", "length", { required: true }),
@@ -669,7 +699,7 @@ const DEFS: TypeDef[] = [
       { label: "5/3 proporzionale", options: { function: "5/3", actuation_14: "proportional", actuation_12: "proportional" } },
     ],
     ports: (c) => {
-      const ports = VALVE_PORTS[c.function ?? "5/2"].map(([n, k]) => port(n, k, k === "exhaust"));
+      const ports = valvePorts(c.function).map(([n, k]) => port(n, k, k === "exhaust"));
       if (hasPilotPort(c.actuation_14)) ports.push(port("14", "pilot"));
       if (hasPilotPort(c.actuation_12)) ports.push(port("12", "pilot"));
       return ports;
@@ -1264,9 +1294,22 @@ export function buildComponent(raw: ComponentData): Component {
 
   if (def.type === "directional_valve") {
     const fn = raw.function ?? "5/2";
-    if (!(fn in VALVE_PORTS)) {
-      const allowed = Object.keys(VALVE_PORTS).sort().map((f) => `'${f}'`).join(", ");
-      throw new ParameterError(`${id}: funzione valvola non supportata '${fn}'; ammesse [${allowed}]`);
+    if (raw.boxes != null && raw.boxes !== "") {
+      // corpo personalizzato: la funzione dice solo vie e posizioni (n/m)
+      if (!/^[2-5]\/[23]$/.test(fn)) {
+        throw new ParameterError(`${id}: con le caselle personalizzate la funzione è vie/posizioni, per esempio '5/2' (non '${fn}')`);
+      }
+      let boxes: BoxItem[][];
+      try { boxes = parseBoxes(String(raw.boxes), waysOf(fn)); } catch (e) {
+        throw new ParameterError(`${id}: caselle non valide: ${(e as Error).message}`);
+      }
+      if (boxes.length !== Number(fn[2])) {
+        throw new ParameterError(`${id}: la funzione ${fn} vuole ${fn[2]} caselle, ne sono scritte ${boxes.length}`);
+      }
+      comp.boxes = boxes;
+    } else if (!(STANDARD_FUNCTIONS as string[]).includes(fn)) {
+      const allowed = [...STANDARD_FUNCTIONS].sort().map((f) => `'${f}'`).join(", ");
+      throw new ParameterError(`${id}: funzione valvola non supportata '${fn}'; ammesse [${allowed}] o le caselle personalizzate`);
     }
     comp.function = fn as ValveFunction;
     for (const side of ["actuation_14", "actuation_12"] as const) {
@@ -1278,14 +1321,46 @@ export function buildComponent(raw: ComponentData): Component {
       throw new ParameterError(`${id}: almeno un lato deve avere un comando attivo`);
     }
     for (const side of ["14", "12"] as const) {
+      const aux = raw[`aux_${side}`];
+      if (aux == null || aux === "" || aux === "none") continue;
+      if (!AUX_ACTUATIONS.includes(aux as Actuation)) {
+        throw new ParameterError(`${id}: secondo comando '${aux}' non valido sul lato ${side} (solo manuale o meccanico)`);
+      }
+      if (isReturn(comp[`actuation_${side}`])) {
+        throw new ParameterError(`${id}: il lato ${side} ha il ritorno, non può avere un secondo comando`);
+      }
+      if (isMechanical(aux as Actuation) && isMechanical(comp[`actuation_${side}`])) {
+        throw new ParameterError(`${id}: il lato ${side} ha già un comando meccanico`);
+      }
+      comp[`aux_${side}`] = aux as Actuation;
+    }
+    for (const side of ["14", "12"] as const) {
       const raw_cam = raw[`cam_${side}`];
       if (raw_cam == null || raw_cam === "") continue;
       const m = CAM_RE.exec(String(raw_cam));
       if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
-      if (!isMechanical(comp[`actuation_${side}`])) {
+      if (!isMechanical(comp[`actuation_${side}`]) && !isMechanical(comp[`aux_${side}`])) {
         throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede un comando meccanico sul lato ${side}`);
       }
       comp[`cam_${side}`] = { cylinder: m[1]!, end: m[2] as "+" | "-" };
+    }
+    if (raw.initial != null && raw.initial !== "") {
+      if (raw.initial !== "14" && raw.initial !== "12") {
+        throw new ParameterError(`${id}: posizione iniziale '${raw.initial}' non valida (ammesse '14' e '12')`);
+      }
+      if (!isBistable(comp)) {
+        throw new ParameterError(`${id}: la posizione iniziale si sceglie solo nelle valvole bistabili (le altre partono dalla casella di riposo)`);
+      }
+      comp.initial = raw.initial;
+    }
+    if (raw.dominant != null && raw.dominant !== "" && raw.dominant !== "none") {
+      if (raw.dominant !== "14" && raw.dominant !== "12") {
+        throw new ParameterError(`${id}: segnale dominante '${raw.dominant}' non valido (ammessi '14' e '12')`);
+      }
+      if (isReturn(comp.actuation_14) || isReturn(comp.actuation_12)) {
+        throw new ParameterError(`${id}: il segnale dominante serve solo se entrambi i lati hanno un comando (nessun ritorno)`);
+      }
+      comp.dominant = raw.dominant;
     }
   } else if (def.type === "roller_flow_control") {
     // il rullo è sul lato 14

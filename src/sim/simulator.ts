@@ -11,7 +11,7 @@ import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
-import { isElectric, isMechanical, isPilot, isReturn, isThreePosition } from "../model/components";
+import { isElectric, isManual, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -190,8 +190,39 @@ export class Simulator {
   /** da quando il pilotaggio di ogni temporizzatore è attivo (s), per lato */
   private readonly pilotSince = new Map<string, number>();
 
-  /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno). */
+  /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno, o il secondo comando del lato). */
   sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
+    return this.mainActive(v, side, P) || this.auxActive(v, side);
+  }
+
+  /** Secondo comando del lato: manuale (come il comando ausiliario) o meccanico (rullo premuto dal cilindro). */
+  auxActive(v: ValveSpec, side: "14" | "12"): boolean {
+    const aux = side === "14" ? v.aux14 : v.aux12;
+    if (!aux) return false;
+    const cam = side === "14" ? v.cam14 : v.cam12;
+    // un rullo senza cilindro si preme a mano, come il comando manuale
+    if (isManual(aux) || (isMechanical(aux) && !cam)) return this.override(v.id, side);
+    return isMechanical(aux) && !!cam && this.camPressed(aux, cam);
+  }
+
+  /** Rullo o tastatore premuto dal cilindro del finecorsa. */
+  private camPressed(act: Actuation, cam: Cam): boolean {
+    const c = this.cylinder(cam.cylinder);
+    if (!c) return false;
+    const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+    if (act === "roller_oneway") {
+      // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
+      const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
+      const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+      const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
+      return inZone && towards;
+    }
+    // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
+    const tol = 0.002 / stroke;
+    return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+  }
+
+  private mainActive(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (isReturn(act)) return false;
     if (isPilot(act)) {
@@ -204,21 +235,7 @@ export class Simulator {
       return this.t - this.pilotSince.get(key)! >= v.delay - 1e-9;
     }
     const cam = side === "14" ? v.cam14 : v.cam12;
-    if (isMechanical(act) && cam) {
-      const c = this.cylinder(cam.cylinder);
-      if (!c) return false;
-      const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
-      if (act === "roller_oneway") {
-        // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
-        const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
-        const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
-        const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
-        return inZone && towards;
-      }
-      // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
-      const tol = 0.002 / stroke;
-      return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
-    }
+    if (isMechanical(act) && cam) return this.camPressed(act, cam);
     const on = (this.electric?.drive(`${v.id}.${side}`) ?? this.command(v.id, side)) ||
       (!!v.override && isElectric(act) && this.override(v.id, side));
     if (act === "solenoid_pilot" || act === "solenoid_pilot_ext") {
@@ -258,7 +275,10 @@ export class Simulator {
     this.net.valves.forEach((v, i) => {
       const s14 = this.sideActive(v, "14", P), s12 = this.sideActive(v, "12", P);
       let pos = this.positions[i]!;
-      if (isThreePosition(v.fn)) {
+      if (s14 && s12 && v.dominant) {
+        // segnale dominante: con i due comandi insieme vince il lato indicato
+        pos = v.dominant;
+      } else if (isThreePosition(v.fn)) {
         pos = s14 && !s12 ? "14" : s12 && !s14 ? "12" : "0";
       } else if (s14 && !s12) {
         pos = "14";

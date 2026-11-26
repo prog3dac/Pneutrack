@@ -3,6 +3,15 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.33.0 · 2026-11-26
+
+- Configuratore delle valvole distributrici: nel pannello della valvola «Configura valvola…», nella palette «Le mie valvole» → «Nuova valvola…». Si scelgono vie (2–5) e posizioni (2 o 3), il contenuto di ogni casella da un elenco di caselle ISO 1219-1 (per esempio 4/3 a centri in pressione, 2/2 normalmente aperta, 3/3 con le caselle che servono), i comandi dei due lati, la portata Qn; l'anteprima del simbolo e i passaggi di ogni posizione si aggiornano a ogni scelta. *Applica* si annulla con *Ctrl+Z*.
+- Secondo comando sullo stesso lato, manuale o meccanico (per esempio pilotaggio più pulsante): si disegna sopra il primo e in simulazione si aziona con un clic come il comando manuale ausiliario; un rullo come secondo comando può essere premuto da un cilindro.
+- Valvole bistabili: si sceglie la casella in cui partono. Segnale dominante: con 14 e 12 comandati insieme vince il lato scelto; nel simbolo è marcato con «D» (la norma non ha un segno per questo).
+- «Le mie valvole»: le valvole configurate si salvano nella palette di questo browser, si inseriscono con un clic o trascinandole e si tolgono con ×.
+- Simbolo e simulazione leggono le stesse caselle: quello che si disegna è quello che si simula. Le valvole di sempre non cambiano; le monostabili con il ritorno sul lato 14 (per esempio la 3/2 NA) ora mostrano sotto le porte la casella di riposo, come vuole la norma. Le porte restano dove sono: le linee già disegnate non si spostano.
+- Nel file la valvola personalizzata porta le sue caselle nel campo `boxes` (`"1>4 2>3 | 1>4 1>2 x3 | 1>2 4>3"`); nuovi campi facoltativi `aux_14`, `aux_12`, `initial`, `dominant`. I file delle versioni precedenti si aprono come prima.
+
 ## 0.32.0 · 2026-11-26
 
 - In simulazione si regolano gli elementi mentre il circuito gira: pressione di riduttori, gruppi FRL, filtri riduttori e riduttori con scarico, taratura di valvole limitatrici, di sequenza e pressostati, apertura di strozzatori, regolatori di flusso e viti di ammortizzo, ritardo dei temporizzatori, pressione dell'alimentazione. Il cilindro rallenta o accelera subito, senza ripartire.

@@ -223,7 +223,8 @@ const OPTIONS: Record<string, string> = {
     "Funzione della valvola, nella forma vie/posizioni. 2/2: apre o chiude una linea. 3/2: alimenta o scarica " +
     "un'utenza (NC chiusa a riposo, NA aperta). 4/2 e 5/2: comandano un cilindro a doppio effetto. 3/3, 4/3 e " +
     "5/3: tre posizioni, con il centro chiuso (blocca il cilindro), in scarico (lo lascia libero) o in pressione; " +
-    "il centro è la posizione di riposo.",
+    "il centro è la posizione di riposo. Con «Configura valvola…» si sceglie il contenuto di ogni casella " +
+    "(per esempio un 4/3 a centri in pressione o un 2/2 normalmente aperta).",
   actuation_14:
     "Comando che porta la valvola nella posizione «14» (la casella collegata a 1→4 / 1→2 attivo). Per esempio " +
     "solenoide, pilotaggio pneumatico, pulsante, leva o rullo. Con un comando meccanico puoi scegliere qui " +

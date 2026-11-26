@@ -4,7 +4,8 @@
 //   { w, h, ports: { nome: {x, y, dir} }, svg }
 // Le porte coincidono con quelle del modello (numerazione ISO 5599).
 // `state` (facoltativo) è lo stato di simulazione: posizione della valvola, corsa del cilindro.
-import { isElectric, isMechanical, isPilot, type Actuation, type ComponentData } from "../model/components";
+import { isElectric, isMechanical, isPilot, restPosition, type Actuation, type ComponentData } from "../model/components";
+import { boxIndex, valveBoxes, waysOf, type Ways } from "../model/valveBody";
 import { Quantity } from "../model/units";
 import type { Position } from "../sim/network";
 
@@ -99,65 +100,27 @@ const M = 10;
 // l'una dall'altra, sul reticolo. Fino a quattro vie la casella è un quadrato 4M × 4M (101V7); con cinque vie è
 // il rettangolo 6M × 4M (101V8), l'unico in cui tre porte stanno a 2M.
 const FIVE_PORT = { top: { 4: 2 * M, 2: 4 * M }, bottom: { 5: M, 1: 3 * M, 3: 5 * M } };
-const VALVE_LAYOUT: Record<string, { top: Record<string, number>; bottom: Record<string, number> }> = {
-  "2/2": { top: { 2: 2 * M }, bottom: { 1: 2 * M } },
-  "3/2": { top: { 2: 2 * M }, bottom: { 1: M, 3: 3 * M } },
-  "3/3": { top: { 2: 2 * M }, bottom: { 1: M, 3: 3 * M } },
-  "4/2": { top: { 4: M, 2: 3 * M }, bottom: { 1: M, 3: 3 * M } },
-  "4/3": { top: { 4: M, 2: 3 * M }, bottom: { 1: M, 3: 3 * M } },
-  "4/3E": { top: { 4: M, 2: 3 * M }, bottom: { 1: M, 3: 3 * M } },
-  "5/2": FIVE_PORT, "5/3": FIVE_PORT, "5/3E": FIVE_PORT, "5/3P": FIVE_PORT,
+const VALVE_LAYOUT: Record<Ways, { top: Record<string, number>; bottom: Record<string, number> }> = {
+  2: { top: { 2: 2 * M }, bottom: { 1: 2 * M } },
+  3: { top: { 2: 2 * M }, bottom: { 1: M, 3: 3 * M } },
+  4: { top: { 4: M, 2: 3 * M }, bottom: { 1: M, 3: 3 * M } },
+  5: FIVE_PORT,
 };
 /** larghezza della casella: 4M fino a quattro vie (101V7), 6M con cinque (101V8) */
-const boxWidth = (fn: string) => (fn.startsWith("5/") ? 6 * M : S);
+const boxWidth = (ways: Ways) => (ways === 5 ? 6 * M : S);
 /** ISO 1219-1 RF004: l'asse dei comandi sta 1M sopra il bordo inferiore della casella */
 const ACT_Y = S / 2 - M;
-
-type BoxItem = ["a", string, string] | ["x", string];
-// contenuto delle caselle, da sinistra (lato 14) a destra (lato 12)
-const VALVE_BOXES: Record<string, BoxItem[][]> = {
-  "2/2": [[["a", "1", "2"]], [["x", "1"], ["x", "2"]]],
-  "3/2": [[["a", "1", "2"], ["x", "3"]], [["a", "2", "3"], ["x", "1"]]],
-  "4/2": [[["a", "1", "4"], ["a", "2", "3"]], [["a", "1", "2"], ["a", "4", "3"]]],
-  // tre posizioni: la centrale è quella di riposo (centro chiuso, o utilizzi in scarico)
-  "3/3": [[["a", "1", "2"], ["x", "3"]], [["x", "1"], ["x", "2"], ["x", "3"]], [["a", "2", "3"], ["x", "1"]]],
-  "4/3": [
-    [["a", "1", "4"], ["a", "2", "3"]],
-    [["x", "1"], ["x", "2"], ["x", "3"], ["x", "4"]],
-    [["a", "1", "2"], ["a", "4", "3"]],
-  ],
-  "4/3E": [
-    [["a", "1", "4"], ["a", "2", "3"]],
-    [["a", "4", "3"], ["a", "2", "3"], ["x", "1"]],
-    [["a", "1", "2"], ["a", "4", "3"]],
-  ],
-  // nelle 5 vie lo scarico che non lavora in una posizione è chiuso: 5 col lato 14, 3 col lato 12 (ISO 1219-1)
-  "5/2": [[["a", "1", "4"], ["a", "2", "3"], ["x", "5"]], [["a", "1", "2"], ["a", "4", "5"], ["x", "3"]]],
-  "5/3": [
-    [["a", "1", "4"], ["a", "2", "3"], ["x", "5"]],
-    [["x", "1"], ["x", "2"], ["x", "3"], ["x", "4"], ["x", "5"]],
-    [["a", "1", "2"], ["a", "4", "5"], ["x", "3"]],
-  ],
-  "5/3E": [
-    [["a", "1", "4"], ["a", "2", "3"], ["x", "5"]],
-    [["a", "4", "5"], ["a", "2", "3"], ["x", "1"]],
-    [["a", "1", "2"], ["a", "4", "5"], ["x", "3"]],
-  ],
-  "5/3P": [
-    [["a", "1", "4"], ["a", "2", "3"], ["x", "5"]],
-    [["a", "1", "4"], ["a", "1", "2"], ["x", "3"], ["x", "5"]],
-    [["a", "1", "2"], ["a", "4", "5"], ["x", "3"]],
-  ],
-};
+/** asse del secondo comando dello stesso lato (manuale o meccanico), sopra il primo */
+const AUX_Y = ACT_Y - 18;
 
 /** tratteggio dell'alimentazione esterna del pilota (422V1): dal comando alla porta, sotto, sul reticolo */
 const extPilotLine = (o: (d: number) => number) =>
   path(`M${o(5)},${ACT_Y + 8} L${o(5)},${S / 2 + 4} L${o(10)},${S / 2 + 4} L${o(10)},${S / 2 + STUB}`, "nofill dash");
 
-function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
+function actuator(kind: string, x0: number, side: -1 | 1, active: boolean, axis = ACT_Y) {
   const o = (d: number) => x0 + side * d;
   // i disegni sono scritti attorno all'asse y = 0 e spostati sull'asse dei comandi (RF004)
-  const y = (v: number) => ACT_Y + v;
+  const y = (v: number) => axis + v;
   const cls = active ? ` class="active"` : "";
   let body = "";
   switch (kind) {
@@ -274,6 +237,12 @@ function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
   return `<g${cls} data-side="${side < 0 ? "14" : "12"}">${body}</g>`;
 }
 
+/** Secondo comando dello stesso lato: sopra il primo; si aziona in simulazione come il comando ausiliario. */
+function auxActuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
+  const g = actuator(kind, x0, side, active, AUX_Y);
+  return g.replace(/^<g/, `<g data-override="1"`);
+}
+
 /** dove finisce il disegno di ciascun comando elettrico, dal bordo della valvola */
 const ELECTRIC_REACH: Partial<Record<string, number>> = {
   solenoid: 14, solenoid_pilot: 20, solenoid_pilot_ext: 20, proportional: 16, piezo: 14, stepper: 20,
@@ -297,20 +266,22 @@ function overrideMark(kind: string, act: string, x0: number, side: -1 | 1, activ
 }
 
 function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
-  const fn = comp.function && VALVE_BOXES[comp.function] ? comp.function : "5/2";
-  const boxes = VALVE_BOXES[fn]!;
-  const lay = VALVE_LAYOUT[fn]!;
+  const boxes = valveBoxes(comp);
+  const ways = waysOf(comp.function);
+  const lay = VALVE_LAYOUT[ways];
   const n = boxes.length;
-  const B = boxWidth(fn);
+  const B = boxWidth(ways);
   const W = n * B;
   const x0 = -W / 2;
-  const rest = x0 + B; // la casella di riposo è la seconda
+  // le porte stanno sotto la seconda casella, sempre nello stesso punto: le linee collegate non si spostano
+  const rest = x0 + B;
   const kx = (name: string) => lay.top[name] ?? lay.bottom[name]!;
   const isTop = (name: string) => name in lay.top;
 
-  // in simulazione le caselle scorrono: quella attiva si allinea alle porte
-  const activeBox = state?.position === "14" ? 0 : state?.position === "12" ? n - 1 : 1;
-  const shift = state?.position ? (1 - activeBox) * B : 0;
+  // la casella allineata alle porte è quella di riposo (ISO 1219-1) e, in simulazione, quella attiva:
+  // il corpo scorre sotto le porte
+  const activeBox = boxIndex(state?.position ?? restPosition(comp), n);
+  const shift = (1 - activeBox) * B;
 
   let moving = "";
   boxes.forEach((content, b) => {
@@ -321,7 +292,15 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
         const [, from, to] = item;
         const y1 = isTop(from) ? -S / 2 + 4 : S / 2 - 4;
         const y2 = isTop(to) ? -S / 2 + 4 : S / 2 - 4;
-        moving += arrow(bx + kx(from), y1, bx + kx(to), y2);
+        if (isTop(from) === isTop(to)) {
+          // due porte sullo stesso lato: passaggio a U dentro la casella
+          const yu = isTop(from) ? -S / 2 + 14 : S / 2 - 14;
+          const xa = bx + kx(from), xb = bx + kx(to);
+          moving += path(`M${xa},${y1 - (isTop(from) ? 4 : -4)} L${xa},${yu} L${xb},${yu} L${xb},${y2}`, "nofill") +
+            arrowHead(xb, yu, xb, y2);
+        } else {
+          moving += arrow(bx + kx(from), y1, bx + kx(to), y2);
+        }
       } else {
         const x = bx + kx(item[1]);
         const yEdge = isTop(item[1]) ? -S / 2 : S / 2;
@@ -333,14 +312,23 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const a14 = comp.actuation_14 ?? "solenoid";
   const a12 = comp.actuation_12 ?? "spring";
   moving += actuator(a14, x0, -1, !!state?.active14) + actuator(a12, -x0, 1, !!state?.active12);
+  // secondo comando dello stesso lato (configuratore)
+  if (comp.aux_14 && comp.aux_14 !== "none") moving += auxActuator(comp.aux_14, x0, -1, !!state?.override14);
+  if (comp.aux_12 && comp.aux_12 !== "none") moving += auxActuator(comp.aux_12, -x0, 1, !!state?.override12);
+  // segnale dominante: «D» sopra lo spigolo del lato che vince (convenzione di Pneutrack, la norma non ha un segno)
+  if (comp.dominant === "14") moving += text(x0 - 5, -S / 2 - 4, "D", "dominant-label");
+  if (comp.dominant === "12") moving += text(-x0 + 5, -S / 2 - 4, "D", "dominant-label");
   const ovr = comp.override ?? "none";
   const hasOverride = ovr !== "none" && (isElectric(a14 as Actuation) || isElectric(a12 as Actuation));
   if (hasOverride) {
     moving += overrideMark(ovr, a14, x0, -1, !!state?.override14) + overrideMark(ovr, a12, -x0, 1, !!state?.override12);
   }
   // finecorsa: sigla del cilindro che preme il rullo
-  if (comp.cam_14 && isMechanical(a14 as Actuation)) moving += text(x0 - 15, -16, comp.cam_14, "cam-label");
-  if (comp.cam_12 && isMechanical(a12 as Actuation)) moving += text(-x0 + 15, -16, comp.cam_12, "cam-label");
+  const mech = (a: string | undefined) => !!a && isMechanical(a as Actuation);
+  // con il rullo come secondo comando la sigla va sopra il secondo comando
+  const camY = (main: string, aux?: string) => (mech(main) ? -16 : mech(aux) ? AUX_Y - 12 : -16);
+  if (comp.cam_14 && (mech(a14) || mech(comp.aux_14))) moving += text(x0 - 15, camY(a14, comp.aux_14), comp.cam_14, "cam-label");
+  if (comp.cam_12 && (mech(a12) || mech(comp.aux_12))) moving += text(-x0 + 15, camY(a12, comp.aux_12), comp.cam_12, "cam-label");
   // bobine del circuito elettrico che eccitano i solenoidi
   if (state?.coil14) moving += text(x0 - 15, -16, state.coil14, "cam-label coil-label");
   if (state?.coil12) moving += text(-x0 + 15, -16, state.coil12, "cam-label coil-label");

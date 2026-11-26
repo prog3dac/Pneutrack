@@ -48,7 +48,7 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `rotary_joint` | Giunto rotante | 1, 2 | |
 | | `manifold` | Basetta di distribuzione: tutte le porte sullo stesso volume | 1, 21–24 (le uscite possono restare libere) | `volume` |
 | | `sheet_reference` | Rimando ad altro foglio: collegato ai rimandi pneumatici con la stessa descrizione (`label`), anche su altri fogli | 1 | |
-| Valvole distributrici | `directional_valve` | 2/2, 3/2, 3/3, 4/2, 4/3 (centri chiusi, in scarico), 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`) |
+| Valvole distributrici | `directional_valve` | 2/2, 3/2, 3/3, 4/2, 4/3 (centri chiusi, in scarico), 5/2, 5/3 (centri chiusi, in scarico, in pressione), oppure corpo personalizzato | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`), `boxes`?, `aux_14`?, `aux_12`?, `initial`? (`14`, `12`), `dominant`? (`14`, `12`): vedi «Valvole personalizzate» |
 | Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure`, `check_spring` (`no`, `yes`: con la molla apre a 0,5 bar se `cracking_pressure` manca) |
 | | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |
 | | `double_pilot_check` | Doppia non ritorno pilotata: 1 → 2 e 3 → 4 liberi, i ritorni aperti dall'altra linea | 1, 2, 3, 4 | `pilot_pressure` |
@@ -396,3 +396,23 @@ finché dura.
 - `electricState()` restituisce carichi eccitati, relè commutati, contatti azionati, potenziale di ogni morsetto
   (`"+"`, `"0"` o `null`), cortocircuito e relè in oscillazione (più di 20 commutazioni al secondo, per esempio una
   bobina alimentata dal proprio contatto NC).
+
+
+## Valvole personalizzate
+
+Il configuratore scrive nella valvola distributrice il contenuto delle caselle quando non coincide con una
+funzione normalizzata. `function` diventa vie/posizioni (`"2/3"`, `"4/3"`…) e `boxes` elenca le caselle da
+sinistra (lato 14) a destra (lato 12), separate da `|`. In ogni casella `1>2` è un passaggio (freccia) tra
+due porte, `x3` una porta chiusa. Con tre caselle la centrale è la posizione di riposo.
+
+```json
+{"id": "V1", "type": "directional_valve", "function": "4/3",
+ "boxes": "1>4 2>3 | 1>4 1>2 x3 | 1>2 4>3",
+ "actuation_14": "solenoid", "actuation_12": "solenoid", "dominant": "14"}
+```
+
+- `aux_14`, `aux_12`: secondo comando dello stesso lato, manuale (`manual`, `lever`, `lever_detent`…) o
+  meccanico (`mechanical`, `plunger`, `roller_oneway`…). Non su un lato con il ritorno. Con un rullo il
+  finecorsa `cam_14` / `cam_12` vale per il secondo comando.
+- `initial`: solo bistabili (due posizioni, nessun ritorno), casella in cui la valvola parte; predefinita `12`.
+- `dominant`: lato che vince quando 14 e 12 sono comandati insieme; solo se nessun lato ha il ritorno.
