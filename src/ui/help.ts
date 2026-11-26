@@ -340,6 +340,9 @@ export const FIELD_HELP: Record<string, string> = {
   "circuit-name":
     "Nome dello schema. Compare nel titolo, nell'archivio dei progetti, nel cartiglio del foglio e nel nome " +
     "dei file esportati.",
+  "page-name":
+    "Nome del foglio, mostrato sulla scheda sotto l'area di lavoro e nel cartiglio accanto al numero del foglio " +
+    "(per esempio «Pneumatico», «Comando elettrico»). Le schede si rinominano anche con un doppio clic.",
   "sheet-format":
     "Formato del foglio di disegno, da A4 ad A0 (ISO 216), con cornice e cartiglio. «Nessuno» lascia l'area " +
     "di lavoro libera, senza foglio. Il PDF esportato ha il formato scelto.",

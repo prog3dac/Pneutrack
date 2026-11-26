@@ -9,6 +9,7 @@ import type { ComponentData } from "./components";
 import { normalizeAnnotations, type AnnotationData } from "./annotations";
 import { normalizeBlocks, type BlockData } from "./blocks";
 import { parseSheet, type SheetData } from "./sheet";
+import type { SheetEntry } from "./sheets";
 import type { TubeData } from "./tubes";
 
 export const FORMAT = "pneutrack/circuit";
@@ -32,6 +33,8 @@ export interface Placement {
   mirror?: boolean;
   /** sigla e descrizione spostate a mano: scostamento dal centro del componente; senza, posizione automatica */
   label?: [number, number];
+  /** foglio del progetto (id di `sheets`); senza, il primo foglio */
+  sheet?: string;
 }
 
 export interface CircuitDoc {
@@ -48,6 +51,8 @@ export interface CircuitDoc {
   blocks?: BlockData[];
   /** testi e forme disegnati sullo schema (facoltativo) */
   annotations?: AnnotationData[];
+  /** fogli del progetto, in ordine (facoltativo: senza, un solo foglio); vedi `sheets.ts` */
+  sheets?: SheetEntry[];
 }
 
 export const emptyCircuit = (name = "Nuovo schema"): CircuitDoc =>
@@ -126,5 +131,6 @@ export function normalizeCircuit(data: unknown): CircuitDoc {
     ...(parseSheet(d.sheet) ? { sheet: parseSheet(d.sheet)! } : {}),
     ...blocksOf(d),
     ...annotationsOf(d),
+    ...(Array.isArray(d.sheets) && d.sheets.length ? { sheets: d.sheets } : {}),
   };
 }

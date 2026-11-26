@@ -74,6 +74,17 @@ dei problemi.
   sposta il foglio. Il pulsante *PDF* scarica il foglio in PDF vettoriale, in tema chiaro e senza
   selezioni; senza un formato scelto usa il più piccolo adatto. Il menu *Mostra* vale anche per il
   PDF.
+- **Fogli**: le schede sotto l'area di lavoro mostrano i fogli del progetto. Un clic apre un foglio
+  (anche in simulazione; da tastiera *PagSu* / *PagGiù*), *+* ne aggiunge uno dopo quello aperto con lo
+  stesso formato e cartiglio, il doppio clic rinomina, il trascinamento riordina; il menu ▾ (o il clic
+  destro) rinomina, duplica (con sigle nuove), sposta ed elimina. Ogni foglio ha il suo disegno e il suo
+  cartiglio, che riporta «Foglio n di N» e il nome del foglio. Il circuito è uno solo: i rimandi
+  (pneumatico e elettrico) con la stessa descrizione collegano i fogli, accanto a ogni rimando compare
+  il foglio dove prosegue (un clic ci porta) e la simulazione tratta tutti i fogli insieme. Copia e
+  incolla funzionano tra fogli; *Annulla* riporta al foglio dove era avvenuta la modifica. Con più fogli
+  PDF, SVG e DXF chiedono se esportare il foglio aperto o tutti: il PDF ha una pagina per foglio, l'SVG
+  un file per foglio, il DXF i fogli affiancati. La distinta conta i pezzi di tutti i fogli e indica il
+  foglio di ogni sigla.
 - **Versione**: il numero accanto al nome dell'app apre le novità di ogni versione
   ([CHANGELOG.md](../CHANGELOG.md)); dopo un aggiornamento si aprono da sole una volta.
 - **Validazione**: avviene a ogni modifica. I problemi si aprono con il bollino di validazione nella barra

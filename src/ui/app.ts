@@ -5,6 +5,10 @@ import {
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import {
+  defaultPageName, duplicatePage, joinPages, mergedCircuit, newPageId, pageOfComponent, REFERENCE_TYPES,
+  referenceTargets, referenceText, splitPages, type Page, type ReferenceTarget,
+} from "../model/sheets";
+import {
   aciOf, ANN_PRESETS, annBox, annFromPreset, annLabel, arrowHead, COLORS, contains, dashArray, DEFAULT_TEXT_SIZE,
   DEFAULT_WEIGHT, detachFrom, dxfLinetype, fontUnits, inside as insideBox, leaderTip, LINE_TYPES, moveAnn, nextAnnId,
   normalizeAnnotations, offsetPolyline, rotateBox, rotatePt, strokeUnits, TEXT_SIZES, WEIGHTS,
@@ -31,9 +35,9 @@ import { strokes, summarize } from "../sim/measures";
 import { diagramHeight, fmt as fmtNum, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
-import { bomToPdf, sheetSvg, svgToPdf } from "./pdf";
+import { bomToPdf, sheetSvg, svgsToPdf } from "./pdf";
 import { BOM_HEADERS, billOfMaterials, bomCells, bomCsv } from "../model/bom";
-import { dxfBytes, viewportToDxf } from "./dxf";
+import { dxfBytes, sheetsToDxf } from "./dxf";
 import {
   centeredOrigin, drawingArea, FRAME, SHEET_FORMATS, sheetRect, sheetSizeMm, smallestFormat, TITLE_BLOCK, UNITS_PER_MM,
   type Orientation, type Rect, type SheetData, type SheetFormat,
@@ -68,7 +72,7 @@ const PREFIX: Record<string, string> = {
   // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
   electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
   relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
-  wire_junction: "N",
+  wire_junction: "N", wire_reference: "RE",
 };
 
 /** componenti che mostrano la pressione della porta 1 accanto al simbolo, in simulazione */
@@ -104,10 +108,15 @@ type Doc = CircuitDoc;
 // --- stato -------------------------------------------------------------------
 
 const catalog: TypeDef[] = typeList();
-let doc: Doc = emptyCircuit();
+/** fogli del progetto; `doc` è lo schema del foglio aperto (pages[active].doc) */
+let pages: Page[] = [{ id: "F1", name: defaultPageName(1), doc: emptyCircuit() }];
+let active = 0;
+let doc: Doc = pages[0]!.doc;
 let selection: Selection = null;
 let analysis: Analysis = { ok: true, issues: [], ports: {}, pressures: {}, errors: 0, warnings: 0 };
 let view = { x: 0, y: 0, k: 1 };
+/** vista (spostamento e zoom) di ogni foglio, per ritrovarla tornandoci */
+const pageViews = new Map<string, { x: number; y: number; k: number }>();
 const history: { past: string[]; future: string[] } = { past: [], future: [] };
 
 const $ = <T extends Element = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -115,7 +124,14 @@ const svg = $<SVGSVGElement>("#canvas");
 const viewport = $<SVGGElement>("#viewport");
 const target = (e: Event) => e.target as Element;
 
+/** componente del foglio aperto */
 const byId = (id: string) => doc.components.find((c) => c.id === id);
+/** componenti di tutti i fogli (le sigle sono uniche in tutto il progetto) */
+const allComponents = () => pages.flatMap((p) => p.doc.components);
+const anyById = (id: string) => {
+  for (const p of pages) { const c = p.doc.components.find((x) => x.id === id); if (c) return c; }
+  return undefined;
+};
 function layoutOf(id: string) {
   doc.layout[id] ??= { x: 0, y: 0, rot: 0 };
   return doc.layout[id];
@@ -124,7 +140,30 @@ const catalogEntry = (type: string) => catalog.find((t) => t.type === type);
 
 // --- storia (annulla / ripeti) -----------------------------------------------
 
-const snapshot = () => JSON.stringify(doc);
+/** stato per annulla/ripeti: tutti i fogli e il foglio aperto (per tornarci annullando) */
+const snapshot = () => JSON.stringify({ active: pages[active]!.id, pages });
+function restore(snap: string) {
+  const st = JSON.parse(snap) as { active: string; pages: Page[] };
+  const was = pages[active]?.id;
+  pages = st.pages;
+  active = Math.max(0, pages.findIndex((p) => p.id === st.active));
+  doc = pages[active]!.doc;
+  if (pages[active]!.id !== was) {
+    // si torna al foglio della modifica, con la sua vista
+    if (was) pageViews.set(was, { ...view });
+    selection = null;
+    const v = pageViews.get(pages[active]!.id);
+    if (v) view = { ...v };
+  }
+}
+/** lo stesso stato, ma con il foglio aperto adesso */
+function onActivePage(snap: string) {
+  const st = JSON.parse(snap) as { active: string; pages: Page[] };
+  return JSON.stringify({ ...st, active: pages[active]!.id });
+}
+/** il file del progetto (tutti i fogli) */
+const fileDoc = (): CircuitDoc => joinPages(doc.name, pages);
+const fileJson = () => JSON.stringify(fileDoc());
 function commit(before?: string) {
   if (before !== undefined && before !== snapshot()) {
     history.past.push(before);
@@ -141,15 +180,17 @@ function mutate(fn: () => void) {
 }
 function undo() {
   if (sim || !history.past.length) return;
-  history.future.push(snapshot());
-  doc = JSON.parse(history.past.pop()!);
+  const cur = snapshot();
+  restore(history.past.pop()!);
+  history.future.push(onActivePage(cur)); // ripetendo si resta sul foglio della modifica
   fixSelection();
   changed();
 }
 function redo() {
   if (sim || !history.future.length) return;
-  history.past.push(snapshot());
-  doc = JSON.parse(history.future.pop()!);
+  const cur = snapshot();
+  restore(history.future.pop()!);
+  history.past.push(onActivePage(cur));
   fixSelection();
   changed();
 }
@@ -328,7 +369,7 @@ const fmtBar = (bar: number) => `${bar.toFixed(bar < 10 ? 2 : 1).replace(".", ",
 /** Stato grafico di un componente durante la simulazione. */
 function symbolState(comp: ComponentData): SymbolState | undefined {
   if (comp.type === "directional_valve") {
-    const coil = (side: string) => doc.components.find((c) => c.type === "valve_solenoid" && c.drives === `${comp.id}.${side}`)?.id;
+    const coil = (side: string) => allComponents().find((c) => c.type === "valve_solenoid" && c.drives === `${comp.id}.${side}`)?.id;
     const coils = { coil14: coil("14"), coil12: coil("12") };
     if (!sim) return coils.coil14 || coils.coil12 ? coils : undefined;
     const spec = sim.s.net.valves.find((v) => v.id === comp.id);
@@ -364,6 +405,7 @@ function render() {
   viewport.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
   $("#grid-pattern").setAttribute("patternTransform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
+  refTargets = referenceTargets(pages);
   renderSheet();
   const lines = $("#lines"), comps = $("#components"), ports = $("#ports"), labels = $("#labels");
   const linesTop = $("#lines-top");
@@ -487,11 +529,23 @@ function render() {
     // i punti di connessione mostrano solo la descrizione, se c'è
     if (junction && !(show.desc && comp.label)) parts.length = 0;
     else if (junction) text.textContent = comp.label!;
+    // rimando: in coda all'etichetta i fogli dove prosegue (fai clic per andarci)
+    const targets = REFERENCE_TYPES[comp.type] ? refTargets.get(comp.id) : undefined;
+    const xr = targets ? referenceText(targets, active) : "";
+    if (xr) {
+      const t = el("tspan", { class: "xref", "data-goto": comp.id });
+      t.textContent = xr;
+      const where = targets!.filter((x) => x.page !== active)
+        .map((x) => `foglio ${x.page + 1} «${pages[x.page]!.name}» (${x.id})`).join(", ");
+      text.dataset.xref = `Prosegue su ${where}`;
+      if (parts.length) text.append(" ");
+      text.append(t);
+    }
     const spot = labelSpot(g, l, text.textContent ?? "");
     text.setAttribute("x", String(l.x + spot.dx));
     text.setAttribute("y", String(l.y + spot.dy));
     text.setAttribute("style", `text-anchor: ${spot.anchor}`);
-    if (parts.length) labels.append(text);
+    if (parts.length || xr) labels.append(text);
 
     // porte
     for (const name of Object.keys(g.ports)) {
@@ -529,6 +583,7 @@ function render() {
   renderBlocks();
   renderAnnotations();
   renderStatus();
+  renderTabs();
   positionSelbar();
   $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
 }
@@ -776,6 +831,7 @@ function renderLegend() {
 
 // --- foglio e cartiglio -----------------------------------------------------------
 const today = () => new Date().toLocaleDateString("it-IT");
+const clipText = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
 
 /** Disegna foglio, cornice e cartiglio nel gruppo #sheet (sotto a linee e componenti). */
 function renderSheet() {
@@ -797,7 +853,12 @@ function renderSheet() {
   const rows = [12, 10, 10].map((h) => h * u);
   const cells: [number, number, number, string, string][] = []; // x, y, larghezza, etichetta, valore
   const w1 = 70 * u, w2 = 55 * u, w3 = 55 * u;
-  cells.push([tx, ty, tw, "Titolo", doc.name || "Senza nome"]);
+  if (pages.length > 1 || pages[0]!.name !== defaultPageName(1)) {
+    // più fogli: accanto al titolo il numero e il nome del foglio
+    const ws = 60 * u;
+    cells.push([tx, ty, tw - ws, "Titolo", doc.name || "Senza nome"],
+               [tx + tw - ws, ty, ws, `Foglio ${active + 1} di ${pages.length}`, clipText(pages[active]!.name, 20)]);
+  } else cells.push([tx, ty, tw, "Titolo", doc.name || "Senza nome"]);
   let y = ty + rows[0]!;
   cells.push([tx, y, w1, "Disegnato da", sheet.author ?? ""], [tx + w1, y, w2, "Data", today()],
              [tx + w1 + w2, y, w3, "Formato", `${sheet.format} ${sheet.orientation === "portrait" ? "verticale" : "orizzontale"}`]);
@@ -848,9 +909,56 @@ function renderSheetBom(g: Element, tx: number, ty: number) {
   }
 }
 
+/**
+ * Rimando: nomi già usati (da scegliere nella descrizione) e rimandi compagni, con il foglio
+ * dove si trovano e il collegamento per andarci.
+ */
+function referenceFields(comp: ComponentData, labIn: HTMLInputElement): HTMLElement[] {
+  const domain = REFERENCE_TYPES[comp.type];
+  const names = [...new Set(allComponents().filter((c) => REFERENCE_TYPES[c.type] === domain && c.id !== comp.id)
+    .map((c) => (c.label ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it", { numeric: true }));
+  const out: HTMLElement[] = [];
+  const list = document.createElement("datalist");
+  list.id = "reference-names";
+  for (const n of names) { const o = document.createElement("option"); o.value = n; list.append(o); }
+  labIn.setAttribute("list", list.id);
+  labIn.placeholder = "nome del rimando, uguale sugli altri fogli";
+  out.push(list);
+  const targets = referenceTargets(pages).get(comp.id) ?? [];
+  const box = document.createElement("div");
+  if (!comp.label?.trim()) {
+    box.className = "help";
+    box.textContent = "Scrivi nella descrizione il nome del rimando: si collega ai rimandi con lo stesso nome, su questo o su altri fogli.";
+  } else if (!targets.length) {
+    box.className = "help";
+    box.textContent = `Nessun altro rimando «${comp.label.trim()}»: aggiungine uno con lo stesso nome sul foglio dove prosegue la linea.`;
+  } else {
+    const h = document.createElement("h4");
+    h.textContent = "Prosegue su";
+    const ul = document.createElement("ul");
+    ul.className = "sheet-xrefs";
+    for (const t of targets) {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.className = "link";
+      b.textContent = `${t.id} · foglio ${t.page + 1} «${pages[t.page]!.name}»${t.page === active ? " (questo foglio)" : ""}`;
+      b.addEventListener("click", () => revealComponent(t.id));
+      li.append(b);
+      ul.append(li);
+    }
+    box.append(h, ul);
+  }
+  out.push(box);
+  return out;
+}
+
 /** Sezione "Foglio" nel pannello dello schema. */
 function renderSheetFields(panel: HTMLElement) {
-  heading(panel, "Foglio");
+  heading(panel, pages.length > 1 ? `Foglio ${active + 1} di ${pages.length}` : "Foglio");
+  const pageName = document.createElement("input");
+  pageName.name = "page-name"; pageName.value = pages[active]!.name;
+  pageName.addEventListener("change", () => renamePage(active, pageName.value));
+  panel.append(field("Nome del foglio", pageName, FIELD_HELP["page-name"]));
   const fmt = document.createElement("select");
   fmt.name = "sheet-format";
   for (const [v, t] of [["", "Nessuno (area libera)"], ...SHEET_FORMATS.map((f) => [f, f])] as [string, string][]) {
@@ -1201,14 +1309,20 @@ function heading(panel: HTMLElement, text: string, level: "h2" | "h3" | "h4" = "
   return h;
 }
 
+/** «· foglio 2» per un componente che non è sul foglio aperto. */
+function elsewhere(id: string) {
+  const i = pageOfComponent(pages, id);
+  return i >= 0 && i !== active ? ` · foglio ${i + 1}` : "";
+}
+
 function camField(comp: ComponentData, side: "14" | "12") {
   const key = `cam_${side}` as const;
   const sel = document.createElement("select");
   sel.name = key;
   const choices: [string, string][] = [["", "a mano (clic in simulazione)"]];
   const what = ACTUATION_SHORT[(comp[`actuation_${side}`] ?? "mechanical") as Actuation];
-  for (const c of doc.components.filter((x) => x.type.endsWith("_cylinder"))) {
-    choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)`]);
+  for (const c of allComponents().filter((x) => x.type.endsWith("_cylinder"))) {
+    choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)${elsewhere(c.id)}`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)${elsewhere(c.id)}`]);
   }
   const current = comp[key] ?? "";
   if (current && !choices.some(([v]) => v === current)) choices.push([current, `${current} (cilindro mancante)`]);
@@ -1251,20 +1365,21 @@ function refField(comp: ComponentData, key: "drives" | "relay" | "cam", label: s
 }
 
 function electricRefFields(comp: ComponentData): HTMLElement[] {
-  const cams = (): [string, string][] => doc.components.filter((x) => x.type.endsWith("_cylinder"))
-    .flatMap((c) => [[`${c.id}+`, `${c.id} tutto fuori (${c.id}+)`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)`]] as [string, string][]);
+  const cams = (): [string, string][] => allComponents().filter((x) => x.type.endsWith("_cylinder"))
+    .flatMap((c) => [[`${c.id}+`, `${c.id} tutto fuori (${c.id}+)${elsewhere(c.id)}`],
+                     [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)${elsewhere(c.id)}`]] as [string, string][]);
   switch (comp.type) {
     case "valve_solenoid": {
-      const sides: [string, string][] = doc.components.filter((x) => x.type === "directional_valve").flatMap((v) =>
+      const sides: [string, string][] = allComponents().filter((x) => x.type === "directional_valve").flatMap((v) =>
         (["14", "12"] as const).filter((s) => isElectric((v[`actuation_${s}`] ?? (s === "14" ? "solenoid" : "spring")) as Actuation))
-          .map((s) => [`${v.id}.${s}`, `${v.id}, solenoide ${s}`] as [string, string]));
+          .map((s) => [`${v.id}.${s}`, `${v.id}, solenoide ${s}${elsewhere(v.id)}`] as [string, string]));
       return [refField(comp, "drives", "Solenoide comandato", FIELD_HELP.drives!, sides,
         ["INVALID_REFERENCE", "NOT_A_SOLENOID", "DUPLICATE_COIL", "UNLINKED_REFERENCE"])];
     }
     case "relay_contact": {
       const RELAYS: Record<string, string> = { relay_coil: "relè", timer_relay: "temporizzatore", pressure_switch: "pressostato" };
-      const relays = doc.components.filter((x) => RELAYS[x.type])
-        .map((r) => [r.id, `${r.id} (${RELAYS[r.type]})`] as [string, string]);
+      const relays = allComponents().filter((x) => RELAYS[x.type])
+        .map((r) => [r.id, `${r.id} (${RELAYS[r.type]})${elsewhere(r.id)}`] as [string, string]);
       return [refField(comp, "relay", "Azionato da", FIELD_HELP.relay!, relays, ["INVALID_REFERENCE", "UNLINKED_REFERENCE"])];
     }
     case "limit_switch":
@@ -1700,6 +1815,7 @@ function renderProperties() {
       if (labIn.value.trim()) c.label = labIn.value.trim(); else delete c.label;
     }));
     panel.append(field("Descrizione", labIn, FIELD_HELP.label));
+    if (REFERENCE_TYPES[comp.type]) panel.append(...referenceFields(comp, labIn));
     if (!isJunctionType(comp.type)) {
       const codeIn = document.createElement("input");
       codeIn.value = comp.code || ""; codeIn.name = "code"; codeIn.placeholder = "facoltativo, per la distinta";
@@ -1885,7 +2001,7 @@ function renderProperties() {
     title.textContent = "Schema";
     const nameIn = document.createElement("input");
     nameIn.value = doc.name || ""; nameIn.name = "circuit-name";
-    nameIn.addEventListener("change", () => mutate(() => { doc.name = nameIn.value; }));
+    nameIn.addEventListener("change", () => mutate(() => { setProjectName(nameIn.value); }));
     panel.append(field("Nome", nameIn, FIELD_HELP["circuit-name"]));
     renderSheetFields(panel);
     const help = document.createElement("div");
@@ -1994,7 +2110,7 @@ function renderIssues() {
   if (!analysis.issues.length) {
     const li = document.createElement("li");
     li.className = "ok";
-    li.textContent = doc.components.length ? "Schema valido: nessun problema." : "Lo schema è vuoto.";
+    li.textContent = allComponents().length ? "Schema valido: nessun problema." : "Lo schema è vuoto.";
     list.append(li);
     return;
   }
@@ -2007,14 +2123,26 @@ function renderIssues() {
       <span class="msg"></span><code>${i.code}</code>`;
     li.querySelector(".msg")!.textContent = i.message;
     const cid = i.component;
-    const wire = i.code === "INVALID_TUBE"
-      ? doc.connections.findIndex((c) => i.ports.includes(c.from) && i.ports.includes(c.to)) : -1;
-    if (wire >= 0) {
+    const wirePage = i.code === "INVALID_TUBE"
+      ? pages.findIndex((p) => p.doc.connections.some((c) => i.ports.includes(c.from) && i.ports.includes(c.to))) : -1;
+    const where = cid ? pageOfComponent(pages, cid) : wirePage;
+    if (pages.length > 1 && where >= 0) {
+      const tag = document.createElement("span");
+      tag.className = "issue-sheet";
+      tag.textContent = `foglio ${where + 1}`;
+      li.querySelector(".msg")!.append(" ", tag);
+    }
+    if (wirePage >= 0) {
       li.classList.add("clickable");
-      li.addEventListener("click", () => { showIssues(false); select({ kind: "connection", index: wire }); });
-    } else if (cid && byId(cid)) {
+      li.addEventListener("click", () => {
+        showIssues(false);
+        goToPage(wirePage);
+        const index = doc.connections.findIndex((c) => i.ports.includes(c.from) && i.ports.includes(c.to));
+        if (index >= 0) select({ kind: "connection", index });
+      });
+    } else if (cid && anyById(cid)) {
       li.classList.add("clickable");
-      li.addEventListener("click", () => { showIssues(false); select({ kind: "component", id: cid }); centerOn(cid); });
+      li.addEventListener("click", () => { showIssues(false); revealComponent(cid); });
     }
     list.append(li);
   }
@@ -2047,7 +2175,7 @@ function renderStatus() {
 function nextId(type: string) {
   const prefix = PREFIX[type] || "X";
   let n = 1;
-  while (byId(`${prefix}${n}`)) n++;
+  while (anyById(`${prefix}${n}`)) n++;
   return `${prefix}${n}`;
 }
 
@@ -2079,7 +2207,11 @@ function addAnnotation(key: string, at: { x: number; y: number }) {
 function renameComponent(oldId: string, newId: string) {
   if (!newId || newId === oldId) return renderProperties();
   if (!/^[A-Za-z0-9_-]+$/.test(newId)) { toast("La sigla può contenere solo lettere, numeri, - e _"); return renderProperties(); }
-  if (byId(newId)) { toast(`La sigla ${newId} è già usata`); return renderProperties(); }
+  if (anyById(newId)) {
+    const at = pageOfComponent(pages, newId);
+    toast(`La sigla ${newId} è già usata${at !== active ? ` sul foglio ${at + 1} «${pages[at]!.name}»` : ""}`);
+    return renderProperties();
+  }
   mutate(() => {
     byId(oldId)!.id = newId;
     for (const b of doc.blocks ?? []) b.components = b.components.map((c) => (c === oldId ? newId : c));
@@ -2088,8 +2220,8 @@ function renameComponent(oldId: string, newId: string) {
     delete doc.layout[oldId];
     const fix = (ref: string) => { const [c, p] = splitRef(ref); return c === oldId ? `${newId}.${p}` : ref; };
     doc.connections = doc.connections.map((c) => ({ ...c, from: fix(c.from), to: fix(c.to) }));
-    // i finecorsa seguono il cilindro rinominato
-    for (const c of doc.components) {
+    // i finecorsa seguono il cilindro rinominato, anche sugli altri fogli
+    for (const c of allComponents()) {
       for (const key of ["cam_14", "cam_12"] as const) {
         const cam = c[key];
         if (cam && cam.slice(0, -1) === oldId) c[key] = newId + cam.slice(-1);
@@ -2185,7 +2317,7 @@ function rotateSelection() {
 function freeId(type: string, taken: Set<string>) {
   const prefix = PREFIX[type] || "X";
   let n = 1;
-  while (taken.has(`${prefix}${n}`) || byId(`${prefix}${n}`)) n++;
+  while (taken.has(`${prefix}${n}`) || anyById(`${prefix}${n}`)) n++;
   return `${prefix}${n}`;
 }
 
@@ -2401,7 +2533,7 @@ function changed() {
 }
 function runAnalysis() {
   const seq = ++analyzeSeq;
-  analysis = analyze(JSON.parse(snapshot()));
+  analysis = analyze(structuredClone(mergedCircuit(pages)));
   render();
   renderIssues();
   if (document.activeElement?.closest("#properties") == null) renderProperties();
@@ -2432,8 +2564,8 @@ function startSim() {
   if (sim) return;
   clearTimeout(analyzeTimer);
   runAnalysis();
-  if (!doc.components.length) { toast("Lo schema è vuoto: inserisci dei componenti"); return; }
-  const r = compileSim(JSON.parse(snapshot()));
+  if (!allComponents().length) { toast("Lo schema è vuoto: inserisci dei componenti"); return; }
+  const r = compileSim(structuredClone(mergedCircuit(pages)));
   if (!r.ok) {
     toast(`Correggi ${r.errors.length > 1 ? `i ${r.errors.length} errori` : "l'errore"} prima di simulare`);
     return;
@@ -2447,7 +2579,7 @@ function startSim() {
   $("#sim-bar").hidden = false;
   setModeButtons(true);
   closePopups();
-  drawView = { ...view };
+  drawView = { page: pages[active]!.id, view: { ...view } };
   renderLegend();
   document.body.dataset.sim = "on";
   updatePlayButton();
@@ -2468,7 +2600,8 @@ function stopSim() {
   $("#sim-bar").hidden = true;
   showDiagram(false);
   setModeButtons(false);
-  if (drawView) { view = drawView; drawView = null; }
+  if (drawView && drawView.page === pages[active]?.id) view = drawView.view;
+  drawView = null;
   delete document.body.dataset.sim;
   render();
   renderProperties();
@@ -2476,7 +2609,7 @@ function stopSim() {
 }
 
 /** vista del disegno prima di entrare in Simula, ripristinata all'uscita */
-let drawView: typeof view | null = null;
+let drawView: { page: string; view: typeof view } | null = null;
 function setModeButtons(simulating: boolean) {
   $("#btn-draw").setAttribute("aria-pressed", String(!simulating));
   $("#btn-sim").setAttribute("aria-pressed", String(simulating));
@@ -2506,8 +2639,8 @@ function resetSim() {
 
 function newRecorder(s: Simulator): Recorder {
   const labels: Record<string, string> = {};
-  for (const c of doc.components) if (c.label) labels[c.id] = c.label;
-  const gauges = doc.components.filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor").map((c) => c.id);
+  for (const c of allComponents()) if (c.label) labels[c.id] = c.label;
+  const gauges = allComponents().filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor").map((c) => c.id);
   return new Recorder(s, labels, gauges);
 }
 
@@ -2603,7 +2736,7 @@ function pressCommand(id: string, side: "14" | "12") {
 function manualSwitches() {
   if (!sim?.s.electric) return [];
   return sim.s.electric.net.contacts.filter((c) => c.manual).map((c) => {
-    const comp = byId(c.id);
+    const comp = anyById(c.id);
     return { id: c.id, latching: comp?.type === "pushbutton" && comp.operation === "latching",
              label: comp?.type === "limit_switch" ? "finecorsa" : comp?.operation === "latching" ? "interruttore" : "pulsante" };
   });
@@ -2707,7 +2840,7 @@ function renderSimPanel() {
   };
   for (const v of sim.s.net.valves) row(`Valvola ${v.id}`, `valve:${v.id}`);
   for (const c of sim.s.net.cylinders) row(`Cilindro ${c.id}`, `cyl:${c.id}`);
-  for (const r of sim.s.electric?.net.relays ?? []) row(`${byId(r.id)?.type === "timer_relay" ? "Temporizzatore" : "Relè"} ${r.id}`, `relay:${r.id}`);
+  for (const r of sim.s.electric?.net.relays ?? []) row(`${anyById(r.id)?.type === "timer_relay" ? "Temporizzatore" : "Relè"} ${r.id}`, `relay:${r.id}`);
   for (const l of sim.s.electric?.net.loads ?? []) {
     if (l.type === "valve_solenoid") row(`Bobina ${l.id}`, `load:${l.id}`);
     if (l.type === "signal_lamp") row(`Lampada ${l.id}`, `load:${l.id}`);
@@ -2730,7 +2863,7 @@ function renderSimPanel() {
     dd.title = help;
     ml.append(dt, dd);
   };
-  for (const g of doc.components.filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor")) {
+  for (const g of allComponents().filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor")) {
     measure(`${g.type === "pressure_sensor" ? "Sensore" : "Manometro"} ${g.id}`, `port:${g.id}.1`, "Pressione relativa letta dal manometro in questo istante; la sua traccia è nel diagramma delle fasi.");
   }
   measure("Aria consumata", "air:total", "Aria uscita dalle alimentazioni dall'inizio della simulazione, in litri normali (ANR, ISO 8778: 20 °C e 1 bar assoluto). Comprende il riempimento iniziale delle linee.");
@@ -2895,6 +3028,264 @@ function fitView() {
   render();
 }
 
+// --- fogli del progetto ------------------------------------------------------------------
+
+/** Apre un foglio: ognuno ha la sua vista, ritrovata tornandoci. */
+function goToPage(i: number) {
+  if (i < 0 || i >= pages.length || i === active) return;
+  releaseHeld();
+  pageViews.set(pages[active]!.id, { ...view });
+  active = i;
+  doc = pages[i]!.doc;
+  selection = null;
+  closeSheetMenu();
+  const v = pageViews.get(pages[i]!.id);
+  if (v) { view = { ...v }; render(); } else fitView();
+  renderProperties();
+  renderStatus();
+}
+
+/** Apre il foglio del componente, lo seleziona e lo porta al centro della vista. */
+function revealComponent(id: string) {
+  const i = pageOfComponent(pages, id);
+  if (i < 0) return;
+  goToPage(i);
+  select({ kind: "component", id });
+  centerOn(id);
+}
+
+/** Cartiglio del nuovo foglio: stesso formato e stessi dati di quello aperto, numerazione a parte. */
+function newPageSheet(): SheetData | undefined {
+  const s = doc.sheet;
+  if (!s) return undefined;
+  const { origin: _o, bom: _b, ...rest } = s;
+  return { ...rest, origin: [0, 0] };
+}
+
+function addPage() {
+  if (sim) return;
+  const id = newPageId(pages);
+  const sheet = newPageSheet();
+  const page: Page = { id, name: defaultPageName(pages.length + 1),
+                       doc: { ...emptyCircuit(doc.name), ...(sheet ? { sheet } : {}) } };
+  mutate(() => { pages.splice(active + 1, 0, page); });
+  goToPage(active + 1);
+  toast(`Aggiunto «${page.name}»`);
+}
+
+function renamePage(i: number, name: string) {
+  const n = name.trim();
+  if (!n || n === pages[i]?.name) return;
+  mutate(() => { pages[i]!.name = n; });
+  renderTabs();
+}
+
+function duplicatePageAt(i: number) {
+  if (sim) return;
+  const src = pages[i];
+  if (!src) return;
+  mutate(() => {
+    const copy = duplicatePage(src, newPageId(pages), `${src.name} (copia)`, freeId);
+    pages.splice(i + 1, 0, copy);
+  });
+  goToPage(i + 1);
+  toast(`Duplicato «${src.name}»: i componenti hanno sigle nuove`);
+}
+
+function deletePage(i: number) {
+  if (sim) return;
+  if (pages.length < 2) { toast("Il progetto ha sempre almeno un foglio"); return; }
+  const gone = pages[i]!;
+  const keep = i === active ? (i > 0 ? i - 1 : 0) : active > i ? active - 1 : active;
+  mutate(() => {
+    pages.splice(i, 1);
+    active = keep;
+    doc = pages[active]!.doc;
+    selection = null;
+  });
+  pageViews.delete(gone.id);
+  const v = pageViews.get(pages[active]!.id);
+  if (v) { view = { ...v }; render(); } else fitView();
+  toast(`Eliminato «${gone.name}» (Ctrl+Z per tornare indietro)`);
+}
+
+/** Sposta il foglio `from` alla posizione `to`; il foglio aperto resta aperto. */
+function movePage(from: number, to: number) {
+  if (sim || from === to || to < 0 || to >= pages.length) return;
+  const open = pages[active]!;
+  mutate(() => {
+    const [p] = pages.splice(from, 1);
+    pages.splice(to, 0, p!);
+    active = pages.indexOf(open);
+  });
+}
+
+/** Fogli con errori o avvisi di validazione, per il segno sulle schede. */
+function pageIssues(): Map<number, "error" | "warning"> {
+  const out = new Map<number, "error" | "warning">();
+  for (const i of analysis.issues) {
+    if (!i.component) continue;
+    const p = pageOfComponent(pages, i.component);
+    if (p < 0) continue;
+    if (i.severity === "error") out.set(p, "error");
+    else if (!out.has(p)) out.set(p, "warning");
+  }
+  return out;
+}
+
+let sheetMenuFor = -1; // foglio del menu aperto
+function closeSheetMenu() {
+  sheetMenuFor = -1;
+  const m = document.querySelector("#sheet-menu");
+  if (m) (m as HTMLElement).hidden = true;
+}
+
+function openSheetMenu(i: number, anchor: HTMLElement) {
+  const menu = $("#sheet-menu");
+  if (sheetMenuFor === i && !menu.hidden) { closeSheetMenu(); return; }
+  sheetMenuFor = i;
+  menu.replaceChildren();
+  const item = (text: string, act: () => void, disabled = false, cls = "") => {
+    const b = document.createElement("button");
+    b.textContent = text; b.disabled = disabled;
+    if (cls) b.className = cls;
+    b.addEventListener("click", () => { closeSheetMenu(); act(); });
+    menu.append(b);
+  };
+  item("Rinomina", () => startPageRename(i), !!sim);
+  item("Duplica", () => duplicatePageAt(i), !!sim);
+  item("Sposta a sinistra", () => movePage(i, i - 1), !!sim || i === 0);
+  item("Sposta a destra", () => movePage(i, i + 1), !!sim || i === pages.length - 1);
+  menu.append(document.createElement("hr"));
+  item("Elimina il foglio", () => deletePage(i), !!sim || pages.length < 2, "danger");
+  menu.hidden = false;
+  const stage = $("#stage").getBoundingClientRect(), a = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(stage.width - menu.offsetWidth - 8, a.left - stage.left))}px`;
+  menu.style.bottom = `${stage.bottom - a.top + 6}px`;
+}
+
+function startPageRename(i: number) {
+  const tab = document.querySelector<HTMLElement>(`#sheet-tabs [data-page="${i}"]`);
+  if (!tab || sim) return;
+  const input = document.createElement("input");
+  input.className = "tab-rename";
+  input.value = pages[i]!.name;
+  input.setAttribute("aria-label", "Nome del foglio");
+  input.size = Math.max(8, input.value.length + 2);
+  tab.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (ok: boolean) => {
+    if (done) return;
+    done = true;
+    const value = input.value;
+    input.remove();
+    if (ok) renamePage(i, value);
+    renderTabs(true);
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    e.stopPropagation();
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+/** scheda trascinata per riordinare i fogli */
+let tabDrag: { from: number; x: number; moved: boolean } | null = null;
+/** posizione d'arrivo della scheda trascinata, dalla scheda sotto il puntatore */
+function tabDropIndex(x: number): number {
+  const tabs = [...document.querySelectorAll<HTMLElement>("#sheet-tabs .sheet-tab")];
+  for (const [k, t] of tabs.entries()) {
+    const r = t.getBoundingClientRect();
+    if (x < r.left + r.width / 2) return k;
+  }
+  return tabs.length - 1;
+}
+document.addEventListener("pointermove", (e) => {
+  if (!tabDrag) return;
+  if (!tabDrag.moved && Math.abs(e.clientX - tabDrag.x) < 6) return;
+  tabDrag.moved = true;
+  const to = tabDropIndex(e.clientX);
+  for (const t of document.querySelectorAll<HTMLElement>("#sheet-tabs .sheet-tab")) {
+    const k = Number(t.dataset.page);
+    t.classList.toggle("dragging", k === tabDrag.from);
+    t.classList.toggle("drop", k === to && k !== tabDrag.from);
+  }
+});
+document.addEventListener("pointerup", (e) => {
+  const d = tabDrag;
+  tabDrag = null;
+  if (!d?.moved) return;
+  // il clic che segue il trascinamento non deve aprire la scheda
+  const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+  document.addEventListener("click", swallow, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener("click", swallow, { capture: true }), 0);
+  const to = tabDropIndex(e.clientX);
+  if (to !== d.from) movePage(d.from, to);
+  else renderTabs(true);
+});
+
+let tabsKey = "";
+/** Schede dei fogli sotto l'area di lavoro. */
+function renderTabs(force = false) {
+  const bar = document.querySelector<HTMLElement>("#sheet-tabs");
+  if (!bar || bar.querySelector(".tab-rename")) return;
+  const marks = pageIssues();
+  // si ridisegnano solo se cambiano (in simulazione render() gira a ogni fotogramma)
+  const key = JSON.stringify([active, !!sim, pages.map((p, i) => [p.name, p.doc.components.length, marks.get(i)])]);
+  if (key === tabsKey && !force) return;
+  tabsKey = key;
+  const list = $("#sheet-tab-list");
+  list.replaceChildren();
+  pages.forEach((p, i) => {
+    const tab = document.createElement("button");
+    tab.className = "sheet-tab" + (i === active ? " on" : "");
+    tab.dataset.page = String(i);
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-selected", String(i === active));
+    tab.title = `Foglio ${i + 1} di ${pages.length}: ${p.name} · ${p.doc.components.length} componenti` +
+      (sim ? "" : "\nDoppio clic per rinominare, trascina per spostare, clic destro per il menu");
+    const num = document.createElement("span");
+    num.className = "tab-num"; num.textContent = String(i + 1);
+    const name = document.createElement("span");
+    name.className = "tab-name"; name.textContent = p.name;
+    tab.append(num, name);
+    const mark = marks.get(i);
+    if (mark) {
+      const dot = document.createElement("span");
+      dot.className = `tab-mark ${mark}`;
+      dot.setAttribute("aria-label", mark === "error" ? "con errori" : "con avvisi");
+      tab.append(dot);
+    }
+    if (i === active) {
+      const more = document.createElement("span");
+      more.className = "tab-more"; more.textContent = "▾";
+      more.setAttribute("aria-label", "Menu del foglio");
+      more.addEventListener("click", (e) => { e.stopPropagation(); openSheetMenu(i, tab); });
+      tab.append(more);
+    }
+    tab.addEventListener("click", () => goToPage(i));
+    tab.addEventListener("dblclick", () => startPageRename(i));
+    tab.addEventListener("contextmenu", (e) => { e.preventDefault(); goToPage(i); openSheetMenu(i, tab); });
+    tab.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || sim || target(e).closest(".tab-more")) return;
+      tabDrag = { from: i, x: e.clientX, moved: false };
+    });
+    list.append(tab);
+  });
+  $<HTMLButtonElement>("#btn-add-sheet").disabled = !!sim;
+}
+
+$("#btn-add-sheet").addEventListener("click", () => addPage());
+document.addEventListener("pointerdown", (e) => {
+  if (sheetMenuFor >= 0 && !target(e).closest("#sheet-menu, .tab-more")) closeSheetMenu();
+});
+
+/** Sigla e fogli dove prosegue ogni rimando (ricalcolati a ogni disegno). */
+let refTargets = new Map<string, ReferenceTarget[]>();
+
 // --- interazioni sul foglio ----------------------------------------------------------
 
 type Drag =
@@ -2921,6 +3312,12 @@ window.addEventListener("blur", () => { spaceHeld = false; svg.classList.remove(
 svg.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 && e.button !== 1) return;
   const t = target(e);
+  const xref = e.button === 0 ? t.closest<SVGElement>("[data-goto]") : null;
+  if (xref) {
+    // rimando: si va al primo rimando compagno su un altro foglio
+    const next = (refTargets.get(xref.dataset.goto!) ?? []).find((x) => x.page !== active);
+    if (next) { e.preventDefault(); revealComponent(next.id); return; }
+  }
   const port = t.closest<SVGElement>("[data-port]");
   const comp = t.closest<SVGElement>("[data-component]");
   const line = t.closest<SVGElement>("[data-connection]");
@@ -3366,8 +3763,16 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
   if (e.key === "Escape" && !$("#news-dialog").hidden) { closeNews(); return; }
   if (e.key === "Escape" && !$("#bom-dialog").hidden) { closeBom(); return; }
+  if (e.key === "Escape" && !$("#export-dialog").hidden) { closeExportScope(null); return; }
+  if (e.key === "Escape" && sheetMenuFor >= 0) { closeSheetMenu(); return; }
   if (e.key === "Escape" && (!$("#issues-panel").hidden || document.querySelector("details.menu[open]"))) { closePopups(); return; }
   if (typing) return;
+  // PagSu / PagGiù: foglio precedente e successivo (anche in simulazione)
+  if ((e.key === "PageUp" || e.key === "PageDown") && !mod && $("#export-dialog").hidden) {
+    e.preventDefault();
+    goToPage(active + (e.key === "PageDown" ? 1 : -1));
+    return;
+  }
   if (sim) {
     if (e.key === " ") { e.preventDefault(); togglePlay(); }
     else if (e.key === "Escape") stopSim();
@@ -3418,20 +3823,36 @@ function cleanAnnotations() {
   if (anns.length) doc.annotations = anns; else delete doc.annotations;
 }
 
+/** Sostituisce i fogli con quelli di un file e apre il primo (senza toccare la storia). */
+function setPages(data: Partial<CircuitDoc>) {
+  const name = typeof data.name === "string" ? data.name : "";
+  pages = splitPages(JSON.parse(JSON.stringify(data)));
+  pageViews.clear();
+  for (const p of pages) {
+    doc = p.doc;
+    doc.name = name;
+    let i = 0;
+    for (const c of doc.components) {
+      if (!doc.layout[c.id]) doc.layout[c.id] = { x: (i % 5) * 160, y: Math.floor(i / 5) * 140, rot: 0 };
+      i++;
+    }
+    cleanAnnotations();
+    straightenLines(); // schemi salvati con le porte di prima: si tolgono i gradini rimasti
+  }
+  active = 0;
+  doc = pages[0]!.doc;
+  selection = null;
+}
+
+/** Nome del progetto, uguale su tutti i fogli. */
+function setProjectName(name: string) {
+  for (const p of pages) p.doc.name = name;
+}
+
 function loadDoc(data: Partial<CircuitDoc>, { fit = true } = {}) {
   stopSim();
   const before = snapshot();
-  doc = { ...emptyCircuit(), ...JSON.parse(JSON.stringify(data)) };
-  doc.layout ??= {};
-  doc.connections ??= [];
-  cleanAnnotations();
-  let i = 0;
-  for (const c of doc.components) {
-    if (!doc.layout[c.id]) doc.layout[c.id] = { x: (i % 5) * 160, y: Math.floor(i / 5) * 140, rot: 0 };
-    i++;
-  }
-  straightenLines(); // schemi salvati con le porte di prima: si tolgono i gradini rimasti
-  selection = null;
+  setPages(data);
   commit(before);
   if (fit) fitView();
 }
@@ -3447,7 +3868,7 @@ let lastSavedAt: string | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 let saving: Promise<void> | null = null; // un solo salvataggio alla volta
 
-const isDirty = () => snapshot() !== savedSnapshot;
+const isDirty = () => fileJson() !== savedSnapshot;
 const fileName = () =>
   `${(doc.name || "schema").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "schema"}.pneu.json`;
 const fmtTime = (iso: string) => {
@@ -3463,7 +3884,7 @@ function remember(key: string, value: string | null) {
 
 function projectChanged() {
   if (!project) {
-    remember(STORAGE_KEY, snapshot());
+    remember(STORAGE_KEY, fileJson());
   } else if (isDirty()) {
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => saveProject(), AUTOSAVE_MS);
@@ -3476,7 +3897,7 @@ function renderSaveState() {
   if (!box) return;
   let text: string, cls: string;
   if (!project) {
-    text = doc.components.length ? "Bozza non salvata" : "";
+    text = allComponents().length ? "Bozza non salvata" : "";
     cls = "draft";
   } else if (saveState === "saving") {
     text = "Salvataggio…"; cls = "saving";
@@ -3499,10 +3920,10 @@ async function saveProject({ asNew = false, silent = false } = {}) {
   const now = new Date().toISOString();
   if (!project || asNew) {
     project = { id: newProjectId(), createdAt: now };
-    if (asNew && doc.name) doc.name = doc.name.endsWith(" (copia)") ? doc.name : `${doc.name} (copia)`;
+    if (asNew && doc.name) setProjectName(doc.name.endsWith(" (copia)") ? doc.name : `${doc.name} (copia)`);
   }
   const current = project;
-  const snap = snapshot();
+  const snap = fileJson();
   const record = { id: current.id, name: doc.name || "Senza nome", createdAt: current.createdAt,
                    updatedAt: now, circuit: JSON.parse(snap) as CircuitDoc };
   saveState = "saving";
@@ -3532,7 +3953,7 @@ async function openProject(id: string) {
     loadDoc(p.circuit);
     history.past = []; history.future = [];
     project = { id: p.id, createdAt: p.createdAt };
-    savedSnapshot = snapshot();
+    savedSnapshot = fileJson();
     lastSavedAt = p.updatedAt;
     saveState = "saved";
     remember(SESSION_KEY, p.id);
@@ -3555,13 +3976,16 @@ async function newDocument(data: Partial<CircuitDoc> = emptyCircuit(), message =
   toast(`${message} (Ctrl+Z per tornare indietro)`);
 }
 
-/** PDF vettoriale del foglio (se non è scelto, il formato più piccolo che contiene il disegno). */
 /**
  * Disegno pulito per le esportazioni: tema chiaro, senza selezione, sul foglio dello schema
  * (o sul formato più piccolo che lo contiene). `take` legge #viewport in quello stato.
+ * `page` è il foglio da disegnare (quello aperto se manca).
  */
-function withPrintView<T>(take: (viewport: SVGGElement, sheet: SheetData & { origin: [number, number] }) => T): T {
-  const saved = { selection, sheet: doc.sheet, theme: document.documentElement.dataset.theme };
+function withPrintView<T>(take: (viewport: SVGGElement, sheet: SheetData & { origin: [number, number] }) => T, page = active): T {
+  const saved = { selection, active, doc, theme: document.documentElement.dataset.theme };
+  active = page;
+  doc = pages[page]!.doc;
+  const savedSheet = doc.sheet;
   let sheet = currentSheet();
   if (!sheet) {
     const box = contentBox()!;
@@ -3573,59 +3997,129 @@ function withPrintView<T>(take: (viewport: SVGGElement, sheet: SheetData & { ori
     selection = null;
     doc.sheet = sheet;
     document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.print = "1";
     render();
     return take($("#viewport") as unknown as SVGGElement, sheet as SheetData & { origin: [number, number] });
   } finally {
+    if (savedSheet) doc.sheet = savedSheet; else delete doc.sheet;
     selection = saved.selection;
-    doc.sheet = saved.sheet;
+    active = saved.active;
+    doc = saved.doc;
     if (saved.theme) document.documentElement.dataset.theme = saved.theme;
     else delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.print;
     render();
   }
 }
 
 const exportBase = () => fileName().replace(/\.pneu\.json$/, "");
+/** un foglio da esportare: con il foglio di disegno scelto, o con qualcosa disegnato sopra */
+const printable = (i: number) => { const d = pages[i]!.doc; return !!d.sheet || !!d.components.length || !!d.annotations?.length; };
+/** suffisso del file di un foglio: «-F2-Comando» */
+const pageSuffix = (i: number) =>
+  `-F${i + 1}` + (pages[i]!.name === defaultPageName(i + 1) ? "" : `-${pages[i]!.name.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_")}`);
+
+/**
+ * Fogli da esportare: con un foglio solo quello; con più fogli si chiede se il foglio aperto o
+ * tutti (null se si annulla). I fogli vuoti senza cornice restano fuori.
+ */
+async function exportPages(what: string): Promise<number[] | null> {
+  if (pages.length > 1) {
+    const scope = await chooseExportScope(what);
+    if (!scope) return null;
+    if (scope === "all") {
+      const list = pages.map((_, i) => i).filter(printable);
+      if (!list.length) { toast("I fogli sono vuoti: niente da esportare"); return null; }
+      return list;
+    }
+  }
+  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return null; }
+  return [active];
+}
+
+let scopeResolve: ((v: "current" | "all" | null) => void) | null = null;
+function chooseExportScope(what: string): Promise<"current" | "all" | null> {
+  scopeResolve?.(null);
+  const dlg = $("#export-dialog");
+  $("#export-title").textContent = `Esporta ${what}`;
+  $("#export-current").textContent = `Solo il foglio aperto: ${active + 1} «${pages[active]!.name}»`;
+  $("#export-all").textContent = `Tutti i fogli (${pages.length})`;
+  const note: Record<string, string> = {
+    PDF: "Con tutti i fogli il PDF ha una pagina per foglio, ognuna nel formato del suo foglio.",
+    SVG: "L'SVG non ha pagine: con tutti i fogli si scarica un file per foglio.",
+    DXF: "Con tutti i fogli il DXF li mette affiancati da sinistra a destra, nello stesso file.",
+  };
+  $("#export-note").textContent = note[what] ?? "";
+  dlg.hidden = false;
+  $<HTMLButtonElement>("#export-all").focus();
+  return new Promise((resolve) => { scopeResolve = resolve; });
+}
+function closeExportScope(v: "current" | "all" | null) {
+  $("#export-dialog").hidden = true;
+  const r = scopeResolve;
+  scopeResolve = null;
+  r?.(v);
+}
+$("#export-dialog").addEventListener("click", (e) => {
+  const t = target(e);
+  if (t.closest("#export-current")) closeExportScope("current");
+  else if (t.closest("#export-all")) closeExportScope("all");
+  else if (t.closest("[data-xact=close]") || t === e.currentTarget) closeExportScope(null);
+});
 
 /** SVG vettoriale del foglio, con gli stili scritti sugli elementi (si apre in Inkscape, Illustrator, browser). */
 async function exportSvg() {
-  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
-  const { svg, format } = withPrintView((vp, sheet) => {
-    const out = sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet));
-    for (const t of out.querySelectorAll("text")) t.setAttribute("font-family", "Helvetica, Arial, sans-serif");
-    out.setAttribute("font-family", "Helvetica, Arial, sans-serif");
-    return { svg: new XMLSerializer().serializeToString(out), format: sheet.format };
-  });
-  const name = `${exportBase()}.svg`;
-  try {
-    const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}\n`], { type: "image/svg+xml" });
-    if ((await exportFile(name, blob)) === "saved") toast(`Esportato ${name} (${format})`);
-  } catch (err) {
-    toast(`SVG non riuscito: ${(err as Error).message}`);
+  const list = await exportPages("SVG");
+  if (!list) return;
+  for (const i of list) {
+    const { svg, format } = withPrintView((vp, sheet) => {
+      const out = sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet));
+      for (const t of out.querySelectorAll("text")) t.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+      out.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+      return { svg: new XMLSerializer().serializeToString(out), format: sheet.format };
+    }, i);
+    const name = `${exportBase()}${list.length > 1 ? pageSuffix(i) : ""}.svg`;
+    try {
+      const blob = new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}\n`], { type: "image/svg+xml" });
+      if ((await exportFile(name, blob)) === "saved") toast(`Esportato ${name} (${format})`);
+      else return;
+    } catch (err) {
+      toast(`SVG non riuscito: ${(err as Error).message}`);
+      return;
+    }
   }
 }
 
-/** DXF in millimetri per AutoCAD e altri CAD, con un layer per tipo di elemento. */
+/** DXF in millimetri per AutoCAD e altri CAD, con un layer per tipo di elemento; più fogli affiancati. */
 async function exportDxf() {
-  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
-  const { text, format } = withPrintView((vp, sheet) => ({ text: viewportToDxf(vp, sheetRect(sheet)), format: sheet.format }));
+  const list = await exportPages("DXF");
+  if (!list) return;
+  const formats: string[] = [];
+  const text = sheetsToDxf(list.length, (k, emit) => withPrintView((vp, sheet) => {
+    formats.push(sheet.format);
+    emit(vp, sheetRect(sheet));
+  }, list[k]!));
   const name = `${exportBase()}.dxf`;
   try {
-    if ((await exportFile(name, new Blob([dxfBytes(text)], { type: "application/dxf" }))) === "saved") toast(`Esportato ${name} (${format}, mm)`);
+    const what = list.length > 1 ? `${list.length} fogli` : formats[0];
+    if ((await exportFile(name, new Blob([dxfBytes(text)], { type: "application/dxf" }))) === "saved") toast(`Esportato ${name} (${what}, mm)`);
   } catch (err) {
     toast(`DXF non riuscito: ${(err as Error).message}`);
   }
 }
 
+/** PDF vettoriale (se il foglio non è scelto, il formato più piccolo che contiene il disegno); una pagina per foglio. */
 async function exportPdf() {
-  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
-  const { svgOut, sheet } = withPrintView((vp, sheet) => ({
-    svgOut: sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet)), sheet }));
+  const list = await exportPages("PDF");
+  if (!list) return;
+  const sheets = list.map((i) => withPrintView((vp, sheet) => ({
+    svg: sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet)), mm: sheetSizeMm(sheet), format: sheet.format }), i));
   try {
     toast("Preparo il PDF…");
-    const blob = await svgToPdf(svgOut, sheetSizeMm(sheet), doc.name || "Schema");
+    const blob = await svgsToPdf(sheets, doc.name || "Schema");
     const name = fileName().replace(/\.pneu\.json$/, "") + ".pdf";
     const r = await exportFile(name, blob);
-    if (r === "saved") toast(`Esportato ${name} (${sheet.format})`);
+    if (r === "saved") toast(`Esportato ${name} (${list.length > 1 ? `${list.length} fogli` : sheets[0]!.format})`);
   } catch (err) {
     toast(`PDF non riuscito: ${(err as Error).message}`);
   }
@@ -3633,7 +4127,7 @@ async function exportPdf() {
 
 async function exportCurrent() {
   try {
-    const r = await exportFile(fileName(), JSON.stringify(doc, null, 2) + "\n");
+    const r = await exportFile(fileName(), JSON.stringify(fileDoc(), null, 2) + "\n");
     if (r === "saved") toast(`Esportato ${fileName()}`);
   } catch (err) {
     toast(`Esportazione non riuscita: ${(err as Error).message}`);
@@ -3785,7 +4279,7 @@ function startRename(li: HTMLElement, id: string) {
       try {
         if (project?.id === id) {
           stopSim();
-          mutate(() => { doc.name = name; });
+          mutate(() => { setProjectName(name); });
           await saveProject();
         } else {
           const p = await store.get(id);
@@ -3940,8 +4434,12 @@ function openNews() {
 function closeNews() { $("#news-dialog").hidden = true; }
 
 // --- distinta componenti --------------------------------------------------------------
+/** foglio di ogni sigla per la distinta (solo con più fogli) */
+const bomSheetOf = () => (pages.length > 1 ? (id: string) => pageOfComponent(pages, id) + 1 || undefined : undefined);
+
 function openBom() {
-  const rows = billOfMaterials(doc);
+  const rows = billOfMaterials(mergedCircuit(pages));
+  const sheetOf = bomSheetOf();
   const table = $("#bom-table");
   table.replaceChildren();
   const head = document.createElement("tr");
@@ -3954,7 +4452,7 @@ function openBom() {
   table.append(head);
   for (const r of rows) {
     const tr = document.createElement("tr");
-    bomCells(r).forEach((c, i) => {
+    bomCells(r, sheetOf).forEach((c, i) => {
       const td = document.createElement("td");
       td.textContent = c;
       if (i === 0 || i === 5) td.className = "num";
@@ -3975,14 +4473,16 @@ function openBom() {
 function closeBom() { $("#bom-dialog").hidden = true; }
 const bomBase = () => fileName().replace(/\.pneu\.json$/, "") + "-distinta";
 async function downloadBom(kind: "csv" | "pdf") {
-  const rows = billOfMaterials(doc);
+  const rows = billOfMaterials(mergedCircuit(pages));
+  const sheetOf = bomSheetOf();
   if (!rows.length) { toast("Nessun componente da ordinare nello schema"); return; }
   const name = `${bomBase()}.${kind}`;
   try {
     const blob = kind === "csv"
-      ? new Blob([bomCsv(rows)], { type: "text/csv;charset=utf-8" })
-      : await bomToPdf(rows.map(bomCells), BOM_HEADERS, doc.name || "Senza nome",
-                       `${rows.reduce((n, r) => n + r.qty, 0)} pezzi · ${today()} · Pneutrack v${APP_VERSION}`);
+      ? new Blob([bomCsv(rows, sheetOf)], { type: "text/csv;charset=utf-8" })
+      : await bomToPdf(rows.map((r) => bomCells(r, sheetOf)), BOM_HEADERS, doc.name || "Senza nome",
+                       `${rows.reduce((n, r) => n + r.qty, 0)} pezzi` + (pages.length > 1 ? ` su ${pages.length} fogli` : "") +
+                       ` · ${today()} · Pneutrack v${APP_VERSION}`);
     if ((await exportFile(name, blob)) === "saved") toast(`Esportato ${name}`);
   } catch (err) {
     toast(`Esportazione non riuscita: ${(err as Error).message}`);
@@ -4054,10 +4554,10 @@ async function init() {
   // bozza locale subito, poi l'archivio (sul web può rispondere dopo qualche secondo)
   let restored: Partial<CircuitDoc> | null = null;
   try { restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { restored = null; }
-  if (restored?.components) { doc = { ...emptyCircuit(), ...restored } as Doc; cleanAnnotations(); straightenLines(); }
+  if (restored?.components) setPages(restored);
   history.past = []; history.future = [];
   changed();
-  if (doc.components.length) fitView();
+  if (allComponents().length) fitView();
 
   store = await openStore();
   document.body.dataset.store = store.kind;
@@ -4066,11 +4566,9 @@ async function init() {
   if (lastId && !restored?.components) {
     try {
       const p = await store.get(lastId);
-      doc = { ...emptyCircuit(), ...p.circuit };
-      cleanAnnotations();
-      straightenLines();
+      setPages(p.circuit);
       project = { id: p.id, createdAt: p.createdAt };
-      savedSnapshot = snapshot();
+      savedSnapshot = fileJson();
       lastSavedAt = p.updatedAt;
       saveState = "saved";
       history.past = []; history.future = [];
@@ -4086,7 +4584,9 @@ declare global {
   interface Window { pneutrack: unknown }
 }
 window.pneutrack = {
-  get doc() { return doc; }, get analysis() { return analysis; }, get project() { return project; },
+  get doc() { return doc; }, get pages() { return pages; }, get active() { return active; },
+  get file() { return fileDoc(); }, goToPage: (i: number) => goToPage(i), addPage: () => addPage(),
+  get analysis() { return analysis; }, get project() { return project; },
   get store() { return store?.kind; }, get sim() { return sim?.s ?? null; },
   isDirty, loadDoc, addComponent, connect: (a: string, b: string) => connect(a, b), saveProject,
   startSim, stopSim, pressCommand, releaseHeld,

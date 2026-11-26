@@ -47,7 +47,7 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `flexible_hose` | Tubo flessibile | 1, 2 | `length`?, `inner_diameter`? (volume della linea) |
 | | `rotary_joint` | Giunto rotante | 1, 2 | |
 | | `manifold` | Basetta di distribuzione: tutte le porte sullo stesso volume | 1, 21–24 (le uscite possono restare libere) | `volume` |
-| | `sheet_reference` | Rimando ad altro foglio: collegato ai rimandi con la stessa descrizione (`label`) | 1 | |
+| | `sheet_reference` | Rimando ad altro foglio: collegato ai rimandi pneumatici con la stessa descrizione (`label`), anche su altri fogli | 1 | |
 | Valvole distributrici | `directional_valve` | 2/2, 3/2, 3/3, 4/2, 4/3 (centri chiusi, in scarico), 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`) |
 | Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure`, `check_spring` (`no`, `yes`: con la molla apre a 0,5 bar se `cracking_pressure` manca) |
 | | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |
@@ -194,6 +194,29 @@ La chiave facoltativa `sheet` descrive il foglio di disegno (`src/model/sheet.ts
 `format` va da `A4` ad `A0` (ISO 216); `origin` è l'angolo in alto a sinistra in unità dello
 schema, con 3 unità per millimetro di carta. Come `layout`, il foglio non conta per il modello.
 
+## Più fogli
+
+Un progetto può avere più fogli (`src/model/sheets.ts`), ognuno con il suo disegno, la sua cornice e
+il suo cartiglio. Il circuito resta uno solo: le sigle sono uniche in tutto il progetto, i riferimenti
+per sigla (bobina → solenoide, contatto → relè, finecorsa → cilindro) valgono anche tra fogli diversi, e
+i rimandi con la stessa descrizione (`sheet_reference` per le linee pneumatiche, `wire_reference` per i
+fili) collegano i fogli. Validazione, simulazione e distinta vedono tutti i fogli insieme.
+
+Un progetto a un foglio si salva come sempre. Con più fogli `layout` indica per ogni componente il
+foglio (`sheet`) e la chiave `sheets` elenca i fogli in ordine, con il cartiglio, i blocchi e i testi
+di ciascuno; `sheet`, `blocks` e `annotations` in cima al file non si usano:
+
+```json
+"layout": {"C1": {"x": 0, "y": 0, "rot": 0, "sheet": "F2"}},
+"sheets": [
+  {"id": "F1", "name": "Alimentazione", "sheet": {"format": "A4"}},
+  {"id": "F2", "name": "Attuatore", "sheet": {"format": "A4"}, "blocks": [...], "annotations": [...]}
+]
+```
+
+Un componente senza `sheet`, o con un foglio che non c'è, va sul primo foglio: i file a foglio singolo
+si aprono senza conversione. Le linee stanno sul foglio dei loro componenti.
+
 ## Blocchi
 
 La chiave facoltativa `blocks` elenca i gruppi di componenti (`src/model/blocks.ts`):
@@ -266,6 +289,7 @@ punti di connessione elettrici (`wire_junction`), distinti da quelli pneumatici 
 | `proximity_sensor` | Sensore di prossimità (PNP, 3 fili) | B | BN (+), BU (0V), BK (uscita) | `cam`, `position` (dal fondello, al posto del fine corsa), `range` (campo di rilevamento ±, 3 mm), `sensor_kind` |
 | `pressure_switch` | Pressostato | B | porta pneumatica 1 | `setpoint`, `hysteresis`; i suoi contatti sono `relay_contact` con `"relay": "B1"` |
 | `signal_lamp` | Lampada di segnalazione | H | X1, X2 | `lamp_color` |
+| `wire_reference` | Rimando elettrico | RE | 1 | collegato ai rimandi elettrici con la stessa descrizione (`label`), anche su altri fogli |
 
 I morsetti dei contatti (`contact`) seguono la numerazione CEI EN 60947: `no` (NA) 13-14, `nc` (NC) 11-12,
 `co` (in scambio) 11 comune, 12 NC, 14 NA; di un contatto in scambio basta collegare uno dei due.

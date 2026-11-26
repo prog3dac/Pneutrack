@@ -56,16 +56,26 @@ export function sheetSvg(viewport: SVGGElement, rect: Rect, mm: [number, number]
 
 /** Converte l'SVG in PDF e lo restituisce come Blob. */
 export async function svgToPdf(svgEl: SVGSVGElement, mm: [number, number], title: string): Promise<Blob> {
+  return svgsToPdf([{ svg: svgEl, mm }], title);
+}
+
+/** Più fogli in un solo PDF, una pagina per foglio, ognuna del formato del suo foglio. */
+export async function svgsToPdf(sheets: { svg: SVGSVGElement; mm: [number, number] }[], title: string): Promise<Blob> {
   const [{ jsPDF }, { svg2pdf }] = await Promise.all([import("jspdf"), import("svg2pdf.js")]);
-  const pdf = new jsPDF({ orientation: mm[0] > mm[1] ? "landscape" : "portrait", unit: "mm", format: [mm[0], mm[1]] });
+  const orient = (mm: [number, number]) => (mm[0] > mm[1] ? "landscape" : "portrait");
+  const first = sheets[0]!.mm;
+  const pdf = new jsPDF({ orientation: orient(first), unit: "mm", format: [first[0], first[1]] });
   pdf.setProperties({ title, creator: "Pneutrack" });
   // svg2pdf ha bisogno dell'SVG nel documento per misurare i testi
   const host = document.createElement("div");
   host.style.cssText = "position:fixed;left:-10000px;top:0;width:0;height:0;overflow:hidden";
-  host.append(svgEl);
   document.body.append(host);
   try {
-    await svg2pdf(svgEl, pdf, { x: 0, y: 0, width: mm[0], height: mm[1] });
+    for (const [i, { svg, mm }] of sheets.entries()) {
+      if (i > 0) pdf.addPage([mm[0], mm[1]], orient(mm));
+      host.replaceChildren(svg);
+      await svg2pdf(svg, pdf, { x: 0, y: 0, width: mm[0], height: mm[1] });
+    }
   } finally {
     host.remove();
   }

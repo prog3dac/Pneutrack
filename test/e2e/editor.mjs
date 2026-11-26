@@ -76,8 +76,8 @@ await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(new Set(types).size, 71, `tipi in palette: ${[...new Set(types)]}`);
-assert.ok(types.length >= 71, "valvole già configurate");
+assert.equal(new Set(types).size, 72, `tipi in palette: ${[...new Set(types)]}`);
+assert.ok(types.length >= 72, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
 assert.deepEqual(await visible(), ["Innesto rapido con non ritorno, innestato", "Innesto rapido con non ritorno, staccato",
@@ -799,6 +799,148 @@ await waitLive("valve:V1", "v === '12'");
 assert.equal(await page.evaluate(() => window.pneutrack.sim.valvePosition("RB1")), "12", "rubinetto chiuso");
 await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim !== "on");
+
+// 12. più fogli: schede, rimandi tra fogli, copia/incolla, annulla/ripeti, simulazione ed export
+await page.evaluate(() => window.pneutrack.loadDoc({
+  name: "Due fogli",
+  components: [
+    { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+    { id: "RM1", type: "sheet_reference", label: "A1" },
+    { id: "G", type: "electric_supply", params: { voltage: "24 V" } },
+    { id: "S1", type: "pushbutton", contact: "no" },
+    { id: "RE1", type: "wire_reference", label: "13" },
+    { id: "RE2", type: "wire_reference", label: "0V" },
+    { id: "RM2", type: "sheet_reference", label: "A1" },
+    { id: "V1", type: "directional_valve", function: "5/2", actuation_14: "solenoid", actuation_12: "spring" },
+    { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", rod: "12 mm", stroke: "100 mm" } },
+    { id: "RE3", type: "wire_reference", label: "13" },
+    { id: "RE4", type: "wire_reference", label: "0V" },
+    { id: "Y1", type: "valve_solenoid", drives: "V1.14" },
+  ],
+  connections: [
+    { from: "P.1", to: "RM1.1" }, { from: "G.+", to: "S1.13" }, { from: "S1.14", to: "RE1.1" }, { from: "G.0V", to: "RE2.1" },
+    { from: "RM2.1", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" },
+    { from: "RE3.1", to: "Y1.A1" }, { from: "Y1.A2", to: "RE4.1" },
+  ],
+  layout: {
+    P: { x: 0, y: 0, rot: 0, sheet: "F1" }, RM1: { x: 0, y: -120, rot: 2, sheet: "F1" },
+    G: { x: 200, y: 0, rot: 0, sheet: "F1" }, S1: { x: 200, y: 100, rot: 0, sheet: "F1" },
+    RE1: { x: 200, y: 220, rot: 2, sheet: "F1" }, RE2: { x: 300, y: 100, rot: 2, sheet: "F1" },
+    RM2: { x: 0, y: 260, rot: 0, sheet: "F2" }, V1: { x: 0, y: 140, rot: 0, sheet: "F2" }, C1: { x: 0, y: 0, rot: 0, sheet: "F2" },
+    RE3: { x: 200, y: -40, rot: 0, sheet: "F2" }, Y1: { x: 200, y: 60, rot: 0, sheet: "F2" }, RE4: { x: 200, y: 160, rot: 2, sheet: "F2" },
+  },
+  sheets: [{ id: "F1", name: "Alimentazione", sheet: { format: "A4" } }, { id: "F2", name: "Attuatore", sheet: { format: "A4" } }],
+}));
+await settled();
+const sheetsNow = () => page.evaluate(() => ({ n: window.pneutrack.pages.length, active: window.pneutrack.active,
+  names: window.pneutrack.pages.map((p) => p.name), ids: window.pneutrack.doc.components.map((c) => c.id) }));
+assert.equal(await page.locator("#sheet-tabs .sheet-tab").count(), 2, "due schede");
+assert.deepEqual((await sheetsNow()).ids, ["P", "RM1", "G", "S1", "RE1", "RE2"], "sul primo foglio solo i suoi componenti");
+assert.equal(await page.locator('[data-component="V1"]').count(), 0, "V1 non è disegnata sul primo foglio");
+assert.match(await page.textContent("#sheet"), /Foglio 1 di 2/, "cartiglio con il numero del foglio");
+assert.equal((await state()).analysis.errors, 0, "i rimandi chiudono il circuito tra i fogli");
+// il rimando indica il foglio dove prosegue; un clic porta al compagno
+assert.equal(await page.textContent('[data-goto="RM1"]'), "→ fg. 2");
+await page.click('[data-goto="RM1"]');
+assert.equal((await sheetsNow()).active, 1, "il clic sul rimando apre il foglio 2");
+assert.equal((await state()).doc.components.length, 6);
+assert.match(await page.textContent("#properties"), /Prosegue su/);
+// PagSu torna al primo foglio
+await page.keyboard.press("PageUp");
+assert.equal((await sheetsNow()).active, 0);
+
+// aggiungi, rinomina con doppio clic, annulla
+await page.click("#btn-add-sheet");
+assert.deepEqual(await sheetsNow().then((s) => [s.n, s.active]), [3, 1], "nuovo foglio dopo quello aperto");
+assert.equal(await page.evaluate(() => window.pneutrack.doc.sheet?.format), "A4", "stesso formato del foglio di partenza");
+await page.dblclick('#sheet-tabs [data-page="1"]');
+await page.fill("#sheet-tabs .tab-rename", "Comando");
+await page.keyboard.press("Enter");
+assert.equal((await sheetsNow()).names[1], "Comando");
+await page.keyboard.press("Control+z");
+assert.equal((await sheetsNow()).names[1], "Foglio 3");
+await page.keyboard.press("Control+z");
+assert.equal((await sheetsNow()).n, 2, "annulla toglie il foglio aggiunto");
+
+// copia sul foglio 1, incolla sul foglio 2: sigla nuova, unica nel progetto
+await page.click('#sheet-tabs [data-page="0"]');
+await page.click('[data-component="S1"] .halo', { force: true });
+await page.keyboard.press("Control+c");
+await page.click('#sheet-tabs [data-page="1"]');
+await page.mouse.move(700, 300);
+await page.keyboard.press("Control+v");
+let s2 = await sheetsNow();
+const pasted = s2.ids.find((id) => !["RM2", "V1", "C1", "RE3", "RE4", "Y1"].includes(id));
+assert.ok(pasted && pasted !== "S1", `incollato con sigla nuova: ${s2.ids}`);
+// annulla dal primo foglio: si torna al foglio della modifica
+await page.click('#sheet-tabs [data-page="0"]');
+await page.keyboard.press("Control+z");
+s2 = await sheetsNow();
+assert.equal(s2.active, 1, "annulla riporta al foglio dove era avvenuta la modifica");
+assert.ok(!s2.ids.includes(pasted), "incolla annullato");
+await page.keyboard.press("Control+y");
+assert.ok((await sheetsNow()).ids.includes(pasted), "ripeti");
+await page.keyboard.press("Control+z");
+
+// duplica dal menu della scheda: sigle nuove sul foglio copiato
+await page.click('#sheet-tabs [data-page="1"] .tab-more');
+await page.click('#sheet-menu button:has-text("Duplica")');
+s2 = await sheetsNow();
+assert.deepEqual([s2.n, s2.active, s2.names[2]], [3, 2, "Attuatore (copia)"]);
+assert.ok(!s2.ids.some((id) => ["V1", "C1", "Y1"].includes(id)), `sigle nuove nella copia: ${s2.ids}`);
+const dupIds = s2.ids;
+// riordina trascinando la scheda, poi elimina dal menu
+{
+  const [fx, fy] = await at('#sheet-tabs [data-page="2"]');
+  const b = await page.locator('#sheet-tabs [data-page="0"]').boundingBox();
+  await page.mouse.move(fx, fy);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 10, fy, { steps: 6 });
+  await page.mouse.up();
+}
+s2 = await sheetsNow();
+assert.deepEqual(s2.names, ["Attuatore (copia)", "Alimentazione", "Attuatore"], "scheda spostata");
+assert.equal(s2.active, 0, "il foglio aperto resta aperto");
+await page.click('#sheet-tabs [data-page="0"] .tab-more');
+await page.click('#sheet-menu button:has-text("Elimina")');
+s2 = await sheetsNow();
+assert.deepEqual(s2.names, ["Alimentazione", "Attuatore"]);
+assert.ok(!(await page.evaluate(() => window.pneutrack.file.components.map((c) => c.id))).some((id) => dupIds.includes(id)));
+
+// il file salva tutti i fogli e si riapre uguale
+const sheetFile = await page.evaluate(() => window.pneutrack.file);
+assert.deepEqual(sheetFile.sheets.map((s) => s.name), ["Alimentazione", "Attuatore"]);
+assert.equal(sheetFile.layout.C1.sheet, "F2");
+
+// simulazione: il pulsante sul foglio 1 comanda il cilindro sul foglio 2
+await page.click('#sheet-tabs [data-page="0"]');
+await page.click('[data-act="sim"]');
+await page.waitForFunction(() => document.body.dataset.sim === "on");
+await page.evaluate(() => window.pneutrack.sim.setSwitch("S1", true));
+await page.waitForFunction(() => window.pneutrack.sim.cylinder("C1").fraction > 0.99, null, { timeout: 15000 });
+await page.click('#sheet-tabs [data-page="1"]');
+assert.equal((await sheetsNow()).active, 1, "in simulazione si cambia foglio");
+assert.equal(await page.locator('[data-component="C1"]').count(), 1);
+await page.click('[data-act="mode-draw"]');
+await page.waitForFunction(() => document.body.dataset.sim !== "on");
+
+// export: con più fogli si sceglie; il PDF ha una pagina per foglio
+await page.click('.tb-right [data-act="pdf"]');
+await page.waitForSelector("#export-dialog:not([hidden])");
+const [pdf2] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click("#export-all")]);
+const pdfAll = await (await pdf2.createReadStream()).toArray().then((c) => Buffer.concat(c).toString("latin1"));
+assert.equal((pdfAll.match(/\/Type \/Page\b/g) ?? []).length, 2, "PDF di due pagine");
+await page.click("#file-menu summary");
+await page.click('#file-menu [data-act="export-dxf"]');
+await page.waitForSelector("#export-dialog:not([hidden])");
+const [dxf2] = await Promise.all([page.waitForEvent("download"), page.click("#export-all")]);
+const dxfAll = await (await dxf2.createReadStream()).toArray().then((c) => Buffer.concat(c).toString("latin1"));
+assert.ok(dxfAll.includes("Alimentazione") && dxfAll.includes("Attuatore"), "DXF con i due fogli");
+// distinta di tutti i fogli, con il foglio delle sigle
+await menuAct("bom");
+assert.match(await page.textContent("#bom-table"), /fg\. 2: C1/);
+await page.keyboard.press("Escape");
+if (shots) await page.screenshot({ path: `${shots}/fogli.png` });
 
 assert.deepEqual(errors, [], "errori JavaScript nella pagina");
 await browser.close();

@@ -82,6 +82,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   pressure_switch: "Pilotaggio pneumatico (triangolo vuoto) contro una molla regolabile che aziona un contatto elettrico.",
   signal_lamp: "Cerchio con la croce: lampada di segnalazione.",
   wire_junction: "Pallino pieno: morsetto comune di più fili.",
+  wire_reference: "Freccia in fondo al filo con il nome del potenziale: il filo prosegue nel rimando elettrico con lo stesso nome, su un altro foglio o altrove nello schema.",
 };
 
 /** Come si legge ciascun comando delle valvole (ISO 1219-1). */
