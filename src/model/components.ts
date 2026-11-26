@@ -51,7 +51,8 @@ export interface Preset {
 
 export type OptionName =
   | "function" | "actuation_14" | "actuation_12" | "cushioning"
-  | "contact" | "operation" | "timer_mode" | "switch_actuation" | "sensor_kind" | "lamp_color";
+  | "contact" | "operation" | "timer_mode" | "switch_actuation" | "sensor_kind" | "lamp_color"
+  | "override" | "magnet" | "gripper_kind" | "coupling" | "coupling_state";
 
 export interface OptionSpec {
   name: OptionName;
@@ -76,6 +77,16 @@ export interface ComponentData {
   cam_12?: string;
   /** ammortizzo pneumatico regolabile: "none", "both", "cap" (fondello), "rod" (testata) */
   cushioning?: string;
+  /** comando manuale ausiliario dei solenoidi: "none", "push" (a impulso), "detent" (con arresto) */
+  override?: string;
+  /** pistone magnetico (per i sensori magnetici): "no" o "yes" */
+  magnet?: string;
+  /** pinza: "double" (doppio effetto) o "single" (semplice effetto, si apre a molla) */
+  gripper_kind?: string;
+  /** innesto rapido: "plain" (senza non ritorno), "check_one" (non ritorno nella presa), "check_both" */
+  coupling?: string;
+  /** innesto rapido: "coupled" (innestato) o "uncoupled" (staccato) */
+  coupling_state?: string;
   // --- componenti elettrici ---
   /** contatto: "no" (NA), "nc" (NC), "co" (scambio) */
   contact?: string;
@@ -108,6 +119,11 @@ export interface Component {
   cam_14?: Cam;
   cam_12?: Cam;
   cushioning?: Cushioning;
+  override?: "none" | "push" | "detent";
+  magnet?: "no" | "yes";
+  gripper_kind?: "double" | "single";
+  coupling?: "plain" | "check_one" | "check_both";
+  coupling_state?: "coupled" | "uncoupled";
   contact?: ContactKind;
   operation?: "momentary" | "latching";
   timer_mode?: "on_delay" | "off_delay";
@@ -162,7 +178,7 @@ export interface TypeDef {
   domain?: "pneumatic" | "electric";
   /** non ancora proposto nella palette dell'editor (manca il simbolo) */
   hidden?: boolean;
-  ports(c: Pick<Component, "function" | "actuation_14" | "actuation_12" | "contact">): PortSpec[];
+  ports(c: Pick<Component, "function" | "actuation_14" | "actuation_12" | "contact" | "gripper_kind">): PortSpec[];
   paths?(c: Component): InternalPath[];
   sources?(c: Component): Record<string, Quantity>;
 }
@@ -262,8 +278,19 @@ const cushionParams: ParamSpec[] = [
 const cushionOption: OptionSpec = {
   name: "cushioning", label: "Ammortizzo", default: "none", choices: CUSHIONING_CHOICES,
 };
+/** Pistone magnetico (ISO 1219-1 8.4.28): serve ai sensori magnetici (reed) montati sulla canna. */
+const magnetOption: OptionSpec = {
+  name: "magnet", label: "Pistone magnetico", default: "no",
+  choices: [["no", "No"], ["yes", "Sì (per sensori magnetici)"]],
+};
+/** Comando manuale ausiliario dei solenoidi (ISO 1219-1 X10040, X10290). */
+export const OVERRIDE_CHOICES: [string, string][] = [
+  ["none", "Nessuno"], ["push", "A impulso"], ["detent", "Con arresto"],
+];
 
 const AIR = "Alimentazione e trattamento aria";
+const CONNECTIONS = "Intercettazione e collegamenti";
+const VACUUM = "Vuoto";
 const DIRECTIONAL = "Valvole distributrici";
 const LOGIC = "Valvole di blocco e logiche";
 const REGULATION = "Regolazione di portata e pressione";
@@ -376,6 +403,48 @@ const DEFS: TypeDef[] = [
     ports: () => [port("1", "work")],
   },
 
+  // --- intercettazione e collegamenti ------------------------------------------------------
+  {
+    type: "shutoff_valve", label: "Rubinetto di intercettazione", category: CONNECTIONS,
+    doc: "Rubinetto (valvola a sfera) che apre o chiude la linea tra 1 e 2. In simulazione parte aperto; " +
+      "un clic lo chiude e un altro lo riapre.",
+    params: [MAX_P, FLOW, conductance("3 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "lockout_valve", label: "Valvola di sezionamento con lucchetto", category: CONNECTIONS,
+    doc: "Valvola 3/2 manuale con arresto, da mettere all'inizio dell'impianto: aperta alimenta 2 da 1, chiusa " +
+      "blocca l'alimentazione e scarica l'impianto da 3. Chiusa si blocca con un lucchetto (messa in sicurezza). " +
+      "In simulazione parte aperta; un clic sul comando la chiude.",
+    params: [MAX_P, FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
+    paths: () => [oneWay("1", "2"), oneWay("2", "3")],
+  },
+  {
+    type: "quick_coupling", label: "Innesto rapido", category: CONNECTIONS,
+    doc: "Innesto rapido tra la presa (1) e la spina (2). Staccato, il lato con la valvola di non ritorno resta " +
+      "chiuso e quello senza scarica in atmosfera.",
+    params: [MAX_P, FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    options: [
+      { name: "coupling", label: "Valvole di non ritorno", default: "check_one", choices: [
+        ["plain", "Nessuna"], ["check_one", "Una, nella presa"], ["check_both", "Due, nella presa e nella spina"]] },
+      { name: "coupling_state", label: "Stato", default: "coupled", choices: [
+        ["coupled", "Innestato"], ["uncoupled", "Staccato"]] },
+    ],
+    defaults: { max_pressure: "10 bar" },
+    presets: [
+      { label: "Innesto rapido con non ritorno, innestato", options: { coupling: "check_one", coupling_state: "coupled" } },
+      { label: "Innesto rapido con non ritorno, staccato", options: { coupling: "check_one", coupling_state: "uncoupled" } },
+      { label: "Innesto rapido senza non ritorno", options: { coupling: "plain", coupling_state: "coupled" } },
+      { label: "Innesto rapido con due non ritorno", options: { coupling: "check_both", coupling_state: "coupled" } },
+    ],
+    ports: () => [port("1", "supply"), port("2", "work", true)],
+    paths: (c) => (c.coupling_state === "uncoupled" ? [] : both("1", "2")),
+  },
+
   // --- valvole distributrici ------------------------------------------------------
   {
     type: "directional_valve", label: "Valvola distributrice", category: DIRECTIONAL,
@@ -389,6 +458,7 @@ const DEFS: TypeDef[] = [
         choices: ACTUATIONS.map((a) => [a, ACTUATION_LABELS[a]]) },
       { name: "actuation_12", label: "Comando lato 12", default: "spring",
         choices: ACTUATIONS.map((a) => [a, ACTUATION_LABELS[a]]) },
+      { name: "override", label: "Comando manuale ausiliario", default: "none", choices: OVERRIDE_CHOICES },
     ],
     defaults: { max_pressure: "10 bar" },
     presets: [
@@ -406,6 +476,8 @@ const DEFS: TypeDef[] = [
       { label: "5/2 bistabile elettropneumatica", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "solenoid_pilot" } },
       { label: "5/2 elettropneumatica, ritorno pneumatico", options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "air_return" } },
       { label: "5/2 elettropneumatica, pilota esterno", options: { function: "5/2", actuation_14: "solenoid_pilot_ext", actuation_12: "spring" } },
+      { label: "5/2 elettropneumatica con comando manuale ausiliario",
+        options: { function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "spring", override: "push" } },
       { label: "5/2 a leva con arresto", options: { function: "5/2", actuation_14: "lever_detent", actuation_12: "lever_detent" } },
       { label: "3/2 NC a pedale", options: { function: "3/2", actuation_14: "pedal", actuation_12: "spring" } },
       { label: "3/2 NC a tastatore", options: { function: "3/2", actuation_14: "plunger", actuation_12: "spring" } },
@@ -453,6 +525,17 @@ const DEFS: TypeDef[] = [
     paths: () => both("1", "2"),
   },
   {
+    type: "double_pilot_check", label: "Doppia non ritorno pilotata", category: LOGIC,
+    doc: "Due non ritorno pilotate in un corpo, da montare sulle due linee di un cilindro: l'aria passa libera " +
+      "da 1 a 2 e da 3 a 4; il ritorno da 2 a 1 si apre solo con 3 in pressione, quello da 4 a 3 solo con 1 in " +
+      "pressione. Senza comando il cilindro resta bloccato dove si trova.",
+    params: [MAX_P, p("pilot_pressure", "Pressione di pilotaggio", "pressure", { group: "sim", simDefault: "1.5 bar" }),
+             FLOW, conductance("2 dm3/(s·bar)"), critical("0.4")],
+    defaults: { max_pressure: "10 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "supply"), port("4", "work")],
+    paths: () => [...both("1", "2"), ...both("3", "4")],
+  },
+  {
     type: "shuttle_valve", label: "Valvola selettrice (OR)", category: LOGIC,
     doc: "Funzione O: l'uscita 2 riceve l'aria dall'ingresso (1 o 3) a pressione maggiore.",
     params: [MAX_P, FLOW, conductance("1 dm3/(s·bar)"), critical("0.4")],
@@ -487,12 +570,37 @@ const DEFS: TypeDef[] = [
     paths: () => both("1", "2"),
   },
   {
+    type: "fixed_orifice", label: "Strozzatore fisso (ugello)", category: REGULATION,
+    doc: "Ugello calibrato non regolabile: riduce la portata nei due versi. Se la conduttanza C è vuota, la " +
+      "simulazione la ricava dal diametro (C ≈ 0,13 × d² con d in mm).",
+    params: [p("diameter", "Diametro dell'ugello", "length", { required: true }), MAX_P,
+             p("conductance", "Conduttanza C", "conductance", { group: "sim", simDefault: "dal diametro" }),
+             critical("0.5")],
+    defaults: { diameter: "0.5 mm", max_pressure: "10 bar" },
+    ports: () => [port("1", "work"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
     type: "one_way_flow_control", label: "Regolatore di flusso unidirezionale", category: REGULATION,
     doc: "Strozzatore con non ritorno: da 1 a 2 strozzato, da 2 a 1 libero.",
     params: [MAX_P, FLOW_MAX, OPENING, maxConductance("1.5 dm3/(s·bar)"), critical("0.5"),
              p("free_conductance", "Conduttanza in senso libero", "conductance", { group: "sim", simDefault: "2 dm3/(s·bar)" })],
     defaults: { max_pressure: "10 bar", opening: "20 %" },
     ports: () => [port("1", "work"), port("2", "work")],
+    paths: () => both("1", "2"),
+  },
+  {
+    type: "soft_start_valve", label: "Valvola di avviamento progressivo", category: REGULATION,
+    doc: "Riempie l'impianto a valle lentamente, attraverso uno strozzatore, finché la pressione in 2 arriva alla " +
+      "soglia (una frazione di quella in 1); poi apre del tutto. All'indietro l'aria passa libera, così l'impianto " +
+      "si scarica dalla valvola a monte.",
+    params: [MAX_P, FLOW, conductance("2 dm3/(s·bar)"), critical("0.4"),
+             p("fill_opening", "Apertura dello strozzatore di riempimento", "dimensionless",
+               { group: "sim", simDefault: "10 %", percent: true }),
+             p("switch_ratio", "Soglia di apertura piena", "dimensionless",
+               { group: "sim", simDefault: "50 %", percent: true })],
+    defaults: { max_pressure: "16 bar" },
+    ports: () => [port("1", "supply"), port("2", "work")],
     paths: () => both("1", "2"),
   },
   {
@@ -529,6 +637,7 @@ const DEFS: TypeDef[] = [
     type: "single_acting_cylinder", label: "Cilindro semplice effetto", category: ACTUATORS,
     doc: "Cilindro a semplice effetto con ritorno a molla. Porta A: camera di spinta.",
     params: [...cylinderParams, p("spring_force", "Forza molla", "force", { group: "sim", simDefault: "15 N" })],
+    options: [magnetOption],
     defaults: { bore: "20 mm", rod: "8 mm", stroke: "50 mm", max_pressure: "10 bar" },
     actuator: true,
     ports: () => [port("A", "work")],
@@ -537,12 +646,13 @@ const DEFS: TypeDef[] = [
     type: "double_acting_cylinder", label: "Cilindro doppio effetto", category: ACTUATORS,
     doc: "Cilindro a doppio effetto. A: camera fondello (uscita), B: camera stelo (rientro).",
     params: [...cylinderParams, ...cushionParams],
-    options: [cushionOption],
+    options: [cushionOption, magnetOption],
     defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
     presets: [
       { label: "Cilindro doppio effetto" },
       { label: "Cilindro doppio effetto ammortizzato",
         options: { cushioning: "both" }, params: { cushion_length: "20 mm" } },
+      { label: "Cilindro doppio effetto con pistone magnetico", options: { magnet: "yes" } },
     ],
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
@@ -551,10 +661,43 @@ const DEFS: TypeDef[] = [
     type: "double_rod_cylinder", label: "Cilindro a doppio stelo", category: ACTUATORS,
     doc: "Cilindro a doppio effetto con stelo passante: stessa area e stessa forza nei due versi.",
     params: [...cylinderParams.map((x) => (x.name === "rod" ? { ...x, required: true } : x)), ...cushionParams],
-    options: [cushionOption],
+    options: [cushionOption, magnetOption],
     defaults: { bore: "32 mm", stroke: "100 mm", rod: "12 mm", max_pressure: "10 bar" },
     actuator: true,
     ports: () => [port("A", "work"), port("B", "work")],
+  },
+  {
+    type: "rodless_cylinder", label: "Cilindro senza stelo", category: ACTUATORS,
+    doc: "Cilindro a doppio effetto senza stelo: il pistone trascina un carrello che corre lungo la canna. Stessa " +
+      "area e stessa forza nei due versi. A: camera che spinge il carrello verso destra, B: verso sinistra.",
+    params: [...cylinderParams.filter((x) => x.name !== "rod"), ...cushionParams],
+    options: [cushionOption, magnetOption],
+    defaults: { bore: "25 mm", stroke: "200 mm", max_pressure: "8 bar" },
+    actuator: true,
+    ports: () => [port("A", "work"), port("B", "work")],
+  },
+  {
+    type: "gripper", label: "Pinza pneumatica", category: ACTUATORS,
+    doc: "Pinza a griffe parallele. A chiude le griffe, B le apre; nella pinza a semplice effetto c'è solo A e " +
+      "una molla la riapre. La corsa è quella di una griffa; nei finecorsa e nei sensori «+» vuol dire chiusa.",
+    params: [p("bore", "Alesaggio del pistone", "length", { required: true }),
+             p("stroke", "Corsa di una griffa", "length", { required: true }), MAX_P, MIN_P,
+             p("mass", "Massa mobile", "mass", { group: "sim", simDefault: "0.1 kg" }),
+             p("load", "Carico", "force", { group: "sim", simDefault: "0 N" }),
+             p("friction", "Attrito", "force", { group: "sim", simDefault: "2 N" }),
+             p("spring_force", "Forza molla", "force", { group: "sim", simDefault: "10 N" })],
+    options: [
+      { name: "gripper_kind", label: "Tipo", default: "double", choices: [
+        ["double", "Doppio effetto"], ["single", "Semplice effetto (si apre a molla)"]] },
+      magnetOption,
+    ],
+    defaults: { bore: "16 mm", stroke: "5 mm", max_pressure: "8 bar" },
+    presets: [
+      { label: "Pinza a doppio effetto", options: { gripper_kind: "double" } },
+      { label: "Pinza a semplice effetto", options: { gripper_kind: "single" } },
+    ],
+    actuator: true,
+    ports: (c) => (c.gripper_kind === "single" ? [port("A", "work")] : [port("A", "work"), port("B", "work")]),
   },
   {
     type: "rotary_actuator", label: "Attuatore rotante", category: ACTUATORS,
@@ -572,6 +715,26 @@ const DEFS: TypeDef[] = [
     actuator: true,
     ports: () => [port("1", "work"), port("2", "work")],
     paths: () => both("1", "2"),
+  },
+
+  // --- vuoto --------------------------------------------------------------------------------
+  {
+    type: "vacuum_ejector", label: "Generatore di vuoto (eiettore)", category: VACUUM,
+    doc: "Eiettore: l'aria compressa entra da 1, passa nell'ugello ed esce da 3, e crea il vuoto sulla porta 2. " +
+      "Senza alimentazione la porta 2 torna alla pressione atmosferica attraverso l'eiettore.",
+    params: [MAX_P, p("max_vacuum", "Vuoto massimo", "pressure", { group: "sim", simDefault: "0.85 bar" }),
+             FLOW, conductance("0.1 dm3/(s·bar)"), critical("0.5"),
+             p("suction_conductance", "Conduttanza di aspirazione", "conductance", { group: "sim", simDefault: "0.3 dm3/(s·bar)" })],
+    defaults: { max_pressure: "8 bar" },
+    ports: () => [port("1", "supply"), port("2", "work"), port("3", "exhaust", true)],
+    paths: () => [oneWay("1", "3")],
+  },
+  {
+    type: "suction_cup", label: "Ventosa", category: VACUUM,
+    doc: "Ventosa: tiene il pezzo quando la porta 1 è in vuoto. La forza di presa è il vuoto per l'area della ventosa.",
+    params: [p("diameter", "Diametro della ventosa", "length", { required: true })],
+    defaults: { diameter: "20 mm" },
+    ports: () => [port("1", "work")],
   },
 
   // --- elettrico (comando elettropneumatico, 24 V c.c.) -------------------------------------
@@ -686,7 +849,8 @@ const DEFS: TypeDef[] = [
 export const TYPES: ReadonlyMap<string, TypeDef> = new Map(DEFS.map((d) => [d.type, d]));
 export const typeList = (): TypeDef[] => DEFS;
 
-const isCylinder = (type: string) => type.endsWith("_cylinder");
+/** Attuatori lineari con una corsa: cilindri e pinze (finecorsa e sensori possono indicarli). */
+const isCylinder = (type: string) => type.endsWith("_cylinder") || type === "gripper";
 export { isCylinder };
 
 /** Valida e converte un componente letto dallo schema. Lancia {@link ParameterError}. */
@@ -777,13 +941,14 @@ export function buildComponent(raw: ComponentData): Component {
   return comp;
 }
 
-const ELECTRIC_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation", "sensor_kind", "lamp_color"] as const;
+const CHOICE_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation", "sensor_kind", "lamp_color",
+  "override", "magnet", "gripper_kind", "coupling", "coupling_state"] as const;
 const CAM_RE = /^([A-Za-z0-9_-]+)([+-])$/;
 
 /** Opzioni e riferimenti per sigla dei componenti elettrici (la loro esistenza la controlla la validazione). */
 function buildElectric(def: TypeDef, raw: ComponentData, comp: Component): void {
   const id = comp.id;
-  for (const name of ELECTRIC_OPTIONS) {
+  for (const name of CHOICE_OPTIONS) {
     const spec = def.options?.find((o) => o.name === name);
     const value = raw[name];
     if (!spec) {

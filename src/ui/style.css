@@ -197,6 +197,8 @@ button.link:hover { text-decoration: underline; }
 .symbol .body, .symbol .box { fill: var(--sheet); }
 .symbol .rod { fill: var(--sheet); }
 .symbol .thick { stroke-width: 3; }
+.symbol .thick-jaw { stroke-width: 2.4; }
+.symbol .magnet { fill: var(--ink); stroke: none; }
 .symbol .dash { stroke-dasharray: 4 3; }
 .symbol .dashdot { stroke-dasharray: 9 3 2 3; }
 .symbol .hatch { fill: var(--grid); }

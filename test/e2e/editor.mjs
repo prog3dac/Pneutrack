@@ -76,11 +76,13 @@ await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(new Set(types).size, 37, `tipi in palette: ${[...new Set(types)]}`);
-assert.ok(types.length >= 37, "valvole già configurate");
+assert.equal(new Set(types).size, 47, `tipi in palette: ${[...new Set(types)]}`);
+assert.ok(types.length >= 47, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
-assert.deepEqual(await visible(), ["Valvola di non ritorno", "Non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
+assert.deepEqual(await visible(), ["Innesto rapido con non ritorno, innestato", "Innesto rapido con non ritorno, staccato",
+  "Innesto rapido senza non ritorno", "Innesto rapido con due non ritorno", "Valvola di non ritorno", "Non ritorno pilotata",
+  "Doppia non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
 await page.fill("#palette-search", "5/2 bistabile");
 assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica", "5/2 bistabile elettropneumatica"]);
 await page.fill("#palette-search", "");
@@ -766,6 +768,33 @@ if (shots) await page.screenshot({ path: `${shots}/diagramma.png` });
 await page.click('[data-act="sim-reset"]');
 await page.click('[data-act="sim-diagram"]');
 assert.ok(await page.locator("#diagram").isHidden(), "il diagramma si chiude");
+await page.click('[data-act="mode-draw"]');
+await page.waitForFunction(() => document.body.dataset.sim !== "on");
+
+// nuovi simboli ISO 1219: comando manuale ausiliario e rubinetto si azionano con un clic nel disegno
+await page.evaluate(() => window.pneutrack.loadDoc({
+  name: "Comando manuale",
+  components: [
+    { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+    { id: "RB1", type: "shutoff_valve" },
+    { id: "V1", type: "directional_valve", function: "5/2", actuation_14: "solenoid_pilot", actuation_12: "spring", override: "detent" },
+    { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", stroke: "100 mm" }, magnet: "yes" },
+  ],
+  connections: [{ from: "P.1", to: "RB1.1" }, { from: "RB1.2", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" }],
+  layout: { C1: { x: 300, y: 0, rot: 0 }, V1: { x: 300, y: 140, rot: 0 }, RB1: { x: 300, y: 240, rot: 0 }, P: { x: 300, y: 330, rot: 0 } },
+}));
+await settled();
+assert.equal(await page.locator('[data-component="V1"] [data-override="1"]').count(), 1, "comando manuale disegnato");
+await page.click('[data-act="sim"]');
+await page.waitForFunction(() => document.body.dataset.sim === "on");
+await page.mouse.click(...(await at('[data-component="V1"] [data-override="1"]')));
+await waitLive("valve:V1", "v === '14'");
+await waitLive("cyl:C1", "Number(v) > 0.99");
+// chiuso il rubinetto, sbloccato il comando manuale: la valvola torna a riposo
+await page.mouse.click(...(await at('[data-component="RB1"] [data-side="14"]')));
+await page.mouse.click(...(await at('[data-component="V1"] [data-override="1"]')));
+await waitLive("valve:V1", "v === '12'");
+assert.equal(await page.evaluate(() => window.pneutrack.sim.valvePosition("RB1")), "12", "rubinetto chiuso");
 await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim !== "on");
 
