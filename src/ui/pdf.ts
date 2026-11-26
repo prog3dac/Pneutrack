@@ -9,9 +9,10 @@ import type { Rect } from "../model/sheet";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** elementi che servono solo all'interazione nell'editor */
-export const INTERACTIVE = ".paper-grid, .halo, .port-hit, .hit, .bend-handle, title, #temp-wire, .port.open .port-dot";
+export const INTERACTIVE = ".paper-grid, .halo, .port-hit, .hit, .bend-handle, title, #temp-wire, .port.open .port-dot, " +
+  ".ann-hit, .ann-hit-area, .ann-sel, .ann-handle";
 const STYLE_PROPS = ["fill", "stroke", "stroke-width", "stroke-dasharray", "stroke-linejoin", "stroke-linecap",
-  "fill-opacity", "stroke-opacity", "opacity", "font-size", "font-weight", "font-family", "text-anchor",
+  "fill-opacity", "stroke-opacity", "opacity", "font-size", "font-weight", "font-style", "font-family", "text-anchor",
   "dominant-baseline", "paint-order"];
 
 /** SVG autonomo del foglio: `rect` in unità dello schema, `mm` dimensioni della carta. */
@@ -36,6 +37,9 @@ export function sheetSvg(viewport: SVGGElement, rect: Rect, mm: [number, number]
       if (v) copy.setAttribute(p, v);
     }
     copy.removeAttribute("class");
+    // gli stili in linea possono usare variabili CSS (var(--ink)) che PDF e SVG autonomo non conoscono:
+    // valgono già i valori calcolati scritti sopra
+    copy.removeAttribute("style");
     if (copy.tagName === "text") {
       // il PDF ha solo i caratteri standard; il bordo chiaro dietro al testo (paint-order) non è supportato
       copy.setAttribute("font-family", "helvetica");

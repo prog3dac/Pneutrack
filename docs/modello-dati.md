@@ -167,6 +167,42 @@ La chiave facoltativa `blocks` elenca i gruppi di componenti (`src/model/blocks.
 Ogni componente appartiene al massimo a un blocco; gli id inesistenti vengono scartati alla
 lettura. Come `layout`, i blocchi non contano per il modello.
 
+## Testi e forme
+
+La chiave facoltativa `annotations` elenca testi e forme disegnati sullo schema
+(`src/model/annotations.ts`). Come `layout`, non contano per il modello: servono al disegno, al
+PDF, all'SVG e al DXF.
+
+```json
+"annotations": [
+  {"id": "A1", "kind": "rect", "x": 0, "y": 0, "w": 240, "h": 160, "line": "dashdot",
+   "title": "1 · Gruppo avanzamento", "carry": true},
+  {"id": "A2", "kind": "text", "x": 300, "y": -40, "text": "Arresto prioritario", "size": 3.5,
+   "color": "#2563eb", "leader": {"x": -30, "y": 0, "end": "arrow", "attach": "S0"}},
+  {"id": "A3", "kind": "line", "points": [[0, 200], [80, 200]], "end": "open"},
+  {"id": "A4", "kind": "ellipse", "x": 400, "y": 0, "w": 80, "h": 80, "fill": "tint"}
+]
+```
+
+| Chiave | Tipi | Significato |
+|---|---|---|
+| `kind` | tutti | `text`, `line` (linea, freccia o spezzata), `rect`, `ellipse` |
+| `color` | tutti | `#rrggbb`; senza, «Auto»: nero sul foglio, chiaro nel tema scuro |
+| `line` | tutti | `continuous` (predefinita), `dashed`, `dashdot`, `dashdotdot`, `dotted`, `double` (solo `line`) |
+| `weight` | tutti | spessore in mm di carta: 0,25 / 0,35 / 0,5 (predefinito) / 0,7 |
+| `fill` | `rect`, `ellipse`, `text` con riquadro | `none`, `tint` (colore chiaro), `white` (copre il disegno) |
+| `locked` | tutti | `true`: non si sposta trascinando |
+| `x`, `y`, `w`, `h` | `rect`, `ellipse` | riquadro in unità dello schema (3 per mm) |
+| `round`, `title`, `titlePos`, `carry` | `rect` | angoli arrotondati; titolo e angolo (`tl`, `tr`, `bl`, `br`); `carry`: spostandolo si porta dietro i componenti racchiusi |
+| `points`, `start`, `end` | `line` | punti; terminali `none`, `arrow`, `open` (triangolo vuoto, flusso ISO 1219), `dot` |
+| `x`, `y`, `text` | `text` | linea di base della prima riga sul lato dell'allineamento; `\n` va a capo |
+| `size`, `bold`, `italic`, `align`, `rot`, `box` | `text` | altezza in mm (ISO 3098); `left`/`center`/`right`; quarti di giro antiorari; `rect`, `round`, `triangle` (indice di revisione) |
+| `leader` | `text` | richiamo: punta `x`, `y` e terminale `end`; con `attach` la punta è uno scostamento dal centro del componente e lo segue |
+
+Alla lettura si scartano le voci non valide e si rendono uniche le sigle. Nel DXF le annotazioni
+stanno sul layer ANNOTAZIONI, con il colore AutoCAD (ACI) più vicino, il tipo di linea
+(DASHED, DASHDOT, DIVIDE, DOT) e lo spessore come larghezza della polilinea.
+
 ## Circuito elettrico di comando
 
 Il circuito elettrico (24 V in corrente continua, simboli CEI EN 60617) sta nello stesso schema, accanto alla

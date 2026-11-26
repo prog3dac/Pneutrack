@@ -4,6 +4,12 @@ import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import {
+  aciOf, ANN_PRESETS, annBox, annFromPreset, annLabel, arrowHead, COLORS, contains, dashArray, DEFAULT_TEXT_SIZE,
+  DEFAULT_WEIGHT, detachFrom, dxfLinetype, fontUnits, inside as insideBox, leaderTip, LINE_TYPES, moveAnn, nextAnnId,
+  normalizeAnnotations, offsetPolyline, rotateBox, rotatePt, strokeUnits, TEXT_SIZES, WEIGHTS,
+  type AnnotationData, type Box, type Pt as APt, type Terminal,
+} from "../model/annotations";
 import { mirrorComponents, type Axis } from "../model/mirror";
 import { ALIGN_LABELS, alignComponents, type AlignMode } from "../model/align";
 import { applyPart, partByCode, partsFor } from "../model/parts";
@@ -74,8 +80,10 @@ const EXAMPLES = Object.entries(
 type Selection =
   | { kind: "component"; id: string }
   | { kind: "connection"; index: number }
-  /** più componenti scelti con Maiusc+clic o con un riquadro (trascinando sul vuoto) */
-  | { kind: "multi"; ids: string[] }
+  /** più componenti (e annotazioni) scelti con Maiusc+clic o con un riquadro (trascinando sul vuoto) */
+  | { kind: "multi"; ids: string[]; anns?: string[] }
+  /** testo o forma disegnata sullo schema */
+  | { kind: "annotation"; id: string }
   | { kind: "block"; id: string }
   | null;
 type Doc = CircuitDoc;
@@ -139,11 +147,32 @@ function fixSelection() {
     const id = selection.id;
     if (!doc.blocks?.some((b) => b.id === id)) selection = null;
   }
+  if (selection?.kind === "annotation" && !annById(selection.id)) selection = null;
   if (selection?.kind === "multi") {
-    const ids = selection.ids.filter((id) => byId(id));
-    selection = ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null;
+    selection = selectionOf(selection.ids.filter((id) => byId(id)), (selection.anns ?? []).filter((id) => annById(id)));
   }
 }
+
+// --- annotazioni (testi e forme) ---------------------------------------------------
+const annById = (id: string) => doc.annotations?.find((a) => a.id === id);
+/** Annotazioni selezionate (una sola o quelle di una selezione multipla). */
+function selectedAnns(): string[] {
+  if (selection?.kind === "annotation") return [selection.id];
+  if (selection?.kind === "multi") return selection.anns ?? [];
+  return [];
+}
+/** Selezione per un insieme di componenti e annotazioni. */
+function selectionOf(ids: string[], anns: string[] = []): Selection {
+  if (ids.length + anns.length > 1) return { kind: "multi", ids, ...(anns.length ? { anns } : {}) };
+  if (ids.length) return { kind: "component", id: ids[0]! };
+  if (anns.length) return { kind: "annotation", id: anns[0]! };
+  return null;
+}
+/** Centro di un componente, per i richiami agganciati. */
+const compPos = (id: string): APt | null => { const l = byId(id) && doc.layout[id]; return l ? [l.x, l.y] : null; };
+/** Ingombri misurati nell'ultimo disegno (il testo si misura solo nel browser). */
+const annMeasured = new Map<string, Box>();
+const annBoxOf = (a: AnnotationData): Box => annMeasured.get(a.id) ?? annBox(a, compPos);
 
 /** Componenti selezionati (uno, più o quelli del blocco). */
 function selectedIds(): string[] {
@@ -486,6 +515,7 @@ function render() {
     }
   }
   renderBlocks();
+  renderAnnotations();
   renderStatus();
   positionSelbar();
   $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
@@ -495,8 +525,9 @@ function render() {
 function positionSelbar() {
   const bar = $("#selbar");
   const ids = sim ? [] : selectedIds().filter((id) => byId(id));
-  if (!ids.length) { bar.hidden = true; return; }
-  const boxes = ids.map(compBox);
+  const anns = sim ? [] : selectedAnns().map(annById).filter((a): a is AnnotationData => !!a);
+  if (!ids.length && !anns.length) { bar.hidden = true; return; }
+  const boxes = [...ids.map(compBox), ...anns.map(annBoxOf)];
   const x0 = Math.min(...boxes.map((r) => r.x)), x1 = Math.max(...boxes.map((r) => r.x + r.w));
   const y0 = Math.min(...boxes.map((r) => r.y)), y1 = Math.max(...boxes.map((r) => r.y + r.h));
   const stage = $("#stage").getBoundingClientRect();
@@ -504,7 +535,9 @@ function positionSelbar() {
   if (x1 * view.k + view.x < 0 || x0 * view.k + view.x > stage.width ||
       y1 * view.k + view.y < 0 || y0 * view.k + view.y > stage.height) { bar.hidden = true; return; }
   bar.hidden = false;
-  $<HTMLButtonElement>('#selbar [data-act="rotate"]').disabled = selection?.kind !== "component";
+  const one = selection?.kind === "annotation" ? annById(selection.id) : undefined;
+  $<HTMLButtonElement>('#selbar [data-act="rotate"]').disabled = selection?.kind !== "component" && one?.kind !== "text";
+  for (const b of document.querySelectorAll<HTMLButtonElement>('#selbar [data-act^="mirror"]')) b.disabled = !ids.length;
   const w = bar.offsetWidth, h = bar.offsetHeight;
   const cx = ((x0 + x1) / 2) * view.k + view.x;
   let top = y0 * view.k + view.y - h - 10;
@@ -538,6 +571,153 @@ function renderBlocks() {
     grp.append(t);
     grp.append(svgTitle(b.description ? `${b.name}\n${b.description}` : b.name));
     g.append(grp);
+  }
+}
+
+const ANN_PAD = 4;
+/** Percorso di un rettangolo con gli angoli arrotondati (archi, che il DXF spezza in segmenti). */
+function roundRectPath(x: number, y: number, w: number, h: number, r: number) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  return `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r} A${r},${r} 0 0 1 ${x + w - r},${y + h}` +
+    ` H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+}
+
+/** Testi e forme: le forme sotto le linee, i testi sopra ai simboli; maniglie della selezione in cima. */
+function renderAnnotations() {
+  const under = $("#annotations"), over = $("#annotations-top"), handles = $("#ann-handles");
+  under.replaceChildren(); over.replaceChildren(); handles.replaceChildren();
+  annMeasured.clear();
+  const sel = new Set(sim ? [] : selectedAnns());
+  for (const a of doc.annotations ?? []) {
+    const g = el("g", { class: ["ann", sel.has(a.id) ? "selected" : "", a.locked ? "locked" : ""].filter(Boolean).join(" "), "data-ann": a.id });
+    const color = a.color ?? "var(--ink)";
+    const sw = strokeUnits(a);
+    const lt = dxfLinetype(a.line), aci = aciOf(a.color);
+    if (lt) g.dataset.dxfLtype = lt;
+    if (aci) g.dataset.dxfColor = String(aci);
+    g.dataset.dxfWidth = String(a.weight ?? DEFAULT_WEIGHT);
+    (a.kind === "text" ? over : under).append(g);
+    const fillCss = a.fill === "tint" ? `fill:${color};fill-opacity:.12` : a.fill === "white" ? "fill:var(--sheet)" : "fill:none";
+    /** tratto dell'annotazione; `dash` false per le punte, che restano piene */
+    const paint = (e: Element, fill = "fill:none", dash = true) => {
+      const d = dash ? dashArray(a.line) : "";
+      e.setAttribute("style", `stroke:${color};stroke-width:${sw};${fill}${d ? `;stroke-dasharray:${d}` : ""}`);
+      return e;
+    };
+    /** copia invisibile e più larga del tratto, per prenderlo con il mouse */
+    const hit = (e: Element) => { const c = e.cloneNode() as Element; c.removeAttribute("style"); c.setAttribute("class", "ann-hit"); g.append(c); };
+    const terminal = (kind: Terminal | undefined, from: APt, tip: APt) => {
+      if (!kind || kind === "none") return;
+      if (kind === "dot") { g.append(paint(el("circle", { cx: tip[0], cy: tip[1], r: Math.max(3, sw * 1.6) }), `fill:${color}`, false)); return; }
+      const len = kind === "open" ? Math.max(12, sw * 6) : Math.max(10, sw * 5);
+      const head = arrowHead(from, tip, len, len * (kind === "open" ? 0.45 : 0.32));
+      g.append(paint(el("polygon", { points: ptsAttr(head) }), kind === "open" ? "fill:var(--sheet)" : `fill:${color}`, false));
+    };
+    if (a.kind === "rect" || a.kind === "ellipse") {
+      const shape = a.kind === "ellipse"
+        ? el("ellipse", { cx: a.x + a.w / 2, cy: a.y + a.h / 2, rx: a.w / 2, ry: a.h / 2 })
+        : a.round ? el("path", { d: roundRectPath(a.x, a.y, a.w, a.h, Math.min(14, a.w / 4, a.h / 4)) })
+        : el("rect", { x: a.x, y: a.y, width: a.w, height: a.h });
+      g.append(paint(shape, fillCss));
+      if (a.fill && a.fill !== "none") shape.classList.add("ann-fill");
+      hit(shape);
+      if (a.kind === "rect" && a.title) {
+        const fs = fontUnits(DEFAULT_TEXT_SIZE), pos = a.titlePos ?? "tl";
+        const right = pos.endsWith("r"), bottom = pos.startsWith("b");
+        const t = el("text", { x: right ? a.x + a.w - 8 : a.x + 8, y: bottom ? a.y + a.h - 8 : a.y + fs + 4, class: "ann-text" });
+        t.setAttribute("style", `fill:${color};font-size:${fs}px;font-weight:600;text-anchor:${right ? "end" : "start"}`);
+        t.textContent = a.title;
+        g.append(t);
+      }
+      annMeasured.set(a.id, { x: a.x, y: a.y, w: a.w, h: a.h });
+    } else if (a.kind === "line") {
+      const pts = a.points;
+      if (a.line === "double") {
+        const gap = Math.max(2.5, sw * 1.8);
+        for (const d of [gap, -gap]) g.append(paint(el("polyline", { points: ptsAttr(offsetPolyline(pts, d)) })));
+      } else g.append(paint(el("polyline", { points: ptsAttr(pts) })));
+      hit(el("polyline", { points: ptsAttr(pts) }));
+      terminal(a.start, pts[1]!, pts[0]!);
+      terminal(a.end, pts[pts.length - 2]!, pts[pts.length - 1]!);
+    } else {
+      const fs = fontUnits(a.size ?? DEFAULT_TEXT_SIZE);
+      const rot = a.rot ?? 0;
+      const inner = el("g", rot ? { transform: `rotate(${-90 * rot} ${a.x} ${a.y})` } : {});
+      g.append(inner);
+      const anchor = a.align === "center" ? "middle" : a.align === "right" ? "end" : "start";
+      a.text.split("\n").forEach((line, i) => {
+        const t = el("text", { x: a.x, y: a.y + i * fs * 1.25, class: "ann-text" });
+        t.setAttribute("style", `fill:${color};font-size:${fs}px;text-anchor:${anchor};font-weight:${a.bold ? 700 : 400}` +
+          (a.italic ? ";font-style:italic" : ""));
+        t.textContent = line || "\u00a0";
+        inner.append(t);
+      });
+      let bb: Box;
+      try { const r = (inner as SVGGraphicsElement).getBBox(); bb = { x: r.x, y: r.y, w: r.width, h: r.height }; } catch { bb = { x: a.x, y: a.y - fs, w: fs, h: fs }; }
+      if (!bb.w) bb = { x: a.x, y: a.y - fs * 0.8, w: fs * 0.6, h: fs };
+      const pad = fs * 0.3;
+      let frame: Box = { x: bb.x - pad, y: bb.y - pad * 0.5, w: bb.w + 2 * pad, h: bb.h + pad };
+      if (a.box === "rect" || a.box === "round") {
+        const shape = a.box === "round" ? el("path", { d: roundRectPath(frame.x, frame.y, frame.w, frame.h, frame.h / 3) })
+          : el("rect", { x: frame.x, y: frame.y, width: frame.w, height: frame.h });
+        inner.prepend(paint(shape, fillCss));
+      } else if (a.box === "triangle") {
+        const cx = bb.x + bb.w / 2, cy = bb.y + bb.h / 2, s = Math.max(bb.w, bb.h) + pad;
+        const tri: APt[] = [[cx, cy - s * 1.05], [cx + s * 0.95, cy + s * 0.6], [cx - s * 0.95, cy + s * 0.6]];
+        inner.prepend(paint(el("polygon", { points: ptsAttr(tri) }), fillCss));
+        frame = { x: cx - s * 0.95, y: cy - s * 1.05, w: s * 1.9, h: s * 1.65 };
+      }
+      inner.append(el("rect", { x: frame.x, y: frame.y, width: frame.w, height: frame.h, class: "ann-hit-area" }));
+      const box = rotateBox(frame, a.x, a.y, rot);
+      const tip = leaderTip(a, compPos);
+      if (tip && a.leader) {
+        // il richiamo parte dal lato del riquadro più vicino alla punta
+        const sides: APt[] = [[frame.x, frame.y + frame.h / 2], [frame.x + frame.w, frame.y + frame.h / 2],
+          [frame.x + frame.w / 2, frame.y], [frame.x + frame.w / 2, frame.y + frame.h]].map((p) => rotatePt(p as APt, a.x, a.y, rot));
+        const start = sides.reduce((b, p) => (Math.hypot(p[0] - tip[0], p[1] - tip[1]) < Math.hypot(b[0] - tip[0], b[1] - tip[1]) ? p : b));
+        const leader = el("polyline", { points: ptsAttr([start, tip]) });
+        g.append(paint(leader));
+        hit(leader);
+        terminal(a.leader.end ?? "arrow", start, tip);
+        const x0 = Math.min(box.x, tip[0]), y0 = Math.min(box.y, tip[1]);
+        annMeasured.set(a.id, { x: x0, y: y0, w: Math.max(box.x + box.w, tip[0]) - x0, h: Math.max(box.y + box.h, tip[1]) - y0 });
+      } else annMeasured.set(a.id, box);
+      if (sel.has(a.id)) handles.append(el("rect", { x: box.x - ANN_PAD, y: box.y - ANN_PAD, width: box.w + 2 * ANN_PAD,
+                                                     height: box.h + 2 * ANN_PAD, class: "ann-sel" }));
+    }
+    if (a.kind === "line") annMeasured.set(a.id, annBox(a));
+    if (sel.has(a.id) && a.kind !== "text" && (a.kind !== "line" || selection?.kind === "multi")) {
+      const b = annMeasured.get(a.id)!;
+      handles.append(el("rect", { x: b.x - ANN_PAD, y: b.y - ANN_PAD, width: b.w + 2 * ANN_PAD,
+                                  height: b.h + 2 * ANN_PAD, class: "ann-sel" }));
+    }
+  }
+  // maniglie dell'annotazione selezionata da sola
+  const one = !sim && selection?.kind === "annotation" ? annById(selection.id) : undefined;
+  if (!one || one.locked) return;
+  const handle = (x: number, y: number, name: string, tip: string, cls = "ann-handle") => {
+    const h = el(name.startsWith("v") || name.startsWith("m") || name === "leader" ? "circle" : "rect",
+      name.startsWith("v") || name.startsWith("m") || name === "leader"
+        ? { cx: x, cy: y, r: name.startsWith("m") ? 3.5 : 5, class: cls, "data-ann-handle": name }
+        : { x: x - 4.5, y: y - 4.5, width: 9, height: 9, rx: 1.5, class: cls, "data-ann-handle": name });
+    h.append(svgTitle(tip));
+    handles.append(h);
+  };
+  if (one.kind === "rect" || one.kind === "ellipse") {
+    const { x, y, w, h } = one;
+    for (const [n, hx, hy] of [["nw", 0, 0], ["n", .5, 0], ["ne", 1, 0], ["w", 0, .5], ["e", 1, .5], ["sw", 0, 1], ["s", .5, 1], ["se", 1, 1]] as const) {
+      handle(x + w * hx, y + h * hy, n, "Trascina per ridimensionare");
+    }
+  } else if (one.kind === "line") {
+    one.points.forEach(([x, y], i) => handle(x, y, `v${i}`, one.points.length > 2 ? "Trascina per spostare il punto · doppio clic per toglierlo" : "Trascina per spostare il punto"));
+    for (let i = 0; i + 1 < one.points.length; i++) {
+      const [x1, y1] = one.points[i]!, [x2, y2] = one.points[i + 1]!;
+      handle((x1 + x2) / 2, (y1 + y2) / 2, `m${i}`, "Trascina per aggiungere un punto", "ann-handle mid");
+    }
+  } else if (one.kind === "text" && one.leader) {
+    const tip = leaderTip(one, compPos)!;
+    handle(tip[0], tip[1], "leader", one.leader.attach ? `Agganciato a ${one.leader.attach} · trascina per spostare o sganciare`
+      : "Trascina sulla punta di un componente per agganciarla");
   }
 }
 
@@ -880,6 +1060,41 @@ function renderPalette() {
     groups.push(det);
     pal.append(det);
   }
+  // testi e forme
+  for (const cat of [...new Set(ANN_PRESETS.map((p) => p.group))]) {
+    const det = document.createElement("details");
+    det.className = "palette-group ann-group";
+    det.dataset.cat = cat;
+    det.open = !closed.includes(cat);
+    const sum = document.createElement("summary");
+    sum.textContent = cat;
+    const grid = document.createElement("div");
+    grid.className = "palette-grid";
+    det.append(sum, grid);
+    det.addEventListener("toggle", () => {
+      if (search.value) return;
+      const now = groups.filter((g) => !g.open).map((g) => g.dataset.cat!);
+      try { localStorage.setItem(PALETTE_KEY, JSON.stringify(now)); } catch { /* non disponibile */ }
+    });
+    for (const p of ANN_PRESETS.filter((x) => x.group === cat)) {
+      const b = document.createElement("button");
+      b.className = "palette-item";
+      b.draggable = true;
+      b.dataset.annotation = p.key;
+      b.dataset.search = `${p.label} ${p.doc} annotazione testo forma`.toLowerCase();
+      b.title = p.doc;
+      b.innerHTML = `<svg viewBox="-22 -22 44 44" width="44" height="44" class="ann-thumb" aria-hidden="true">${p.icon}</svg><span></span>`;
+      b.querySelector("span")!.textContent = p.label;
+      b.addEventListener("click", () => addAnnotation(p.key, viewCenter()));
+      b.addEventListener("dragstart", (e) => {
+        e.dataTransfer!.setData("application/x-pneutrack-annotation", p.key);
+        e.dataTransfer!.effectAllowed = "copy";
+      });
+      grid.append(b);
+    }
+    groups.push(det);
+    pal.append(det);
+  }
   // blocchi salvati nella libreria del browser
   const lib = blockLibrary();
   {
@@ -967,7 +1182,7 @@ function field(label: string, input: HTMLElement, help = "") {
   wrap.append(span, input);
   return wrap;
 }
-function heading(panel: HTMLElement, text: string, level: "h2" | "h3" = "h3") {
+function heading(panel: HTMLElement, text: string, level: "h2" | "h3" | "h4" = "h3") {
   const h = document.createElement(level);
   h.textContent = text;
   panel.append(h);
@@ -1186,6 +1401,221 @@ function renderBlockPanel(panel: HTMLElement, title: HTMLElement, id: string) {
   panel.append(help);
 }
 
+/** Pulsanti a scelta singola (segmentati). */
+function segmented<T>(options: [T, string, string?][], current: T, onPick: (v: T) => void, name = "") {
+  const box = document.createElement("div");
+  box.className = "seg";
+  box.setAttribute("role", "group");
+  if (name) box.dataset.name = name;
+  for (const [value, text, tip] of options) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    if (tip) b.title = tip;
+    b.setAttribute("aria-pressed", String(value === current));
+    b.addEventListener("click", () => onPick(value));
+    box.append(b);
+  }
+  return box;
+}
+
+/** Campo con etichetta che non è un <label> (per gruppi di pulsanti). */
+function fieldBox(label: string, content: HTMLElement, help = "") {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  const span = document.createElement("span");
+  span.textContent = label;
+  if (help) wrap.title = help;
+  wrap.append(span, content);
+  return wrap;
+}
+
+/** Pannello di un testo o di una forma: contenuto, stile della linea, disposizione. */
+function renderAnnPanel(panel: HTMLElement, title: HTMLElement, id: string) {
+  const a = annById(id)!;
+  title.textContent = annLabel(a);
+  /** modifica con annullamento; `id` resta valido dopo un annulla */
+  const upd = (fn: (x: AnnotationData) => void) => mutate(() => { const x = annById(id); if (x) fn(x); });
+  const set = <K extends string>(key: K, value: unknown, def?: unknown) => upd((x) => {
+    const r = x as unknown as Record<string, unknown>;
+    if (value === undefined || value === def || value === "" || value === false) delete r[key]; else r[key] = value;
+  });
+  /** testo modificato dal vivo, con un solo passo di annullamento al termine */
+  const liveText = (input: HTMLInputElement | HTMLTextAreaElement, apply: (x: AnnotationData, v: string) => void) => {
+    let before = "";
+    input.addEventListener("focus", () => { before = snapshot(); });
+    input.addEventListener("input", () => { const x = annById(id); if (x) { apply(x, input.value); render(); } });
+    input.addEventListener("change", () => commit(before || undefined));
+  };
+
+  if (a.kind === "text") {
+    const ta = document.createElement("textarea");
+    ta.name = "ann-text"; ta.rows = Math.min(6, Math.max(2, a.text.split("\n").length + 1)); ta.value = a.text;
+    ta.placeholder = "Testo (Invio per andare a capo)";
+    liveText(ta, (x, v) => { if (x.kind === "text") x.text = v; });
+    panel.append(ta);
+    panel.append(fieldBox("Altezza", segmented(TEXT_SIZES.map((v) => [v, fmtMm(v) + (v === TEXT_SIZES.at(-1) ? " mm" : "")] as [number, string]),
+      a.size ?? DEFAULT_TEXT_SIZE, (v) => set("size", v, DEFAULT_TEXT_SIZE), "ann-size"), "Altezza dei caratteri sulla carta (ISO 3098)"));
+    const style = segmented<"bold" | "italic">([["bold", "G", "Grassetto"], ["italic", "C", "Corsivo"]], "bold", (v) => set(v, !a[v]), "ann-style");
+    style.querySelectorAll("button").forEach((b, i) => {
+      b.setAttribute("aria-pressed", String(i ? !!a.italic : !!a.bold));
+      b.style.fontWeight = i ? "" : "800"; b.style.fontStyle = i ? "italic" : "";
+    });
+    panel.append(fieldBox("Stile", style));
+    panel.append(fieldBox("Allineamento", segmented([["left", "Sinistra"], ["center", "Centro"], ["right", "Destra"]] as ["left" | "center" | "right", string][],
+      a.align ?? "left", (v) => set("align", v, "left"), "ann-align")));
+    panel.append(fieldBox("Rotazione", segmented([0, 1, 2, 3].map((r) => [r, `${r * 90}°`] as [number, string]), a.rot ?? 0,
+      (v) => set("rot", v, 0), "ann-rot"), "Gradi in senso antiorario (R ruota di 90°)"));
+    const box = document.createElement("select");
+    box.name = "ann-box";
+    for (const [v, t] of [["none", "Nessuno"], ["rect", "Rettangolo"], ["round", "Arrotondato"], ["triangle", "Triangolo (revisione)"]]) {
+      box.append(new Option(t, v));
+    }
+    box.value = a.box ?? "none";
+    box.addEventListener("change", () => set("box", box.value, "none"));
+    panel.append(field("Riquadro", box));
+  } else if (a.kind === "rect") {
+    const t = document.createElement("input");
+    t.name = "ann-title"; t.value = a.title ?? ""; t.placeholder = "facoltativo";
+    liveText(t, (x, v) => { if (x.kind === "rect") { if (v.trim()) x.title = v; else delete x.title; } });
+    panel.append(field("Titolo", t));
+    const pos = document.createElement("select");
+    pos.name = "ann-title-pos";
+    for (const [v, txt] of [["tl", "In alto a sinistra"], ["tr", "In alto a destra"], ["bl", "In basso a sinistra"], ["br", "In basso a destra"]]) {
+      pos.append(new Option(txt, v));
+    }
+    pos.value = a.titlePos ?? "tl";
+    pos.addEventListener("change", () => set("titlePos", pos.value, "tl"));
+    panel.append(field("Posizione titolo", pos));
+  }
+
+  heading(panel, a.kind === "text" ? "Aspetto" : "Linea", "h4");
+  // colore: preimpostati e personalizzato
+  const sw = document.createElement("div");
+  sw.className = "swatches";
+  sw.dataset.name = "ann-color";
+  for (const c of COLORS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "sw" + (c.value ? "" : " auto");
+    if (c.value) b.style.background = c.value;
+    b.title = c.label;
+    b.setAttribute("aria-label", c.label);
+    b.setAttribute("aria-pressed", String((a.color ?? undefined) === c.value));
+    b.addEventListener("click", () => set("color", c.value));
+    sw.append(b);
+  }
+  const custom = document.createElement("input");
+  custom.type = "color";
+  custom.className = "sw custom";
+  custom.title = "Altro colore…";
+  custom.value = a.color ?? "#1d2430";
+  if (a.color && !COLORS.some((c) => c.value === a.color)) custom.classList.add("on");
+  custom.addEventListener("change", () => set("color", custom.value.toLowerCase()));
+  sw.append(custom);
+  panel.append(fieldBox("Colore", sw));
+
+  const showLine = a.kind !== "text" || (a.box && a.box !== "none") || a.leader;
+  if (showLine) {
+    const lt = document.createElement("select");
+    lt.name = "ann-line";
+    for (const l of LINE_TYPES) {
+      if (l.value === "double" && a.kind !== "line") continue;
+      lt.append(new Option(`${l.sample}  ${l.label}`, l.value));
+    }
+    lt.value = a.line ?? "continuous";
+    lt.addEventListener("change", () => set("line", lt.value, "continuous"));
+    panel.append(field("Tipo linea", lt, "ISO 128: tratto-punto per i contorni di gruppo (ISO 1219-2), tratteggiata per pilotaggi e drenaggi"));
+    panel.append(fieldBox("Spessore", segmented(WEIGHTS.map((v) => [v, fmtMm(v)] as [number, string]), a.weight ?? DEFAULT_WEIGHT,
+      (v) => set("weight", v, DEFAULT_WEIGHT), "ann-weight"), "Spessore sulla carta in mm (ISO 128)"));
+  }
+  if (a.kind === "rect" || a.kind === "ellipse" || (a.kind === "text" && a.box && a.box !== "none")) {
+    const fill = document.createElement("select");
+    fill.name = "ann-fill";
+    for (const [v, t] of [["none", "Nessuno"], ["tint", "Colore chiaro"], ["white", "Bianco (copre il disegno)"]]) fill.append(new Option(t, v));
+    fill.value = a.fill ?? "none";
+    fill.addEventListener("change", () => set("fill", fill.value, "none"));
+    panel.append(field("Riempimento", fill));
+  }
+  if (a.kind === "rect") {
+    panel.append(fieldBox("Angoli", segmented([[false, "Vivi"], [true, "Arrotondati"]] as [boolean, string][], !!a.round,
+      (v) => set("round", v, false), "ann-round")));
+  }
+  const terminals: [Terminal, string, string][] = [["none", "—", "Nessuna punta"], ["arrow", "▶", "Freccia piena"],
+    ["open", "▷", "Triangolo vuoto: direzione del flusso (ISO 1219)"], ["dot", "●", "Punto"]];
+  if (a.kind === "line") {
+    panel.append(fieldBox("Inizio", segmented(terminals, a.start ?? "none", (v) => set("start", v, "none"), "ann-start")));
+    panel.append(fieldBox("Fine", segmented(terminals, a.end ?? "none", (v) => set("end", v, "none"), "ann-end")));
+  }
+  if (a.kind === "text") {
+    heading(panel, "Richiamo", "h4");
+    if (a.leader) {
+      panel.append(fieldBox("Punta", segmented(terminals.filter((t) => t[0] !== "open"), a.leader.end ?? "arrow",
+        (v) => upd((x) => { if (x.kind === "text" && x.leader) x.leader.end = v; }), "ann-leader-end")));
+      const p = document.createElement("p");
+      p.className = "help";
+      p.textContent = a.leader.attach
+        ? `Agganciato a ${a.leader.attach}: la freccia segue il componente. Trascina la punta altrove per sganciarla.`
+        : "Trascina la punta della freccia su un componente per agganciarla: poi lo segue quando lo sposti.";
+      panel.append(p);
+    }
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    actions.append(a.leader
+      ? button("Togli il richiamo", () => upd((x) => { if (x.kind === "text") delete x.leader; }), "", "ann-leader-off")
+      : button("Aggiungi richiamo", () => upd((x) => {
+        if (x.kind === "text") x.leader = { x: snap(x.x + 80), y: snap(x.y + 50), end: "arrow" };
+      }), "", "ann-leader-on"));
+    panel.append(actions);
+  }
+
+  heading(panel, "Disposizione", "h4");
+  if (a.kind === "rect" || a.kind === "ellipse") {
+    const num = (label: string, key: "x" | "y" | "w" | "h") => {
+      const inp = document.createElement("input");
+      inp.name = `ann-${key}`; inp.inputMode = "decimal"; inp.value = String(a[key]);
+      inp.addEventListener("change", () => {
+        const v = Math.round(Number(inp.value.replace(",", ".")));
+        if (!Number.isFinite(v) || ((key === "w" || key === "h") && v < GRID)) { renderProperties(); return; }
+        upd((x) => { if (x.kind === "rect" || x.kind === "ellipse") x[key] = v; });
+      });
+      const wrap = document.createElement("label");
+      wrap.className = "mini";
+      wrap.append(label, inp);
+      return wrap;
+    };
+    const pair = (a1: HTMLElement, b1: HTMLElement) => { const d = document.createElement("div"); d.className = "pair"; d.append(a1, b1); return d; };
+    panel.append(fieldBox("Posizione", pair(num("X", "x"), num("Y", "y"))));
+    panel.append(fieldBox("Dimensioni", pair(num("L", "w"), num("A", "h")), "Larghezza e altezza in unità del disegno (3 per mm sulla carta)"));
+  }
+  const check = (label: string, value: boolean, onChange: (v: boolean) => void, name: string) => {
+    const l = document.createElement("label");
+    l.className = "check";
+    const c = document.createElement("input");
+    c.type = "checkbox"; c.checked = value; c.name = name;
+    c.addEventListener("change", () => onChange(c.checked));
+    l.append(c, " ", label);
+    panel.append(l);
+  };
+  if (a.kind === "rect") {
+    const n = doc.components.filter((c) => { const l = layoutOf(c.id); return insideBox(a, l.x, l.y); }).map((c) => c.id);
+    check(`Sposta insieme i componenti racchiusi${n.length ? ` (${n.join(", ")})` : ""}`, !!a.carry, (v) => set("carry", v), "ann-carry");
+  }
+  check("Blocca posizione", !!a.locked, (v) => set("locked", v), "ann-locked");
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  actions.append(button("Duplica", duplicateSelection, "Ctrl+D", "duplicate"), button("Elimina", deleteSelection, "Canc", "", "danger"));
+  panel.append(actions);
+  const help = document.createElement("p");
+  help.className = "help";
+  help.textContent = a.kind === "line"
+    ? "Trascina i punti per spostarli; il + a metà di un tratto aggiunge un punto, doppio clic su un punto lo toglie."
+    : a.kind === "text" ? "Doppio clic sul testo nel foglio per scriverlo qui. R ruota di 90°."
+    : "Trascina il bordo per spostare, le maniglie per ridimensionare.";
+  panel.append(help);
+}
+const fmtMm = (v: number) => String(v).replace(".", ",");
+
 /** Suggerimenti per i campi di alesaggio, stelo e corsa (si può sempre scrivere un altro valore). */
 const STANDARD_LISTS: Record<string, number[]> = { bore: STANDARD_BORES, rod: STANDARD_RODS, stroke: STANDARD_STROKES };
 function standardList(name: string): string | null {
@@ -1348,17 +1778,21 @@ function renderProperties() {
 
   } else if (selection?.kind === "block" && doc.blocks?.some((b) => b.id === (selection as { id: string }).id)) {
     renderBlockPanel(panel, title, selection.id);
+  } else if (selection?.kind === "annotation" && annById(selection.id)) {
+    renderAnnPanel(panel, title, selection.id);
   } else if (selection?.kind === "multi") {
-    title.textContent = `${selection.ids.length} componenti selezionati`;
+    const nAnn = selection.anns?.length ?? 0;
+    title.textContent = [selection.ids.length ? `${selection.ids.length} componenti` : "",
+      nAnn ? (nAnn === 1 ? "1 annotazione" : `${nAnn} annotazioni`) : ""].filter(Boolean).join(" e ") + " selezionati";
     const p = document.createElement("p");
     p.className = "help";
-    p.textContent = selection.ids.join(", ");
+    p.textContent = [...selection.ids, ...(selection.anns ?? []).map((id) => { const a = annById(id); return a ? annLabel(a) : id; })].join(", ");
     panel.append(p);
     const actions = document.createElement("div");
     actions.className = "actions";
-    actions.append(
-      button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge"),
-    );
+    const merge = button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge");
+    merge.disabled = !selection.ids.length;
+    actions.append(merge);
     panel.append(actions);
     const alignHead = document.createElement("h4");
     alignHead.textContent = "Allinea";
@@ -1610,6 +2044,17 @@ function addComponent(type: string, at: { x: number; y: number }, presetIndex = 
   return comp;
 }
 
+function addAnnotation(key: string, at: { x: number; y: number }) {
+  if (sim) return;
+  const a = annFromPreset(key, nextAnnId(doc.annotations), { x: snap(at.x), y: snap(at.y) });
+  if (!a) return;
+  // più inserimenti nello stesso punto: ognuno scala di 20, per non finire uno sopra l'altro
+  const same = (x: AnnotationData) => { const p = annBox(x, compPos), q = annBox(a, compPos); return p.x === q.x && p.y === q.y; };
+  for (let i = 0; i < 20 && doc.annotations?.some(same); i++) moveAnn(a, 2 * GRID, 2 * GRID);
+  mutate(() => { (doc.annotations ??= []).push(a); });
+  select({ kind: "annotation", id: a.id });
+}
+
 function renameComponent(oldId: string, newId: string) {
   if (!newId || newId === oldId) return renderProperties();
   if (!/^[A-Za-z0-9_-]+$/.test(newId)) { toast("La sigla può contenere solo lettere, numeri, - e _"); return renderProperties(); }
@@ -1617,6 +2062,7 @@ function renameComponent(oldId: string, newId: string) {
   mutate(() => {
     byId(oldId)!.id = newId;
     for (const b of doc.blocks ?? []) b.components = b.components.map((c) => (c === oldId ? newId : c));
+    for (const a of doc.annotations ?? []) if (a.kind === "text" && a.leader?.attach === oldId) a.leader.attach = newId;
     doc.layout[newId] = layoutOf(oldId);
     delete doc.layout[oldId];
     const fix = (ref: string) => { const [c, p] = splitRef(ref); return c === oldId ? `${newId}.${p}` : ref; };
@@ -1660,14 +2106,21 @@ function connect(a: string, b: string) {
 function deleteSelection() {
   const sel = selection;
   if (!sel || sim) return;
+  const anns = new Set(selectedAnns());
   mutate(() => {
     if (sel.kind === "connection") {
       doc.connections.splice(sel.index, 1);
       return;
     }
+    if (anns.size) {
+      doc.annotations = (doc.annotations ?? []).filter((a) => !anns.has(a.id));
+      if (!doc.annotations.length) delete doc.annotations;
+    }
+    if (sel.kind === "annotation") return;
     // un punto di connessione tra due sole linee si toglie ricucendole
     if (sel.kind === "component" && dissolveJunction(doc, sel.id)) { pruneBlocks(doc); return; }
     const ids = new Set(selectedIds());
+    for (const id of ids) { const p = compPos(id); if (p) detachFrom(doc.annotations, id, p); }
     doc.components = doc.components.filter((c) => !ids.has(c.id));
     for (const id of ids) delete doc.layout[id];
     doc.connections = doc.connections.filter((c) => !ids.has(splitRef(c.from)[0]) && !ids.has(splitRef(c.to)[0]));
@@ -1697,6 +2150,11 @@ function mirrorSelection(axis: Axis) {
 
 function rotateSelection() {
   const sel = selection;
+  if (sel?.kind === "annotation") {
+    if (annById(sel.id)?.kind !== "text") return;
+    mutate(() => { const a = annById(sel.id); if (a?.kind === "text") { a.rot = ((a.rot ?? 0) + 1) % 4; if (!a.rot) delete a.rot; } });
+    return;
+  }
   if (sel?.kind !== "component") return;
   // ruotando cambiano i lati delle porte: il testo torna nella posizione automatica
   mutate(() => { const l = layoutOf(sel.id); l.rot = ((l.rot || 0) + 1) % 4; delete l.label; });
@@ -1710,27 +2168,72 @@ function freeId(type: string, taken: Set<string>) {
   return `${prefix}${n}`;
 }
 
-/** Duplica la selezione: componenti, linee tra loro e, per un blocco, il blocco stesso. */
+/** Duplica la selezione: componenti, linee tra loro, annotazioni e, per un blocco, il blocco stesso. */
 function duplicateSelection() {
-  const ids = selectedIds();
-  if (!ids.length || sim) return;
-  const block = selection?.kind === "block" ? doc.blocks?.find((b) => b.id === (selection as { id: string }).id) : undefined;
-  const frag = extractFragment(doc, ids, block?.name, block?.description);
-  const x0 = Math.min(...ids.map((id) => layoutOf(id).x)), y0 = Math.min(...ids.map((id) => layoutOf(id).y));
-  let added: string[] = [];
-  let newBlock: string | undefined;
-  mutate(() => {
-    added = insertFragment(doc, frag, { x: x0 + 40, y: y0 + 40 }, freeId);
-    if (block) newBlock = mergeBlock(doc, added, `${block.name} (copia)`, block.description).id;
-  });
-  if (newBlock) select({ kind: "block", id: newBlock });
-  else select(added.length > 1 ? { kind: "multi", ids: added } : { kind: "component", id: added[0]! });
+  const clip = makeClip();
+  if (!clip || sim) return;
+  if (clip.block && clip.fragment) clip.fragment.name = `${clip.fragment.name} (copia)`;
+  insertClip(clip, { x: clip.origin[0] + 40, y: clip.origin[1] + 40 });
 }
 
 // --- appunti: copia, taglia, incolla ------------------------------------------------
 const CLIP_KEY = "pneutrack.clipboard.v1"; // ultima copia, condivisa tra progetti e schede
 const CLIP_FORMAT = "pneutrack/clipboard";
-interface Clip { format: typeof CLIP_FORMAT; block: boolean; origin: [number, number]; fragment: Fragment }
+/**
+ * Appunti: componenti (frammento) e annotazioni. `origin` è l'angolo dei componenti, o delle sole
+ * annotazioni se non ci sono componenti; le annotazioni sono scritte rispetto a `origin`.
+ */
+interface Clip { format: typeof CLIP_FORMAT; block: boolean; origin: [number, number]; fragment: Fragment | null; anns?: AnnotationData[] }
+
+/** Copia staccata della selezione (null se non c'è niente da copiare). */
+function makeClip(): Clip | null {
+  const ids = selectedIds();
+  const anns = selectedAnns().map(annById).filter((a): a is AnnotationData => !!a).map((a) => structuredClone(a));
+  if (!ids.length && !anns.length) return null;
+  const block = selection?.kind === "block" ? doc.blocks?.find((b) => b.id === (selection as { id: string }).id) : undefined;
+  const fragment = ids.length ? extractFragment(doc, ids, block?.name ?? "", block?.description) : null;
+  const corners = ids.length ? ids.map((id) => [layoutOf(id).x, layoutOf(id).y]) : anns.map((a) => { const b = annBoxOf(a); return [b.x, b.y]; });
+  const origin: [number, number] = [snap(Math.min(...corners.map((c) => c[0]!))), snap(Math.min(...corners.map((c) => c[1]!)))];
+  const set = new Set(ids);
+  for (const a of anns) {
+    // un richiamo agganciato a un componente rimasto fuori si scioglie dove si trova
+    if (a.kind === "text" && a.leader?.attach && !set.has(a.leader.attach)) {
+      const p = compPos(a.leader.attach);
+      if (p) detachFrom([a], a.leader.attach, p);
+    }
+    moveAnn(a, -origin[0], -origin[1]);
+  }
+  return { format: CLIP_FORMAT, block: !!block, origin, fragment, ...(anns.length ? { anns } : {}) };
+}
+
+/** Inserisce gli appunti con l'angolo in `at` e seleziona quello che è stato aggiunto. */
+function insertClip(clip: Clip, at: { x: number; y: number }) {
+  let added: string[] = [];
+  const addedAnns: string[] = [];
+  let newBlock: string | undefined;
+  mutate(() => {
+    if (clip.fragment) {
+      added = insertFragment(doc, clip.fragment, at, freeId);
+      if (clip.block) newBlock = mergeBlock(doc, added, clip.fragment.name || undefined, clip.fragment.description).id;
+    }
+    const rename = new Map(clip.fragment?.components.map((c, i) => [c.id, added[i]!]) ?? []);
+    const taken = new Set<string>();
+    for (const src of clip.anns ?? []) {
+      const a = structuredClone(src);
+      a.id = nextAnnId(doc.annotations, taken);
+      taken.add(a.id);
+      moveAnn(a, at.x, at.y);
+      if (a.kind === "text" && a.leader?.attach) {
+        if (rename.has(a.leader.attach)) a.leader.attach = rename.get(a.leader.attach);
+        else delete a.leader.attach;
+      }
+      (doc.annotations ??= []).push(a);
+      addedAnns.push(a.id);
+    }
+  });
+  if (newBlock && !addedAnns.length) select({ kind: "block", id: newBlock });
+  else select(selectionOf(added, addedAnns));
+}
 let clipPastes = 0; // incolla ripetuti senza puntatore sul foglio: ogni copia scala di 40
 let pointerWorld: { x: number; y: number } | null = null; // ultimo punto del puntatore sul foglio
 
@@ -1740,9 +2243,10 @@ function parseClip(text: string | null | undefined): Clip | null {
     const raw = JSON.parse(text) as Partial<Clip>;
     if (raw?.format !== CLIP_FORMAT) return null;
     const fragment = parseFragment(raw.fragment);
-    if (!fragment) return null;
+    const anns = normalizeAnnotations(raw.anns);
+    if (!fragment && !anns.length) return null;
     const o = Array.isArray(raw.origin) && raw.origin.length === 2 ? raw.origin as [number, number] : [0, 0] as [number, number];
-    return { format: CLIP_FORMAT, block: !!raw.block, origin: o, fragment };
+    return { format: CLIP_FORMAT, block: !!raw.block && !!fragment, origin: o, fragment, ...(anns.length ? { anns } : {}) };
   } catch { return null; }
 }
 function storedClip(): Clip | null {
@@ -1751,16 +2255,18 @@ function storedClip(): Clip | null {
 
 /** Copia la selezione negli appunti dell'app (e restituisce il testo per quelli del sistema). */
 function copySelection(): string | null {
-  const ids = selectedIds();
-  if (!ids.length) return null;
-  const block = selection?.kind === "block" ? doc.blocks?.find((b) => b.id === (selection as { id: string }).id) : undefined;
-  const frag = extractFragment(doc, ids, block?.name ?? "", block?.description);
-  const origin: [number, number] = [Math.min(...ids.map((id) => layoutOf(id).x)), Math.min(...ids.map((id) => layoutOf(id).y))];
-  const text = JSON.stringify({ format: CLIP_FORMAT, block: !!block, origin, fragment: frag } satisfies Clip);
+  const clip = makeClip();
+  if (!clip) return null;
+  const ids = clip.fragment?.components.map((c) => c.id) ?? [];
+  const block = clip.block ? clip.fragment : null;
+  const text = JSON.stringify(clip);
   try { localStorage.setItem(CLIP_KEY, text); } catch { /* resta solo negli appunti del sistema */ }
   clipPastes = 0;
   renderStatus();
-  toast(ids.length === 1 ? `Copiato ${ids[0]}` : `Copiati ${ids.length} componenti` + (block ? ` (blocco «${block.name}»)` : ""));
+  const n = clip.anns?.length ?? 0;
+  toast(!ids.length ? (n === 1 ? "Copiata 1 annotazione" : `Copiate ${n} annotazioni`)
+    : (ids.length === 1 ? `Copiato ${ids[0]}` : `Copiati ${ids.length} componenti`) + (block ? ` (blocco «${block.name}»)` : "") +
+      (n ? ` e ${n === 1 ? "1 annotazione" : `${n} annotazioni`}` : ""));
   return text;
 }
 
@@ -1778,14 +2284,7 @@ function pasteClip(clip: Clip | null = storedClip()) {
   const at = pointerWorld
     ? { x: snap(pointerWorld.x), y: snap(pointerWorld.y) }
     : { x: clip.origin[0] + 40 * clipPastes, y: clip.origin[1] + 40 * clipPastes };
-  let added: string[] = [];
-  let newBlock: string | undefined;
-  mutate(() => {
-    added = insertFragment(doc, clip.fragment, at, freeId);
-    if (clip.block) newBlock = mergeBlock(doc, added, clip.fragment.name || undefined, clip.fragment.description).id;
-  });
-  if (newBlock) select({ kind: "block", id: newBlock });
-  else select(added.length > 1 ? { kind: "multi", ids: added } : { kind: "component", id: added[0]! });
+  insertClip(clip, at);
 }
 
 // gli eventi copy/cut/paste passano anche dagli appunti del sistema: si copia tra schede e browser
@@ -2304,8 +2803,12 @@ function centerOn(id: string) {
 }
 /** Ingombro del disegno (componenti, etichette e punti di piega) in unità dello schema. */
 function contentBox(): Rect | null {
-  if (!doc.components.length) return null;
+  if (!doc.components.length && !doc.annotations?.length) return null;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const a of doc.annotations ?? []) {
+    const b = annBoxOf(a);
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
+  }
   for (const c of doc.components) {
     const l = layoutOf(c.id), g = geometry(c);
     const [hw, hh] = (l.rot || 0) % 2 ? [g.h / 2, g.w / 2] : [g.w / 2, g.h / 2];
@@ -2353,8 +2856,11 @@ type Drag =
   | { mode: "label"; id: string; dx: number; dy: number; before: string; moved: boolean }
   /** più componenti insieme (selezione multipla o blocco), con le pieghe delle linee tra loro */
   | { mode: "group"; ids: string[]; sx: number; sy: number; start: Record<string, [number, number]>;
-      points: Map<number, Pt[]>; before: string; moved: boolean; clicked?: string }
-  | { mode: "marquee"; sx: number; sy: number; add: string[] }
+      points: Map<number, Pt[]>; before: string; moved: boolean; clicked?: string;
+      anns: AnnotationData[]; last: [number, number] }
+  | { mode: "marquee"; sx: number; sy: number; add: string[]; addAnns: string[] }
+  /** maniglia di un'annotazione: angolo o lato, punto di una linea (v), metà di un tratto (m), punta del richiamo */
+  | { mode: "annh"; id: string; handle: string; sx: number; sy: number; start: AnnotationData; before: string; moved: boolean }
   | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
   /** piega di una linea: `bend` è l'indice del punto, -1 finché non si è mosso il puntatore */
   | { mode: "bend"; index: number; bend: number; sx: number; sy: number; before: string; moved: boolean };
@@ -2392,7 +2898,34 @@ svg.addEventListener("pointerdown", (e) => {
 
   const bend = t.closest<SVGElement>("[data-bend]");
   const labelEl = t.closest<SVGTextElement>("[data-label-for]");
-  if (!sim && labelEl && e.button === 0) {
+  const annHandle = t.closest<SVGElement>("[data-ann-handle]");
+  const annEl = t.closest<SVGElement>("[data-ann]");
+  if (!sim && annHandle && selection?.kind === "annotation" && e.button === 0) {
+    const a = annById(selection.id)!;
+    drag = { mode: "annh", id: a.id, handle: annHandle.dataset.annHandle!, sx: w.x, sy: w.y,
+             start: structuredClone(a), before: snapshot(), moved: false };
+  } else if (!sim && annEl && e.button === 0 && !spaceHeld) {
+    const id = annEl.dataset.ann!;
+    if (e.shiftKey) {
+      // Maiusc+clic: aggiunge o toglie l'annotazione dalla selezione
+      const anns = selectedAnns();
+      select(selectionOf(selectedIds(), anns.includes(id) ? anns.filter((x) => x !== id) : [...anns, id]));
+      drag = null;
+      return;
+    }
+    if (!selectedAnns().includes(id)) select({ kind: "annotation", id });
+    if (annClicked(id)) { drag = null; return; }
+    const a = annById(id)!;
+    if (a.locked) { drag = null; return; }
+    let ids = selectedIds(), anns = selectedAnns();
+    if (selection?.kind === "annotation" && a.kind === "rect" && a.carry) {
+      // il contorno porta con sé i componenti (e le altre annotazioni) che racchiude
+      const box = { x: a.x, y: a.y, w: a.w, h: a.h };
+      ids = doc.components.map((c) => c.id).filter((cid) => { const l = layoutOf(cid); return insideBox(box, l.x, l.y); });
+      anns = [id, ...(doc.annotations ?? []).filter((x) => x.id !== id && contains(box, annBoxOf(x))).map((x) => x.id)];
+    }
+    drag = groupDrag(ids, w, undefined, anns);
+  } else if (!sim && labelEl && e.button === 0) {
     const id = labelEl.dataset.labelFor!;
     if (labelClicked(id)) { drag = null; return; }
     // il testo trascinato è centrato sul punto: si parte dal centro di quello che si vede
@@ -2427,7 +2960,7 @@ svg.addEventListener("pointerdown", (e) => {
       select({ kind: "component", id });
     }
     const ids = selectedIds();
-    if (ids.length > 1) drag = groupDrag(ids, w, clicked);
+    if (ids.length > 1 || selectedAnns().length) drag = groupDrag(ids, w, clicked);
     else {
       const l = layoutOf(id);
       drag = { mode: "move", id, dx: w.x - l.x, dy: w.y - l.y, before: snapshot(), moved: false };
@@ -2438,7 +2971,7 @@ svg.addEventListener("pointerdown", (e) => {
     drag = groupDrag(selectedIds(), w);
   } else if (!sim && e.button === 0 && !line && !spaceHeld) {
     // trascinando sul vuoto: riquadro di selezione (con Maiusc si aggiunge alla selezione)
-    drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [] };
+    drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [], addAnns: e.shiftKey ? selectedAnns() : [] };
   } else if (!sim && line && e.button === 0) {
     const index = Number(line.dataset.connection);
     if (selection?.kind !== "connection" || selection.index !== index) select({ kind: "connection", index });
@@ -2454,9 +2987,15 @@ svg.addEventListener("pointermove", (e) => {
   const w = toWorld(e);
   if (drag.mode === "group") {
     const dx = snap(w.x - drag.sx), dy = snap(w.y - drag.sy);
-    const [fx, fy] = drag.start[drag.ids[0]!]!;
-    const l0 = layoutOf(drag.ids[0]!);
-    if (l0.x === fx + dx && l0.y === fy + dy) return;
+    if (drag.last[0] === dx && drag.last[1] === dy) return;
+    drag.last = [dx, dy];
+    for (const start of drag.anns) {
+      const i = doc.annotations?.findIndex((a) => a.id === start.id) ?? -1;
+      if (i < 0) continue;
+      const copy = structuredClone(start);
+      moveAnn(copy, dx, dy);
+      doc.annotations![i] = copy;
+    }
     for (const id of drag.ids) {
       const [x, y] = drag.start[id]!;
       const l = layoutOf(id);
@@ -2465,6 +3004,8 @@ svg.addEventListener("pointermove", (e) => {
     drag.points.forEach((pts, i) => { doc.connections[i]!.points = pts.map(([x, y]) => [x + dx, y + dy]); });
     drag.moved = true;
     render();
+  } else if (drag.mode === "annh") {
+    if (dragAnnHandle(drag, w)) { drag.moved = true; render(); }
   } else if (drag.mode === "marquee") {
     const m = $("#marquee");
     m.setAttribute("x", String(Math.min(drag.sx, w.x))); m.setAttribute("y", String(Math.min(drag.sy, w.y)));
@@ -2539,7 +3080,15 @@ svg.addEventListener("pointerup", (e) => {
       return l.x >= x0 && l.x <= x1 && l.y >= y0 && l.y <= y1;
     });
     const ids = [...new Set([...d.add, ...inside])];
-    select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+    const area = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    const anns = [...new Set([...d.addAnns, ...(doc.annotations ?? []).filter((a) => contains(area, annBoxOf(a))).map((a) => a.id)])];
+    select(selectionOf(ids, anns));
+    return;
+  }
+  if (d.mode === "annh") {
+    if (d.handle === "leader" && d.moved) attachLeader(d.id, e);
+    if (d.moved) commit(d.before);
+    else if (d.handle.startsWith("v")) vertexClicked(d.id, Number(d.handle.slice(1)));
     return;
   }
   if (d.mode === "move" || d.mode === "bend" || d.mode === "label") {
@@ -2612,7 +3161,7 @@ function connectToLine(from: string, index: number, w: { x: number; y: number })
 }
 
 /** Trascinamento di più componenti: posizioni di partenza e pieghe delle linee tra loro. */
-function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string): Drag {
+function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string, anns: string[] = selectedAnns()): Drag {
   const set = new Set(ids);
   const start: Record<string, [number, number]> = {};
   for (const id of ids) { const l = layoutOf(id); start[id] = [l.x, l.y]; }
@@ -2620,7 +3169,77 @@ function groupDrag(ids: string[], w: { x: number; y: number }, clicked?: string)
   doc.connections.forEach((c, i) => {
     if (c.points && set.has(splitRef(c.from)[0]) && set.has(splitRef(c.to)[0])) points.set(i, c.points.map((p) => [...p] as Pt));
   });
-  return { mode: "group", ids, sx: w.x, sy: w.y, start, points, before: snapshot(), moved: false, clicked };
+  const annStart = anns.map(annById).filter((a): a is AnnotationData => !!a && !a.locked).map((a) => structuredClone(a));
+  return { mode: "group", ids, sx: w.x, sy: w.y, start, points, before: snapshot(), moved: false, clicked,
+           anns: annStart, last: [0, 0] };
+}
+
+/** Trascina una maniglia di annotazione; true se qualcosa è cambiato. */
+function dragAnnHandle(d: Extract<Drag, { mode: "annh" }>, w: { x: number; y: number }): boolean {
+  const a = annById(d.id);
+  if (!a) return false;
+  const before = JSON.stringify(a);
+  const s = d.start;
+  if ((a.kind === "rect" || a.kind === "ellipse") && (s.kind === "rect" || s.kind === "ellipse")) {
+    let x0 = s.x, y0 = s.y, x1 = s.x + s.w, y1 = s.y + s.h;
+    const dx = w.x - d.sx, dy = w.y - d.sy, h = d.handle, min = GRID;
+    if (h.includes("w")) x0 = Math.min(snap(s.x + dx), x1 - min);
+    if (h.includes("e")) x1 = Math.max(snap(s.x + s.w + dx), x0 + min);
+    if (h.includes("n")) y0 = Math.min(snap(s.y + dy), y1 - min);
+    if (h.includes("s")) y1 = Math.max(snap(s.y + s.h + dy), y0 + min);
+    Object.assign(a, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  } else if (a.kind === "line") {
+    if (d.handle.startsWith("m")) {
+      // dal punto a metà del tratto nasce un nuovo punto, che poi si trascina
+      const i = Number(d.handle.slice(1)) + 1;
+      a.points.splice(i, 0, [snap(w.x), snap(w.y)]);
+      d.handle = `v${i}`;
+      d.start = structuredClone(a);
+      return true;
+    }
+    const i = Number(d.handle.slice(1));
+    if (a.points[i]) a.points[i] = [snap(w.x), snap(w.y)];
+  } else if (a.kind === "text" && a.leader && d.handle === "leader") {
+    a.leader = { ...a.leader, x: snap(w.x), y: snap(w.y) };
+    delete a.leader.attach;
+  }
+  return JSON.stringify(a) !== before;
+}
+
+/** Al rilascio della punta di un richiamo su un componente, la punta si aggancia al componente. */
+function attachLeader(id: string, e: { clientX: number; clientY: number }) {
+  const a = annById(id);
+  if (a?.kind !== "text" || !a.leader) return;
+  const comp = document.elementsFromPoint(e.clientX, e.clientY)
+    .map((x) => x.closest<SVGElement>("[data-component]")).find((x) => x)?.dataset.component;
+  const p = comp ? compPos(comp) : null;
+  if (!comp || !p) return;
+  a.leader = { ...a.leader, x: a.leader.x - p[0], y: a.leader.y - p[1], attach: comp };
+  toast(`Richiamo agganciato a ${comp}: segue il componente`);
+}
+
+// doppio clic su un punto di una linea disegnata: lo toglie (ne restano almeno due)
+let lastVertexClick = { key: "", at: 0 };
+function vertexClicked(id: string, k: number) {
+  const key = `${id}:${k}`, now = performance.now();
+  const double = lastVertexClick.key === key && now - lastVertexClick.at < 450;
+  lastVertexClick = double ? { key: "", at: 0 } : { key, at: now };
+  const a = annById(id);
+  if (!double || a?.kind !== "line" || a.points.length <= 2) return;
+  mutate(() => { const x = annById(id); if (x?.kind === "line") x.points.splice(k, 1); });
+}
+
+// doppio clic su un testo disegnato: si scrive nel pannello
+let lastAnnClick = { id: "", at: 0 };
+function annClicked(id: string): boolean {
+  const now = performance.now();
+  const double = lastAnnClick.id === id && now - lastAnnClick.at < 450;
+  lastAnnClick = double ? { id: "", at: 0 } : { id, at: now };
+  if (!double) return false;
+  const field = document.querySelector<HTMLTextAreaElement | HTMLInputElement>('#properties [name="ann-text"], #properties [name="ann-title"]');
+  if (!field) return false;
+  field.focus(); field.select();
+  return true;
 }
 
 // doppio clic sul testo di un componente: lo rimette nella posizione automatica
@@ -2661,12 +3280,15 @@ svg.addEventListener("wheel", (e) => {
 
 svg.addEventListener("dragover", (e) => {
   if (!sim && (e.dataTransfer?.types.includes("application/x-pneutrack-type") ||
+               e.dataTransfer?.types.includes("application/x-pneutrack-annotation") ||
                e.dataTransfer?.types.includes("application/x-pneutrack-block"))) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   }
 });
 svg.addEventListener("drop", (e) => {
+  const annKey = e.dataTransfer?.getData("application/x-pneutrack-annotation");
+  if (annKey) { e.preventDefault(); addAnnotation(annKey, toWorld(e)); return; }
   const lib = e.dataTransfer?.getData("application/x-pneutrack-block");
   if (lib) { e.preventDefault(); insertLibraryBlock(Number(lib), toWorld(e)); return; }
   const data = e.dataTransfer?.getData("application/x-pneutrack-type");
@@ -2717,8 +3339,7 @@ document.addEventListener("keydown", (e) => {
 });
 
 function selectAll() {
-  const ids = doc.components.map((c) => c.id);
-  select(ids.length > 1 ? { kind: "multi", ids } : ids.length ? { kind: "component", id: ids[0]! } : null);
+  select(selectionOf(doc.components.map((c) => c.id), (doc.annotations ?? []).map((a) => a.id)));
 }
 
 /** Zoom attorno al centro del foglio visibile. */
@@ -2739,12 +3360,20 @@ function togglePlay() {
   updatePlayButton();
 }
 
+/** Annotazioni lette da file o archivio: solo voci valide; la chiave sparisce se non ce ne sono. */
+function cleanAnnotations() {
+  if (doc.annotations === undefined) return;
+  const anns = normalizeAnnotations(doc.annotations);
+  if (anns.length) doc.annotations = anns; else delete doc.annotations;
+}
+
 function loadDoc(data: Partial<CircuitDoc>, { fit = true } = {}) {
   stopSim();
   const before = snapshot();
   doc = { ...emptyCircuit(), ...JSON.parse(JSON.stringify(data)) };
   doc.layout ??= {};
   doc.connections ??= [];
+  cleanAnnotations();
   let i = 0;
   for (const c of doc.components) {
     if (!doc.layout[c.id]) doc.layout[c.id] = { x: (i % 5) * 160, y: Math.floor(i / 5) * 140, rot: 0 };
@@ -2907,7 +3536,7 @@ const exportBase = () => fileName().replace(/\.pneu\.json$/, "");
 
 /** SVG vettoriale del foglio, con gli stili scritti sugli elementi (si apre in Inkscape, Illustrator, browser). */
 async function exportSvg() {
-  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
   const { svg, format } = withPrintView((vp, sheet) => {
     const out = sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet));
     for (const t of out.querySelectorAll("text")) t.setAttribute("font-family", "Helvetica, Arial, sans-serif");
@@ -2925,7 +3554,7 @@ async function exportSvg() {
 
 /** DXF in millimetri per AutoCAD e altri CAD, con un layer per tipo di elemento. */
 async function exportDxf() {
-  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
   const { text, format } = withPrintView((vp, sheet) => ({ text: viewportToDxf(vp, sheetRect(sheet)), format: sheet.format }));
   const name = `${exportBase()}.dxf`;
   try {
@@ -2936,7 +3565,7 @@ async function exportDxf() {
 }
 
 async function exportPdf() {
-  if (!doc.components.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
+  if (!doc.components.length && !doc.annotations?.length) { toast("Lo schema è vuoto: niente da esportare"); return; }
   const { svgOut, sheet } = withPrintView((vp, sheet) => ({
     svgOut: sheetSvg(vp, sheetRect(sheet), sheetSizeMm(sheet)), sheet }));
   try {
@@ -3181,7 +3810,7 @@ $("#rail").addEventListener("click", (e) => {
   if (paletteHidden()) setPaletteHidden(false);
   for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
   railScrollUntil = performance.now() + 900; // lo scorrimento che segue non cambia la sezione scelta
-  const cat = where === "elec" ? "Elettrico" : where === "blocks" ? "Blocchi salvati" : null;
+  const cat = where === "elec" ? "Elettrico" : where === "blocks" ? "Blocchi salvati" : where === "ann" ? ANN_PRESETS[0]!.group : null;
   const pal = $("#palette");
   const search = $<HTMLInputElement>("#palette-search");
   if (search.value) { search.value = ""; search.dispatchEvent(new Event("input")); }
@@ -3193,10 +3822,13 @@ $("#rail").addEventListener("click", (e) => {
 $("#palette").addEventListener("scroll", () => {
   if (performance.now() < railScrollUntil) return;
   const pal = $("#palette");
+  // in fondo alla palette le ultime sezioni non arrivano in cima: resta la sezione scelta
+  if (pal.scrollTop > 0 && pal.scrollTop + pal.clientHeight >= pal.scrollHeight - 4) return;
   let where = "pneu";
   for (const g of pal.querySelectorAll<HTMLElement>(".palette-group")) {
     if (g.offsetTop - pal.offsetTop - 60 > pal.scrollTop) break;
-    where = g.dataset.cat === "Elettrico" ? "elec" : g.dataset.cat === "Blocchi salvati" ? "blocks" : "pneu";
+    where = g.dataset.cat === "Elettrico" ? "elec" : g.dataset.cat === "Blocchi salvati" ? "blocks"
+      : g.classList.contains("ann-group") ? "ann" : "pneu";
   }
   for (const b of document.querySelectorAll<HTMLElement>("#rail button")) b.classList.toggle("on", b.dataset.rail === where);
 }, { passive: true });
@@ -3370,7 +4002,7 @@ async function init() {
   // bozza locale subito, poi l'archivio (sul web può rispondere dopo qualche secondo)
   let restored: Partial<CircuitDoc> | null = null;
   try { restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { restored = null; }
-  if (restored?.components) doc = { ...emptyCircuit(), ...restored } as Doc;
+  if (restored?.components) { doc = { ...emptyCircuit(), ...restored } as Doc; cleanAnnotations(); }
   history.past = []; history.future = [];
   changed();
   if (doc.components.length) fitView();
@@ -3383,6 +4015,7 @@ async function init() {
     try {
       const p = await store.get(lastId);
       doc = { ...emptyCircuit(), ...p.circuit };
+      cleanAnnotations();
       project = { id: p.id, createdAt: p.createdAt };
       savedSnapshot = snapshot();
       lastSavedAt = p.updatedAt;

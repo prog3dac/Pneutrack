@@ -3,6 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.25.0 · 2026-11-26
+
+- Testi e forme sullo schema: nuova sezione «Annot.» nella barra a sinistra con testo, nota in riquadro, richiamo con freccia, indice di revisione, linea, freccia, polilinea, rettangolo, cerchio ed ellisse.
+- Elementi grafici della norma: contorno di gruppo tratto-punto con titolo (ISO 1219-2), linea tratto-punto, collegamento meccanico a doppia linea e freccia di direzione del flusso (ISO 1219-1).
+- Per ogni elemento si scelgono colore (sette colori o uno a piacere), tipo di linea (continua, tratteggiata, tratto-punto, tratto-due-punti, punteggiata, doppia), spessore da 0,25 a 0,7 mm, riempimento e punte delle frecce; per i testi altezza ISO 3098, grassetto, corsivo, allineamento, rotazione e riquadro.
+- Il contorno di gruppo sposta con sé i componenti che racchiude; la punta di un richiamo si aggancia a un componente e lo segue.
+- Testi e forme finiscono nel PDF, nell'SVG e nel DXF, dove stanno sul layer ANNOTAZIONI con colore, tipo di linea e spessore propri.
+
 ## 0.24.1 · 2026-11-26
 
 - Simboli dei cilindri in simulazione: il pistone e i tamponi degli ammortizzi restano sempre dentro la camicia per tutta la corsa, anche nei cilindri ammortizzati (prima, a cilindro rientrato, il tampone lato fondello usciva dal fondo). Lo stelo sporge sempre dalla testata, anche a cilindro tutto rientrato, e nel cilindro a stelo passante sporge da entrambi i lati anche a fine corsa. Vale per singolo e doppio effetto, ammortizzati e stelo passante, negli schemi, negli esempi e nel catalogo dei simboli.

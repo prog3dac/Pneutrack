@@ -337,6 +337,34 @@ await page.selectOption('#properties select[name="sheet-format"]', "");
 await settled();
 assert.equal((await state()).doc.sheet, undefined);
 
+// 9e. testi e forme: contorno di gruppo tratto-punto, testo, colore; nel DXF con il loro stile
+await page.click('#rail [data-rail="ann"]');
+await page.click('.palette-item[data-annotation="group"]');
+await page.click('#properties [data-name="ann-color"] button[aria-label="Rosso"]');
+await page.locator('.palette-item[data-annotation="text"]').dragTo(page.locator("#canvas"), { targetPosition: { x: 200, y: 120 } });
+await page.fill('#properties textarea[name="ann-text"]', "Nota di prova");
+await page.press('#properties textarea[name="ann-text"]', "Tab");
+s = await state();
+assert.deepEqual(s.doc.annotations.map((a) => a.kind), ["rect", "text"]);
+assert.equal(s.doc.annotations[0].line, "dashdot");
+assert.equal(s.doc.annotations[0].color, "#dc2626");
+assert.equal(s.doc.annotations[1].text, "Nota di prova");
+assert.equal(await page.locator("#annotations-top text", { hasText: "Nota di prova" }).count(), 1);
+if (shots) await page.screenshot({ path: `${shots}/09e-testo-forme.png` });
+const [annDxf] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), menuAct("export-dxf")]);
+const annLines = Buffer.concat(await (await annDxf.createReadStream()).toArray()).toString("latin1").split("\r\n");
+assert.ok(annLines.includes("ANNOTAZIONI") && annLines.includes("Nota di prova"), "le annotazioni finiscono nel DXF");
+const dd = annLines.findIndex((l, i) => l === "DASHDOT" && annLines[i - 1] === "6");
+assert.ok(dd > 0 && annLines[dd + 1] === "62" && annLines[dd + 2] === "1", "contorno tratto-punto rosso nel DXF");
+await page.keyboard.press("Delete");
+{ // il contorno si prende sul bordo (lontano dalle maniglie): dentro passano i clic ai componenti
+  const fb = await page.locator("#annotations [data-ann] .ann-hit").boundingBox();
+  await page.mouse.click(fb.x + 4, fb.y + fb.height * 0.3);
+}
+await page.keyboard.press("Delete");
+await settled();
+assert.equal((await state()).doc.annotations, undefined);
+
 // 10. progetti: salva, autosalvataggio, riapertura dopo ricarica
 const projects = () => page.evaluate(async () => {
   const r = [];

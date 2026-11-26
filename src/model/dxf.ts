@@ -8,7 +8,18 @@
 
 export type Pt = [number, number];
 
-export interface Layer { name: string; color: number; linetype?: "CONTINUOUS" | "DASHED" }
+export type Linetype = "CONTINUOUS" | "DASHED" | "DASHDOT" | "DIVIDE" | "DOT";
+export interface Layer { name: string; color: number; linetype?: Linetype }
+/** Colore (ACI) e tipo di linea propri dell'entità, al posto di quelli del layer. */
+export interface EntityStyle { color?: number; linetype?: string }
+
+/** Tipi di linea della tabella LTYPE: descrizione e trattini in mm (negativi i vuoti, 0 un punto). */
+const LINETYPES: [name: string, text: string, dashes: number[]][] = [
+  ["DASHED", "__ __ __ __", [2, -1]],
+  ["DASHDOT", "__ . __ . __ .", [6, -1.5, 0, -1.5]],
+  ["DIVIDE", "__ . . __ . . __", [6, -1.5, 0, -1.5, 0, -1.5]],
+  ["DOT", ". . . . . . . .", [0, -1.2]],
+];
 
 export interface TextOpts {
   height: number;
@@ -60,6 +71,9 @@ export class DxfWriter {
   private lo: Pt = [Infinity, Infinity];
   private hi: Pt = [-Infinity, -Infinity];
 
+  /** stile delle prossime entità (colore e tipo di linea DAL LAYER se mancano) */
+  style: EntityStyle = {};
+
   constructor(private layers: Layer[]) {}
 
   private pair(code: number, value: string | number) {
@@ -75,7 +89,9 @@ export class DxfWriter {
     this.used.add(layer);
     this.pair(0, type);
     this.pair(8, layer);
-    if (dashed) this.pair(6, "DASHED");
+    const lt = type === "TEXT" ? undefined : this.style.linetype ?? (dashed ? "DASHED" : undefined);
+    if (lt) this.pair(6, lt);
+    if (this.style.color) this.pair(62, this.style.color);
   }
 
   line(a: Pt, b: Pt, layer: string, dashed = false) {
@@ -155,11 +171,14 @@ export class DxfWriter {
     this.pair(9, "$LTSCALE"); this.pair(40, 1);
     this.pair(0, "ENDSEC");
     this.pair(0, "SECTION"); this.pair(2, "TABLES");
-    this.pair(0, "TABLE"); this.pair(2, "LTYPE"); this.pair(70, 2);
+    this.pair(0, "TABLE"); this.pair(2, "LTYPE"); this.pair(70, LINETYPES.length + 1);
     this.pair(0, "LTYPE"); this.pair(2, "CONTINUOUS"); this.pair(70, 0); this.pair(3, "Solid line");
     this.pair(72, 65); this.pair(73, 0); this.pair(40, 0);
-    this.pair(0, "LTYPE"); this.pair(2, "DASHED"); this.pair(70, 0); this.pair(3, "__ __ __ __");
-    this.pair(72, 65); this.pair(73, 2); this.pair(40, 3); this.pair(49, 2); this.pair(49, -1);
+    for (const [name, text, dashes] of LINETYPES) {
+      this.pair(0, "LTYPE"); this.pair(2, name); this.pair(70, 0); this.pair(3, text);
+      this.pair(72, 65); this.pair(73, dashes.length); this.pair(40, dashes.reduce((s, d) => s + Math.abs(d), 0));
+      for (const d of dashes) this.pair(49, d);
+    }
     this.pair(0, "ENDTAB");
     const layers = this.layers.filter((l) => this.used.has(l.name));
     this.pair(0, "TABLE"); this.pair(2, "LAYER"); this.pair(70, layers.length + 1);
