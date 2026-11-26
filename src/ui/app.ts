@@ -18,7 +18,7 @@ import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
 import {
-  ACTUATION_SHORT, buildComponent, cylinderInfo, isElectric, isLatching, isMechanical, isMomentary, isElectricType, typeList,
+  ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isMechanical, isMomentary, isElectricType, typeList,
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
@@ -58,6 +58,8 @@ const PREFIX: Record<string, string> = {
   check_valve: "NR", pilot_check_valve: "NRP", shuttle_valve: "OR", and_valve: "AND",
   quick_exhaust_valve: "SR", one_way_flow_control: "RF", relief_valve: "VS", sequence_valve: "SQ",
   time_delay_valve: "TM", air_motor: "MP",
+  shutoff_valve: "RB", lockout_valve: "SZ", quick_coupling: "IR", fixed_orifice: "UG", soft_start_valve: "AP",
+  double_pilot_check: "NRD", rodless_cylinder: "C", gripper: "PZ", vacuum_ejector: "EV", suction_cup: "VT",
   // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
   electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
   relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
@@ -322,7 +324,8 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
     const spec = sim.s.net.valves.find((v) => v.id === comp.id);
     if (spec) {
       return { ...coils, position: sim.s.valvePosition(comp.id),
-               active14: sim.s.sideActive(spec, "14"), active12: sim.s.sideActive(spec, "12") };
+               active14: sim.s.sideActive(spec, "14"), active12: sim.s.sideActive(spec, "12"),
+               override14: sim.s.override(comp.id, "14"), override12: sim.s.override(comp.id, "12") };
     }
   }
   if (!sim) return undefined;
@@ -335,7 +338,7 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
   if (spec) {
     return { position: s.valvePosition(comp.id), active14: s.sideActive(spec, "14"), active12: s.sideActive(spec, "12") };
   }
-  if (comp.type.endsWith("_cylinder")) {
+  if (isCylinder(comp.type)) {
     const c = s.cylinder(comp.id);
     return c ? { stroke: c.fraction } : undefined;
   }
@@ -1729,7 +1732,7 @@ function renderProperties() {
     const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
     if (catalogParams.length) heading(panel, "Parametri da catalogo");
     if (partsFor(comp.type).length) panel.append(...partField(comp));
-    if (comp.type.endsWith("_cylinder")) panel.append(cylinderSizeField(comp));
+    if (comp.type.endsWith("_cylinder") && comp.type !== "rodless_cylinder") panel.append(cylinderSizeField(comp));
     for (const p of catalogParams) panel.append(paramInput(comp, p));
     if (simParams.length) heading(panel, "Parametri di simulazione");
     for (const p of simParams) panel.append(paramInput(comp, p));
@@ -2406,7 +2409,7 @@ let sim: SimRun | null = null;
 let diagramOpen = false;
 let diagramMode: DiagramMode = "time";
 /** comandi a pressione (pulsante, rullo) tenuti premuti col puntatore */
-let held: { id: string; side: "14" | "12" } | null = null;
+let held: { id: string; side: "14" | "12"; override?: boolean } | null = null;
 let heldSwitch: string | null = null;
 
 function startSim() {
@@ -2468,7 +2471,10 @@ function resetSim() {
   const commands = sim.s.net.valves.flatMap((v) => (["14", "12"] as const)
     .filter((side) => sim!.s.command(v.id, side)).map((side) => [v.id, side] as const));
   const latched = manualSwitches().filter((x) => x.latching && sim!.s.switchState(x.id)).map((x) => x.id);
+  const overrides = sim.s.net.valves.flatMap((v) => (["14", "12"] as const)
+    .filter((side) => v.override === "detent" && sim!.s.override(v.id, side)).map((side) => [v.id, side] as const));
   sim.s = new Simulator(sim.s.net);
+  for (const [id, side] of overrides) sim.s.setOverride(id, side, true);
   // interruttori con ritenuta e solenoidi restano come li ha lasciati l'utente
   for (const id of latched) sim.s.setSwitch(id, true);
   for (const [id, side] of commands) {
@@ -2533,9 +2539,27 @@ function commandSides() {
   return sim.s.net.valves.flatMap((v) => (["14", "12"] as const).flatMap((side) => {
     const act = side === "14" ? v.act14 : v.act12;
     const cam = side === "14" ? v.cam14 : v.cam12;
-    if (sim!.s.isDriven(v.id, side)) return []; // il solenoide segue la sua bobina
-    return isLatching(act) || (isMomentary(act) && !cam) ? [{ id: v.id, side, act }] : [];
+    // comando manuale ausiliario: si aziona anche quando il solenoide segue la sua bobina
+    const ovr = v.override && isElectric(act) ? [{ id: v.id, side, act, override: true }] : [];
+    if (sim!.s.isDriven(v.id, side)) return ovr; // il solenoide segue la sua bobina
+    return [...(isLatching(act) || (isMomentary(act) && !cam) ? [{ id: v.id, side, act, override: false }] : []), ...ovr];
   }));
+}
+
+/** Comando manuale ausiliario di un solenoide: a impulso finché si tiene premuto, con arresto a ogni clic. */
+function pressOverride(id: string, side: "14" | "12") {
+  if (!sim) return;
+  const v = sim.s.net.valves.find((x) => x.id === id);
+  if (!v?.override) return;
+  if (v.override === "detent") {
+    sim.s.setOverride(id, side, !sim.s.override(id, side));
+  } else {
+    releaseHeld();
+    sim.s.setOverride(id, side, true);
+    held = { id, side, override: true };
+  }
+  render();
+  updateSimPanel();
 }
 
 function pressCommand(id: string, side: "14" | "12") {
@@ -2584,7 +2608,10 @@ function pressSwitch(id: string) {
 }
 
 function releaseHeld() {
-  if (sim && held) sim.s.setCommand(held.id, held.side, false);
+  if (sim && held) {
+    if (held.override) sim.s.setOverride(held.id, held.side, false);
+    else sim.s.setCommand(held.id, held.side, false);
+  }
   if (sim && heldSwitch) sim.s.setSwitch(heldSwitch, false);
   held = null;
   heldSwitch = null;
@@ -2618,10 +2645,12 @@ function renderSimPanel() {
     box.className = "sim-commands";
     for (const c of cmds) {
       const b = document.createElement("button");
-      b.dataset.cmd = `${c.id}|${c.side}`;
+      const detent = sim.s.net.valves.find((v) => v.id === c.id)?.override === "detent";
+      b.dataset.cmd = c.override ? `${c.id}|${c.side}|ovr` : `${c.id}|${c.side}`;
       b.className = `sim-cmd ${c.act}`;
-      b.textContent = `${c.id} · ${c.side} · ${ACTUATION_SHORT[c.act]}`;
-      b.title = isElectric(c.act) ? "Clic: eccita / diseccita" : isLatching(c.act) ? "Clic: sposta la leva"
+      b.textContent = `${c.id} · ${c.side} · ${c.override ? "comando manuale" : ACTUATION_SHORT[c.act]}`;
+      b.title = c.override ? (detent ? "Clic: aziona / rilascia il comando manuale" : "Tieni premuto per azionare")
+        : isElectric(c.act) ? "Clic: eccita / diseccita" : isLatching(c.act) ? "Clic: sposta la leva"
         : "Tieni premuto per azionare";
       box.append(b);
     }
@@ -2766,8 +2795,8 @@ function updateSimPanel() {
     }
   }
   for (const b of document.querySelectorAll<HTMLElement>("#properties [data-cmd]")) {
-    const [id, side] = b.dataset.cmd!.split("|") as [string, "14" | "12"];
-    b.classList.toggle("on", s.command(id, side));
+    const [id, side, ovr] = b.dataset.cmd!.split("|") as [string, "14" | "12", string?];
+    b.classList.toggle("on", ovr ? s.override(id, side) : s.command(id, side));
   }
   for (const b of document.querySelectorAll<HTMLElement>("#properties [data-switch]")) {
     b.classList.toggle("on", s.switchState(b.dataset.switch!));
@@ -2780,8 +2809,9 @@ $("#properties").addEventListener("pointerdown", (e) => {
   const b = (target(e).closest("[data-cmd]") as HTMLElement | null);
   if (!b || !sim) return;
   e.preventDefault();
-  const [id, side] = b.dataset.cmd!.split("|") as [string, "14" | "12"];
-  pressCommand(id, side);
+  const [id, side, ovr] = b.dataset.cmd!.split("|") as [string, "14" | "12", string?];
+  if (ovr) pressOverride(id, side);
+  else pressCommand(id, side);
 });
 window.addEventListener("pointerup", () => { if (held || heldSwitch) releaseHeld(); });
 window.addEventListener("pointercancel", () => { if (held || heldSwitch) releaseHeld(); });
@@ -2886,7 +2916,8 @@ svg.addEventListener("pointerdown", (e) => {
     const side = t.closest<SVGElement>("[data-side]");
     if (side && comp) {
       e.preventDefault();
-      pressCommand(comp.dataset.component!, side.dataset.side as "14" | "12");
+      if (side.dataset.override) pressOverride(comp.dataset.component!, side.dataset.side as "14" | "12");
+      else pressCommand(comp.dataset.component!, side.dataset.side as "14" | "12");
       return;
     }
     if (comp && manualSwitches().some((x) => x.id === comp.dataset.component)) {

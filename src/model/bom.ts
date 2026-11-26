@@ -33,6 +33,12 @@ const lowerFirst = (t: string) => (/^[A-ZÀ-Ý][a-zà-ÿ ]/.test(t) ? t[0]!.toLo
 
 /** Nomi da ordine dove il nome del simbolo non basta. */
 const PART_NAMES: Record<string, string> = { relay_coil: "Relè" };
+/** Come compaiono in distinta alcune opzioni ("" = non compare: non cambia il pezzo da ordinare). */
+const BOM_CHOICES: Record<string, string> = {
+  "magnet.no": "", "magnet.yes": "pistone magnetico",
+  "coupling_state.coupled": "", "coupling_state.uncoupled": "",
+  "coupling.plain": "senza non ritorno", "coupling.check_one": "con non ritorno", "coupling.check_both": "con due non ritorno",
+};
 
 function describe(c: ComponentData): string {
   const def = TYPES.get(c.type)!;
@@ -41,9 +47,14 @@ function describe(c: ComponentData): string {
   if (c.type === "directional_valve") {
     const a14 = (c.actuation_14 ?? "solenoid") as Actuation, a12 = (c.actuation_12 ?? "spring") as Actuation;
     parts.push(`${c.function ?? "5/2"}, ${ACTUATION_SHORT[a14] ?? a14} / ${ACTUATION_SHORT[a12] ?? a12}`);
+    if (c.override === "push" || c.override === "detent") {
+      parts.push(c.override === "detent" ? "comando manuale ausiliario con arresto" : "comando manuale ausiliario");
+    }
   } else {
     for (const opt of def.options ?? []) {
       const v = (c as unknown as Record<string, string | undefined>)[opt.name] ?? opt.default;
+      const fixed = BOM_CHOICES[`${opt.name}.${v}`];
+      if (fixed !== undefined) { if (fixed) parts.push(fixed); continue; }
       const choice = opt.choices.find(([k]) => k === v);
       if (choice && !(opt.name === "cushioning" && v === "none")) parts.push(lowerFirst(short(choice[1])));
     }

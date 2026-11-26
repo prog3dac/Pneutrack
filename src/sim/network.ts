@@ -56,6 +56,10 @@ export interface ValveSpec {
   /** rulli azionati dalla posizione di un cilindro */
   cam14?: Cam;
   cam12?: Cam;
+  /** comando manuale ausiliario dei solenoidi: a impulso o con arresto */
+  override?: "push" | "detent";
+  /** lati comandati all'avvio della simulazione (rubinetti e sezionatori partono aperti) */
+  startCommands?: ("14" | "12")[];
 }
 
 export interface CylinderSpec {
@@ -214,6 +218,72 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "frl_unit":
         orifices.push(orifice("1", "2", { limit: P_ATM + c.params.setpoint!.si }));
         break;
+      case "fixed_orifice": {
+        // ugello a spigolo vivo: C ≈ 0,8 · 0,16 · d² dm³/(s·bar) con d in mm (ISO 6358, flusso sonico ideale)
+        const dmm = c.params.diameter!.si * 1000;
+        const C = c.params.conductance?.si ?? (0.128 * dmm * dmm * 1e-3) / BAR;
+        orifices.push({ a: node(c, "1"), b: node(c, "2"), C, bcrit: simParam(c, "critical_ratio").si });
+        break;
+      }
+      case "shutoff_valve":
+      case "lockout_valve": {
+        const fn: ValveFunction = c.type === "shutoff_valve" ? "2/2" : "3/2";
+        const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
+        const vi = valves.length;
+        for (const [pos, pairs] of Object.entries(VALVE_PATHS[fn]) as [Position, [string, string][]][]) {
+          for (const [x, y] of pairs) orifices.push({ a: node(c, x), b: node(c, y), C, bcrit, valve: vi, positions: [pos] });
+        }
+        // leva con arresto sul lato 14 (aperto), molla sul 12: parte aperto, un clic lo chiude
+        valves.push({ id: c.id, fn, act14: "lever_detent", act12: "spring", pilotThreshold: DEFAULT_PILOT_THRESHOLD,
+                      initial: "14", startCommands: ["14"] });
+        break;
+      }
+      case "quick_coupling": {
+        if (c.coupling_state !== "uncoupled") {
+          orifices.push(orifice("1", "2"));
+          break;
+        }
+        // staccato: la metà con il non ritorno resta chiusa, quella senza scarica in atmosfera
+        const check = c.coupling ?? "check_one";
+        if (check === "plain") orifices.push(orifice("1", "1", { b: atmosphere() }));
+        if (check !== "check_both") orifices.push(orifice("2", "2", { b: atmosphere() }));
+        break;
+      }
+      case "soft_start_valve": {
+        const C = conductanceOf(c), i1 = node(c, "1"), o2 = node(c, "2");
+        const ratio = simParam(c, "switch_ratio").si;
+        orifices.push(orifice("1", "2", { C: C * simParam(c, "fill_opening").si, oneWay: true }));
+        // apertura piena quando la pressione a valle raggiunge la soglia
+        orifices.push(orifice("1", "2", { oneWay: true,
+          gate: (P) => ramp(gauge(P, o2) - ratio * gauge(P, i1) + 0.05 * BAR, 0.1 * BAR) }));
+        orifices.push(orifice("2", "1", { oneWay: true }));
+        break;
+      }
+      case "vacuum_ejector": {
+        const i1 = node(c, "1"), vac = simParam(c, "max_vacuum").si;
+        // il vuoto cresce con la pressione di alimentazione: pieno sopra circa 4 bar
+        const on = (P: number[]) => ramp(gauge(P, i1) - 0.5 * BAR, 3.5 * BAR);
+        const sink = nodeCount++;
+        fixed.set(sink, Math.max(0.05 * BAR, P_ATM - vac));
+        orifices.push(orifice("1", "3"));
+        const Cs = simParam(c, "suction_conductance").si;
+        orifices.push(orifice("2", "2", { b: sink, C: Cs, oneWay: true, gate: on }));
+        orifices.push(orifice("2", "2", { b: atmosphere(), C: Cs, gate: (P) => 1 - on(P) }));
+        break;
+      }
+      case "suction_cup": {
+        const d = c.params.diameter!.si;
+        extraVolumes.push([node(c, "1"), (Math.PI * d * d / 4) * (d / 4)]);
+        break;
+      }
+      case "double_pilot_check": {
+        const threshold = simParam(c, "pilot_pressure").si;
+        const p1 = node(c, "1"), p3 = node(c, "3");
+        const open = (n: number) => (P: number[]) => ramp(gauge(P, n) - threshold + 0.1 * BAR, 0.2 * BAR);
+        orifices.push(orifice("1", "2", { oneWay: true }), orifice("2", "1", { oneWay: true, gate: open(p3) }));
+        orifices.push(orifice("3", "4", { oneWay: true }), orifice("4", "3", { oneWay: true, gate: open(p1) }));
+        break;
+      }
       case "flow_control_valve":
       case "air_filter":
       case "lubricator":
@@ -286,17 +356,20 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           pilot12: hasPilotPort(act12) ? node(c, "12") : internalPilot(act12) ? node(c, "1") : undefined,
           pilotThreshold: c.params.min_pressure?.si ?? DEFAULT_PILOT_THRESHOLD,
           initial, cam14: c.cam_14, cam12: c.cam_12,
+          override: c.override === "push" || c.override === "detent" ? c.override : undefined,
         });
         break;
       }
       case "single_acting_cylinder":
       case "double_acting_cylinder":
-      case "double_rod_cylinder": {
+      case "double_rod_cylinder":
+      case "rodless_cylinder":
+      case "gripper": {
         const d = c.params.bore!.si;
         const rod = c.params.rod?.si ?? 0;
         const full = (Math.PI * d * d) / 4, annulus = full - (Math.PI * rod * rod) / 4;
-        const single = c.type === "single_acting_cylinder";
-        const through = c.type === "double_rod_cylinder";
+        const single = c.type === "single_acting_cylinder" || (c.type === "gripper" && c.gripper_kind === "single");
+        const through = c.type === "double_rod_cylinder" || c.type === "rodless_cylinder";
         // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
         const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
           const cu = c.cushioning ?? "none";
@@ -322,7 +395,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           load: simParam(c, "load").si,
           frictionCoulomb: simParam(c, "friction").si,
           frictionStatic: c.params.static_friction?.si ?? simParam(c, "friction").si,
-          gravity: simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
+          gravity: c.type === "gripper" ? 0 : simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
           frictionViscous: 20,
           spring: single ? simParam(c, "spring_force").si : 0,
         });

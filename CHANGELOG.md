@@ -3,6 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.27.0 · 2026-11-26
+
+- Nuovi componenti dalla ISO 1219-1, con simbolo, simulazione, descrizioni e scheda nel catalogo dei simboli: rubinetto di intercettazione, valvola 3/2 di sezionamento con lucchetto e innesto rapido (nuova sezione «Intercettazione e collegamenti»), doppia non ritorno pilotata, strozzatore fisso (ugello calibrato), valvola di avviamento progressivo, cilindro senza stelo, pinza pneumatica a doppio e semplice effetto, generatore di vuoto (eiettore) e ventosa (nuova sezione «Vuoto»).
+- Comando manuale ausiliario sulle elettrovalvole (opzione nel pannello: a impulso o con arresto): si disegna oltre il solenoide e in simulazione aziona la valvola senza corrente, anche quando il solenoide segue una bobina.
+- Pistone magnetico (opzione dei cilindri e della pinza): due piccoli magneti sul pistone nel simbolo e la voce in distinta.
+- Rubinetto e valvola di sezionamento partono aperti in simulazione; un clic li chiude. L'innesto rapido si disegna innestato o staccato e, staccato, chiude il lato con il non ritorno e scarica l'altro.
+- Un finecorsa o un sensore può indicare anche la pinza («PZ1+» è la pinza chiusa).
+
 ## 0.26.0 · 2026-11-26
 
 - Linee dei tubi sulla griglia: tutte le porte dei simboli cadono ora sui nodi della griglia, in ogni rotazione e specchiate, e il tratto d'uscita dalla porta è lungo un passo. Due porte sulla stessa verticale o orizzontale si collegano con un tratto dritto, senza più i piccoli scalini di prima, e tutti i gomiti cadono sui nodi. Le porte di valvole, cilindri, gruppo FRL, filtro, lubrificatore, manometro, non ritorno, strozzatori, scarico rapido, limitatrice, sorgente, silenziatore, scarico e sensore si sono spostate di pochi punti.

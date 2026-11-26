@@ -37,13 +37,19 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `pressure_gauge` | Manometro | 1 | |
 | | `silencer`, `exhaust`, `plug` | Silenziatore, scarico in atmosfera, tappo | 1 | |
 | | `junction` | Punto di connessione: più linee unite nello stesso punto (raccordo a T o a croce) | 1 | può restare scollegata |
-| Valvole distributrici | `directional_valve` | 2/2, 3/2, 4/2, 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`? |
+| Intercettazione e collegamenti | `shutoff_valve` | Rubinetto di intercettazione (parte aperto) | 1, 2 | |
+| | `lockout_valve` | Valvola 3/2 di sezionamento con lucchetto (parte aperta; chiusa scarica da 3) | 1, 2, 3 | |
+| | `quick_coupling` | Innesto rapido: presa 1, spina 2 | 1, 2 | `coupling` (`plain`, `check_one`, `check_both`), `coupling_state` (`coupled`, `uncoupled`) |
+| Valvole distributrici | `directional_valve` | 2/2, 3/2, 4/2, 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`) |
 | Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure` |
 | | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |
+| | `double_pilot_check` | Doppia non ritorno pilotata: 1 → 2 e 3 → 4 liberi, i ritorni aperti dall'altra linea | 1, 2, 3, 4 | `pilot_pressure` |
 | | `shuttle_valve` | Selettore (OR) | 1, 3 → 2 | |
 | | `and_valve` | Due pressioni (AND) | 1, 3 → 2 | |
 | | `quick_exhaust_valve` | Scarico rapido | 1, 2, 3 | |
 | Regolazione | `flow_control_valve` | Strozzatore bidirezionale | 1, 2 | `opening` (0–100 %, predefinita 100 %), `conductance` o `flow` a tutta apertura |
+| | `fixed_orifice` | Strozzatore fisso (ugello) | 1, 2 | `diameter`, `conductance`? (se manca, dal diametro) |
+| | `soft_start_valve` | Valvola di avviamento progressivo | 1, 2 | `fill_opening`, `switch_ratio` |
 | | `one_way_flow_control` | Regolatore di flusso unidirezionale | 1, 2 | `opening`, `conductance` o `flow` a tutta apertura nel verso strozzato, `free_conductance` |
 | | `relief_valve` | Valvola limitatrice | 1, 3 | `setpoint` |
 | | `sequence_valve` | Valvola di sequenza | 1, 2, 3, 12 | `setpoint` |
@@ -51,8 +57,14 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `static_friction`?, `mounting_angle`?, `spring_force` |
 | | `double_acting_cylinder` | Cilindro a doppio effetto | A, B | come sopra |
 | | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod` |
+| | `rodless_cylinder` | Cilindro senza stelo | A, B | `bore`, `stroke`, `cushioning`?, `magnet`? |
+| | `gripper` | Pinza a griffe parallele (A chiude, B apre) | A, B (solo A a semplice effetto) | `bore`, `stroke` (per griffa), `gripper_kind` (`double`, `single`), `magnet`? |
 | | `rotary_actuator` | Attuatore rotante | A, B | `angle` (non ancora simulato) |
 | | `air_motor` | Motore pneumatico | 1, 2 | |
+| Vuoto | `vacuum_ejector` | Generatore di vuoto (eiettore) | 1, 2 (vuoto), 3 | `max_vacuum`, `suction_conductance` |
+| | `suction_cup` | Ventosa | 1 | `diameter` |
+
+I cilindri e la pinza hanno l'opzione `magnet` (`no`, `yes`): il pistone magnetico per i sensori reed.
 
 Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`, `5/3E`, `5/3P`) e un
 comando per lato (`actuation_14`, `actuation_12`), con i comandi di ISO 1219-1:

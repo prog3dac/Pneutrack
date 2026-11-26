@@ -21,7 +21,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   exhaust: "Triangolo vuoto con la punta sulla linea: uscita d'aria in atmosfera, senza raccordo.",
   junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
   plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
-  directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione.",
+  directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione; il pulsante oltre il solenoide è il comando manuale ausiliario, con la tacca se ha l'arresto.",
   check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera.",
   pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
   shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
@@ -33,10 +33,20 @@ export const SYMBOL_NOTES: Record<string, string> = {
   sequence_valve: "Valvola 3/2 normalmente chiusa comandata da un pilotaggio che agisce contro una molla tarabile: commuta alla pressione impostata.",
   time_delay_valve: "Valvola 3/2 normalmente chiusa pilotata attraverso uno strozzatore e un piccolo serbatoio: commuta con ritardo.",
   single_acting_cylinder: "Rettangolo (camicia), linea spessa (pistone) e stelo; la molla occupa la camera stelo e riporta indietro il pistone. Una sola porta; il triangolo sotto la camera stelo è lo sfiato in atmosfera senza raccordo.",
-  double_acting_cylinder: "Camicia, pistone e stelo, con una porta per camera. Con l'ammortizzo: tampone sul pistone e freccia obliqua di regolazione sulla testata.",
+  double_acting_cylinder: "Camicia, pistone e stelo, con una porta per camera. Con l'ammortizzo: tampone sul pistone e freccia obliqua di regolazione sulla testata. Con il pistone magnetico: due piccoli rettangoli pieni sul bordo del pistone.",
   double_rod_cylinder: "Cilindro a doppio effetto con lo stelo che esce dai due lati.",
   rotary_actuator: "Cerchio con freccia curva a due punte: attuatore rotante ad angolo limitato, nei due versi.",
   air_motor: "Cerchio con due triangoli vuoti rivolti verso l'interno (l'energia entra) e albero sul lato: motore pneumatico a due sensi di rotazione.",
+  shutoff_valve: "Due triangoli con i vertici affacciati sulla linea (ISO 1219-1 8.7.23): rubinetto di intercettazione, con la leva di comando. In simulazione, chiuso, la leva è di traverso e un tratto spesso sbarra il passaggio.",
+  lockout_valve: "Valvola 3/2 con leva ad arresto e lucchetto sopra il comando (ISO 1219-1 X10260): aperta alimenta 2 da 1; chiusa, la molla la porta nello scarico 2→3 e il lucchetto la blocca.",
+  quick_coupling: "Presa (in basso) e spina (in alto), ciascuna con la sua bocca; innestate le bocche si sovrappongono, staccate sono separate. La sfera nella sede indica la metà con la valvola di non ritorno (ISO 1219-1 X11690–X11740).",
+  double_pilot_check: "Due non ritorno racchiuse nello stesso corpo, con il pilotaggio tratteggiato a croce: la pressione su una linea apre il ritorno dell'altra (ISO 1219-1 X10730).",
+  fixed_orifice: "Due archi che restringono la linea, senza freccia: strozzatore fisso, non regolabile (come nella ISO 1219-3, all. C).",
+  soft_start_valve: "Valvola 2/2 normalmente chiusa pilotata dall'uscita contro una molla, con lo strozzatore regolabile di riempimento in parallelo; la cornice a tratto e punto indica un solo corpo (ISO 1219-1 X10250).",
+  rodless_cylinder: "Canna chiusa ai due lati con il pistone che trascina il carrello disegnato sopra la canna (ISO 1219-1 X11480, 8.4.16).",
+  gripper: "Corpo della pinza con le due griffe parallele in alto, che si chiudono verso il centro; nella pinza a semplice effetto la molla nel corpo riapre le griffe (ISO 1219-1 X11630–X11660).",
+  vacuum_ejector: "Casella con l'ugello convergente e il diffusore tra l'alimentazione 1 e lo scarico 3; la freccia indica l'aria aspirata dalla porta del vuoto 2 (ISO 1219-1 X12380).",
+  suction_cup: "Campana aperta verso il pezzo, con il bordo di tenuta (ISO 1219-1 X12420).",
   electric_supply: "Tratto lungo (+) e tratto corto spesso (0V): sorgente in corrente continua.",
   pushbutton: "Contatto con la lama mobile e il comando a pulsante collegato dalla linea tratteggiata; con ritenuta, la tacca d'arresto.",
   relay_coil: "Rettangolo: bobina del relè.",
@@ -108,6 +118,7 @@ export function distinctVariants(def: TypeDef): { label: string; comp: Component
 function card(def: TypeDef, label: string, comp: ComponentData, showDoc: boolean): string {
   const ports = def.ports({
     function: comp.function, actuation_14: comp.actuation_14, actuation_12: comp.actuation_12, contact: comp.contact,
+    gripper_kind: comp.gripper_kind,
   } as never);
   const portList = ports.map((p) => `<span class="cat-port"><b>${esc(p.name)}</b> ${PORT_KIND[p.kind]}</span>`).join(" ");
   return `<article class="cat-card" data-type="${def.type}">` +

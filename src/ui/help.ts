@@ -114,10 +114,38 @@ const PARAMS: Record<string, string> = {
     "Campo di rilevamento: il sensore resta attivo finché il pistone è entro più o meno questo tratto dalla " +
     "posizione impostata. Serve solo alla simulazione.",
   hysteresis: "Isteresi: differenza tra il punto in cui il componente si attiva e quello in cui si disattiva.",
+  diameter: "Diametro nominale del componente, come indicato a catalogo.",
+  max_vacuum:
+    "Vuoto massimo che l'eiettore raggiunge con la bocca di aspirazione chiusa, come valore positivo: 0,85 bar " +
+    "vuol dire 0,85 bar sotto la pressione atmosferica (circa 0,15 bar assoluti). Lo si raggiunge con circa 4 bar " +
+    "di alimentazione. Serve solo alla simulazione.",
+  suction_conductance:
+    "Conduttanza C dalla porta del vuoto 2 verso l'eiettore: dice quanto in fretta si svuota la ventosa. " +
+    "Serve solo alla simulazione.",
+  fill_opening:
+    "Apertura dello strozzatore di riempimento, in percentuale della conduttanza C: più è piccola, più lento è " +
+    "il riempimento dell'impianto a valle. Serve solo alla simulazione.",
+  switch_ratio:
+    "Soglia, in percentuale della pressione in ingresso 1, a cui la valvola apre del tutto: con 50 % e 6 bar " +
+    "a monte apre in pieno quando a valle ci sono 3 bar. Serve solo alla simulazione.",
 };
 
 /** Descrizioni specifiche di un tipo di componente ("tipo.nome"), prioritarie sulle generiche. */
 const TYPE_PARAMS: Record<string, string> = {
+  "fixed_orifice.diameter":
+    "Diametro del foro dell'ugello calibrato, per esempio 0,5 mm. Se la conduttanza C è vuota, la simulazione " +
+    "la ricava da qui con C ≈ 0,13 × d² dm³/(s·bar), d in mm (foro a spigolo vivo).",
+  "fixed_orifice.conductance":
+    "Conduttanza sonica C (ISO 6358) dell'ugello, se è indicata a catalogo. Se è vuota la simulazione la ricava " +
+    "dal diametro del foro.",
+  "suction_cup.diameter":
+    "Diametro della ventosa a contatto con il pezzo. La forza di presa è il vuoto per l'area: con Ø 20 mm e " +
+    "0,7 bar di vuoto circa 22 N, da dividere per un fattore di sicurezza.",
+  "gripper.bore":
+    "Diametro del pistone della pinza, dal catalogo: con la pressione dà la forza di chiusura (le griffe la " +
+    "dividono in due).",
+  "gripper.stroke":
+    "Corsa di una griffa da tutta aperta a tutta chiusa, dal catalogo (spesso indicata come corsa per griffa).",
   "frl_unit.setpoint":
     "Pressione regolata dal riduttore del gruppo FRL: l'uscita 2 non la supera qualunque sia la pressione " +
     "in ingresso (purché più alta).",
@@ -191,6 +219,22 @@ const OPTIONS: Record<string, string> = {
   sensor_kind:
     "Principio di funzionamento del sensore. Magnetico (reed): legge il magnete del pistone attraverso la " +
     "canna. Induttivo: rileva metalli. Capacitivo: rileva anche materiali non metallici. Ottico: a fascio di luce.",
+  override:
+    "Comando manuale ausiliario dei solenoidi, presente su quasi tutte le elettrovalvole: permette di azionare " +
+    "la valvola a mano senza corrente, per provare l'impianto. A impulso torna indietro quando lo si rilascia; " +
+    "con arresto resta azionato finché non lo si sblocca. Si disegna e funziona solo sui lati con un solenoide.",
+  magnet:
+    "Pistone con l'anello magnetico, necessario per i sensori magnetici (reed) montati sulla canna. Cambia solo " +
+    "il simbolo e il codice da ordinare, non la simulazione.",
+  gripper_kind:
+    "Doppio effetto: l'aria chiude da A e apre da B. Semplice effetto: l'aria chiude da A e una molla riapre " +
+    "le griffe quando A scarica.",
+  coupling:
+    "Valvole di non ritorno nell'innesto. Senza: staccato, i due lati restano aperti in atmosfera. Con una " +
+    "(nella presa, lato 1): staccato, la linea di alimentazione resta chiusa. Con due: restano chiusi entrambi.",
+  coupling_state:
+    "Innestato: l'aria passa tra 1 e 2. Staccato: le due metà sono separate; si usa per disegnare un punto di " +
+    "collegamento aperto, per esempio per un attrezzo da staccare.",
   lamp_color:
     "Colore della lampada secondo la norma CEI EN 60204-1: verde marcia o stato normale, rosso emergenza o " +
     "guasto, giallo condizione anomala, bianco o blu informazioni.",

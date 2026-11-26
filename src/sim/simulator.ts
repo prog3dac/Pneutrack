@@ -11,7 +11,7 @@ import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
 import type { Position, SimNetwork, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
-import { isMechanical, isReturn } from "../model/components";
+import { isElectric, isMechanical, isReturn } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -49,6 +49,8 @@ export class Simulator {
   readonly positions: Position[];
   /** comandi esterni (pulsante premuto, solenoide eccitato) per lato */
   private readonly commands = new Map<string, boolean>();
+  /** comandi manuali ausiliari dei solenoidi azionati, per lato */
+  private readonly overrides = new Map<string, boolean>();
   /** circuito elettrico di comando (null se lo schema non ne ha) */
   readonly electric: ElectricState | null;
   private stepCount = 0;
@@ -68,6 +70,7 @@ export class Simulator {
     this.supplyNodes = [...net.fixed].filter(([, p]) => p > P_ATM + 1).map(([n]) => n);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
     this.positions = net.valves.map((v) => v.initial);
+    for (const v of net.valves) for (const side of v.startCommands ?? []) this.commands.set(`${v.id}.${side}`, true);
     this.electric = net.electric ? new ElectricState(net.electric) : null;
     this.updateElectric();
     this.updateValves();
@@ -113,6 +116,16 @@ export class Simulator {
 
   command(valveId: string, side: "14" | "12"): boolean {
     return this.commands.get(`${valveId}.${side}`) ?? false;
+  }
+
+  /** Aziona il comando manuale ausiliario di un solenoide (anche se il solenoide segue una bobina). */
+  setOverride(valveId: string, side: "14" | "12", active: boolean): void {
+    this.overrides.set(`${valveId}.${side}`, active);
+    this.updateValves();
+  }
+
+  override(valveId: string, side: "14" | "12"): boolean {
+    return this.overrides.get(`${valveId}.${side}`) ?? false;
   }
 
   /** Avanza di `duration` secondi (a passi di {@link DT}). */
@@ -189,7 +202,8 @@ export class Simulator {
       const tol = 0.002 / stroke;
       return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
     }
-    const on = this.electric?.drive(`${v.id}.${side}`) ?? this.command(v.id, side);
+    const on = (this.electric?.drive(`${v.id}.${side}`) ?? this.command(v.id, side)) ||
+      (!!v.override && isElectric(act) && this.override(v.id, side));
     if (act === "solenoid_pilot" || act === "solenoid_pilot_ext") {
       // la valvola pilota commuta solo se la sua alimentazione ha pressione sufficiente
       const n = side === "14" ? v.pilot14 : v.pilot12;
