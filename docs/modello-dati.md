@@ -30,18 +30,26 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 |---|---|---|---|---|
 | Alimentazione e trattamento aria | `pressure_source` | Alimentazione | 1 | `pressure`, `flow`? |
 | | `air_reservoir` | Serbatoio | 1, 2 (stesso volume; 2 può restare tappata) | `volume` |
-| | `air_filter` | Filtro | 1 → 2 | |
-| | `lubricator` | Lubrificatore | 1 → 2 | |
-| | `frl_unit` | Gruppo FRL | 1 → 2 | `setpoint` |
+| | `compressor` | Compressore (come un'alimentazione) | 1 | `pressure`, `flow`? |
+| | `air_filter` | Filtro | 1 → 2 | `filter_kind` (`manual`, `auto`, `coalescing`, `carbon`, `separator`, `centrifugal`, `indicator`, `double`) |
+| | `lubricator` | Lubrificatore | 1 → 2 | `lub_drain` (`no`, `yes`) |
+| | `frl_unit` | Gruppo FRL | 1 → 2 | `setpoint`, `frl_style` (`detailed`, `simplified`) |
 | | `pressure_regulator` | Riduttore di pressione | 1 → 2 | `setpoint` |
+| | `filter_regulator` | Filtro riduttore | 1 → 2 | `setpoint` |
+| | `air_dryer` | Essiccatore | 1 → 2 | |
 | | `pressure_gauge` | Manometro | 1 | |
 | | `silencer`, `exhaust`, `plug` | Silenziatore, scarico in atmosfera, tappo | 1 | |
 | | `junction` | Punto di connessione: più linee unite nello stesso punto (raccordo a T o a croce) | 1 | può restare scollegata |
 | Intercettazione e collegamenti | `shutoff_valve` | Rubinetto di intercettazione (parte aperto) | 1, 2 | |
 | | `lockout_valve` | Valvola 3/2 di sezionamento con lucchetto (parte aperta; chiusa scarica da 3) | 1, 2, 3 | |
 | | `quick_coupling` | Innesto rapido: presa 1, spina 2 | 1, 2 | `coupling` (`plain`, `check_one`, `check_both`), `coupling_state` (`coupled`, `uncoupled`) |
-| Valvole distributrici | `directional_valve` | 2/2, 3/2, 4/2, 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`) |
-| Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure` |
+| | `three_way_cock` | Rubinetto a tre vie: 1 su 2 (all'avvio) o su 4 | 1, 2, 4 | |
+| | `flexible_hose` | Tubo flessibile | 1, 2 | `length`?, `inner_diameter`? (volume della linea) |
+| | `rotary_joint` | Giunto rotante | 1, 2 | |
+| | `manifold` | Basetta di distribuzione: tutte le porte sullo stesso volume | 1, 21–24 (le uscite possono restare libere) | `volume` |
+| | `sheet_reference` | Rimando ad altro foglio: collegato ai rimandi con la stessa descrizione (`label`) | 1 | |
+| Valvole distributrici | `directional_valve` | 2/2, 3/2, 3/3, 4/2, 4/3 (centri chiusi, in scarico), 5/2, 5/3 (centri chiusi, in scarico, in pressione) | ISO 5599 | `function`, `actuation_14`, `actuation_12`, `cam_14`?, `cam_12`?, `override`? (`none`, `push`, `detent`) |
+| Valvole di blocco e logiche | `check_valve` | Non ritorno | 1 → 2 | `cracking_pressure`, `check_spring` (`no`, `yes`: con la molla apre a 0,5 bar se `cracking_pressure` manca) |
 | | `pilot_check_valve` | Non ritorno pilotata | 1, 2, 21 (pilotaggio) | `pilot_pressure` |
 | | `double_pilot_check` | Doppia non ritorno pilotata: 1 → 2 e 3 → 4 liberi, i ritorni aperti dall'altra linea | 1, 2, 3, 4 | `pilot_pressure` |
 | | `shuttle_valve` | Selettore (OR) | 1, 3 → 2 | |
@@ -51,22 +59,39 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `fixed_orifice` | Strozzatore fisso (ugello) | 1, 2 | `diameter`, `conductance`? (se manca, dal diametro) |
 | | `soft_start_valve` | Valvola di avviamento progressivo | 1, 2 | `fill_opening`, `switch_ratio` |
 | | `one_way_flow_control` | Regolatore di flusso unidirezionale | 1, 2 | `opening`, `conductance` o `flow` a tutta apertura nel verso strozzato, `free_conductance` |
+| | `roller_flow_control` | Strozzatore a rullo: libero a riposo, strozzato con il rullo premuto | 1, 2 | `pressed_opening`, `cam_14`? |
+| | `relieving_regulator` | Riduttore con scarico | 1, 2, 3 | `setpoint` |
+| | `piloted_regulator` | Riduttore pilotato a distanza: l'uscita segue il pilotaggio | 1, 2, 12 | `ratio` |
+| | `proportional_regulator` | Regolatore proporzionale (in simulazione alla pressione impostata) | 1, 2, 3 | `setpoint` |
+| | `pressure_intensifier` | Moltiplicatore di pressione | 1, 2 | `ratio` |
 | | `relief_valve` | Valvola limitatrice | 1, 3 | `setpoint` |
 | | `sequence_valve` | Valvola di sequenza | 1, 2, 3, 12 | `setpoint` |
 | | `time_delay_valve` | Temporizzatore | 1, 2, 3, 12 | `delay`, `pilot_pressure` |
 | Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `static_friction`?, `mounting_angle`?, `spring_force` |
 | | `double_acting_cylinder` | Cilindro a doppio effetto | A, B | come sopra |
-| | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod` |
+| | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod`, `rod2`? (secondo stelo, se diverso) |
+| | `locking_cylinder` | Cilindro con bloccaggio dello stelo: fermo finché L non è in pressione | A, B, L | come il doppio effetto, `unlock_pressure` |
+| | `end_lock_cylinder` | Cilindro con bloccaggio di fine corsa: a riposo resta agganciato finché A non è in pressione | A, B | come il doppio effetto, `unlock_pressure` |
+| | `bellows_cylinder`, `diaphragm_cylinder`, `pneumatic_muscle` | Soffietto, cilindro a membrana, muscolo pneumatico (semplice effetto) | A | `bore`, `stroke`, `spring_force` |
 | | `rodless_cylinder` | Cilindro senza stelo | A, B | `bore`, `stroke`, `cushioning`?, `magnet`? |
 | | `gripper` | Pinza a griffe parallele (A chiude, B apre) | A, B (solo A a semplice effetto) | `bore`, `stroke` (per griffa), `gripper_kind` (`double`, `single`), `magnet`? |
-| | `rotary_actuator` | Attuatore rotante | A, B | `angle` (non ancora simulato) |
-| | `air_motor` | Motore pneumatico | 1, 2 | |
-| Vuoto | `vacuum_ejector` | Generatore di vuoto (eiettore) | 1, 2 (vuoto), 3 | `max_vacuum`, `suction_conductance` |
+| | `rotary_actuator` | Attuatore rotante | A, B (solo A a semplice effetto) | `angle`, `rotary_kind` (`double`, `single`) (non ancora simulato) |
+| | `air_motor` | Motore pneumatico | 1, 2 | `motor_kind` (`reversible`, `one_way`) |
+| Vuoto | `vacuum_ejector` | Generatore di vuoto (eiettore) | 1, 2 (vuoto), 3, 4 (soffio, con `blowoff: yes`) | `max_vacuum`, `suction_conductance`, `blowoff` |
+| | `vacuum_pump` | Pompa del vuoto | 1 | `vacuum` |
 | | `suction_cup` | Ventosa | 1 | `diameter` |
+| Misura e segnalazione | `pressure_sensor` | Sensore di pressione analogico | 1 | `range_max` |
+| | `pressure_indicator` | Indicatore di pressione | 1 | `indicator_kind` (`optical`, `digital`, `acoustic`), `threshold` |
+| | `flow_meter` | Misuratore di portata | 1, 2 | |
+| | `differential_gauge` | Manometro differenziale | 1, 2 | |
+| | `thermometer` | Termometro | 1 | |
+
+Il pressostato (`pressure_switch`, categoria «Elettrico») ha l'opzione `switch_kind`: `mechanical`, `electronic`
+o `vacuum` (vacuostato: interviene quando il vuoto supera `setpoint`).
 
 I cilindri e la pinza hanno l'opzione `magnet` (`no`, `yes`): il pistone magnetico per i sensori reed.
 
-Le valvole distributrici hanno `function` (`2/2`, `3/2`, `4/2`, `5/2`, `5/3`, `5/3E`, `5/3P`) e un
+Le valvole distributrici hanno `function` (`2/2`, `3/2`, `3/3`, `4/2`, `4/3`, `4/3E`, `5/2`, `5/3`, `5/3E`, `5/3P`) e un
 comando per lato (`actuation_14`, `actuation_12`), con i comandi di ISO 1219-1:
 
 | Comando | Valore | Comportamento in simulazione |
@@ -74,14 +99,16 @@ comando per lato (`actuation_14`, `actuation_12`), con i comandi di ISO 1219-1:
 | Solenoide diretto | `solenoid` | eccitato o diseccitato con un clic |
 | Solenoide e valvola pilota, alimentazione interna | `solenoid_pilot` | come il solenoide, ma commuta solo se la porta 1 supera la pressione minima di pilotaggio (`min_pressure`, 2 bar se non indicata) |
 | Solenoide e valvola pilota, alimentazione esterna | `solenoid_pilot_ext` | aggiunge la porta 14 (o 12) per l'aria del pilota, che deve superare la pressione minima |
-| Pilotaggio pneumatico | `pilot` | aggiunge la porta 14 (o 12); commuta oltre la pressione minima |
-| Pulsante, leva, pedale | `manual`, `lever`, `pedal` | azionati finché si tiene premuto |
-| Leva con arresto | `lever_detent` | resta dove la si lascia; con l'arresto sui due lati è una sola leva a due posizioni |
-| Rullo, tastatore | `mechanical`, `plunger` | a mano, o da un cilindro a fine corsa (finecorsa) |
+| Solenoide proporzionale, piezo, motore passo passo | `proportional`, `piezo`, `stepper` | come il solenoide (tutto o niente) |
+| Pilotaggio pneumatico, differenziale | `pilot`, `pilot_differential` | aggiunge la porta 14 (o 12); commuta oltre la pressione minima |
+| Pulsante, leva, pedale, pedale a bilanciere | `manual`, `lever`, `pedal`, `pedal_double` | azionati finché si tiene premuto |
+| Leva con arresto, pulsante a tirare e spingere, selettore rotativo, chiave | `lever_detent`, `pushpull_detent`, `rotary_knob`, `key` | restano dove li si lascia; con l'arresto sui due lati è un solo comando a due (o tre) posizioni |
+| Rullo, tastatore, tastatore regolabile | `mechanical`, `plunger`, `plunger_adjustable` | a mano, o da un cilindro a fine corsa (finecorsa) |
 | Rullo unidirezionale (leva ribaltabile) | `roller_oneway` | con un finecorsa dà un impulso solo mentre lo stelo arriva verso la camma (ultimi 5 mm), non quando torna indietro né da fermo |
 | Molla | `spring` | ritorno |
 | Ritorno pneumatico, alimentazione interna | `air_return` | ritorno con l'aria della porta 1; senza pressione la valvola resta dov'è |
 | Ritorno pneumatico, alimentazione esterna | `air_return_ext` | aggiunge la porta 12 (o 14) che alimenta il ritorno |
+| Molla e molla pneumatica | `spring_air_return` | ritorno sempre, come la molla |
 
 Gli scarichi lasciati liberi scaricano in atmosfera. La palette propone valvole già configurate (`presets`), per esempio
 "3/2 NC a rullo" o "5/2 bistabile pneumatica", e serbatoi di volume diverso.

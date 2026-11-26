@@ -18,7 +18,7 @@ import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
 } from "../model/cylinders";
 import {
-  ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isMechanical, isMomentary, isElectricType, typeList,
+  ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isManualDetent, isMechanical, isMomentary, isElectricType, typeList,
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
@@ -60,11 +60,21 @@ const PREFIX: Record<string, string> = {
   time_delay_valve: "TM", air_motor: "MP",
   shutoff_valve: "RB", lockout_valve: "SZ", quick_coupling: "IR", fixed_orifice: "UG", soft_start_valve: "AP",
   double_pilot_check: "NRD", rodless_cylinder: "C", gripper: "PZ", vacuum_ejector: "EV", suction_cup: "VT",
+  compressor: "CP", vacuum_pump: "PV", filter_regulator: "FR", air_dryer: "ES", three_way_cock: "RB",
+  flexible_hose: "TF", rotary_joint: "GR", manifold: "BD", sheet_reference: "RM", roller_flow_control: "RF",
+  relieving_regulator: "R", piloted_regulator: "R", proportional_regulator: "RP", pressure_intensifier: "MT",
+  locking_cylinder: "C", end_lock_cylinder: "C", bellows_cylinder: "C", diaphragm_cylinder: "C", pneumatic_muscle: "MU",
+  pressure_sensor: "BP", pressure_indicator: "IN", flow_meter: "FM", differential_gauge: "M", thermometer: "TT",
   // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
   electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
   relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
   wire_junction: "N",
 };
+
+/** componenti che mostrano la pressione della porta 1 accanto al simbolo, in simulazione */
+const GAUGE_TYPES = new Set(["pressure_gauge", "air_reservoir", "pressure_sensor"]);
+/** cilindri senza le misure ISO 15552 di alesaggio e stelo */
+const NO_ISO_SIZES = new Set(["rodless_cylinder", "bellows_cylinder", "diaphragm_cylinder"]);
 
 /** unità aggiunta quando si scrive solo un numero */
 const PREF_UNIT: Record<Dimension, string> = {
@@ -342,6 +352,11 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
     const c = s.cylinder(comp.id);
     return c ? { stroke: c.fraction } : undefined;
   }
+  if (comp.type === "pressure_indicator") {
+    let t = 1;
+    try { if (comp.params?.threshold) t = Quantity.coerce(comp.params.threshold).to("bar"); } catch { /* resta 1 bar */ }
+    return { energized: s.gauge(`${comp.id}.1`) >= t };
+  }
   return undefined;
 }
 
@@ -461,8 +476,9 @@ function render() {
     if (show.values) {
       const cyl = sim?.s.cylinder(comp.id);
       if (cyl) parts.push(`${(cyl.x * 1000).toFixed(0)} mm`);
-      if (sim && (comp.type === "pressure_gauge" || comp.type === "air_reservoir")) {
-        parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
+      if (sim && GAUGE_TYPES.has(comp.type)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
+      if (sim && comp.type === "differential_gauge") {
+        parts.push(`Δ ${fmtBar(sim.s.gauge(`${comp.id}.1`) - sim.s.gauge(`${comp.id}.2`))}`);
       }
       const left = sim?.s.delayRemaining(comp.id) ?? sim?.s.electric?.remaining(comp.id, sim.s.t);
       if (left != null && left > 0) parts.push(`${left.toFixed(1).replace(".", ",")} s`);
@@ -1732,7 +1748,7 @@ function renderProperties() {
     const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
     if (catalogParams.length) heading(panel, "Parametri da catalogo");
     if (partsFor(comp.type).length) panel.append(...partField(comp));
-    if (comp.type.endsWith("_cylinder") && comp.type !== "rodless_cylinder") panel.append(cylinderSizeField(comp));
+    if (comp.type.endsWith("_cylinder") && !NO_ISO_SIZES.has(comp.type)) panel.append(cylinderSizeField(comp));
     for (const p of catalogParams) panel.append(paramInput(comp, p));
     if (simParams.length) heading(panel, "Parametri di simulazione");
     for (const p of simParams) panel.append(paramInput(comp, p));
@@ -2491,7 +2507,7 @@ function resetSim() {
 function newRecorder(s: Simulator): Recorder {
   const labels: Record<string, string> = {};
   for (const c of doc.components) if (c.label) labels[c.id] = c.label;
-  const gauges = doc.components.filter((c) => c.type === "pressure_gauge").map((c) => c.id);
+  const gauges = doc.components.filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor").map((c) => c.id);
   return new Recorder(s, labels, gauges);
 }
 
@@ -2572,7 +2588,7 @@ function pressCommand(id: string, side: "14" | "12") {
     sim.s.setCommand(id, side, on);
     // leva con arresto su entrambi i lati: è una sola leva, spostarla libera l'altro lato
     const other = side === "14" ? "12" : "14";
-    if (on && act === "lever_detent" && (other === "14" ? v.act14 : v.act12) === "lever_detent") {
+    if (on && isManualDetent(act) && isManualDetent(other === "14" ? v.act14 : v.act12)) {
       sim.s.setCommand(id, other, false);
     }
   } else if (isMomentary(act)) {
@@ -2714,8 +2730,8 @@ function renderSimPanel() {
     dd.title = help;
     ml.append(dt, dd);
   };
-  for (const g of doc.components.filter((c) => c.type === "pressure_gauge")) {
-    measure(`Manometro ${g.id}`, `port:${g.id}.1`, "Pressione relativa letta dal manometro in questo istante; la sua traccia è nel diagramma delle fasi.");
+  for (const g of doc.components.filter((c) => c.type === "pressure_gauge" || c.type === "pressure_sensor")) {
+    measure(`${g.type === "pressure_sensor" ? "Sensore" : "Manometro"} ${g.id}`, `port:${g.id}.1`, "Pressione relativa letta dal manometro in questo istante; la sua traccia è nel diagramma delle fasi.");
   }
   measure("Aria consumata", "air:total", "Aria uscita dalle alimentazioni dall'inizio della simulazione, in litri normali (ANR, ISO 8778: 20 °C e 1 bar assoluto). Comprende il riempimento iniziale delle linee.");
   measure("Portata attuale", "air:flow", "Aria che esce adesso dalle alimentazioni, in litri normali al minuto.");

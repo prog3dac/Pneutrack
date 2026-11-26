@@ -76,12 +76,13 @@ await page.click("#view-filter summary");
 
 // 1. palette completa, a gruppi, con ricerca
 const types = await page.locator(".palette-item[data-type]").evaluateAll((els) => els.map((e) => e.dataset.type));
-assert.equal(new Set(types).size, 47, `tipi in palette: ${[...new Set(types)]}`);
-assert.ok(types.length >= 47, "valvole già configurate");
+assert.equal(new Set(types).size, 71, `tipi in palette: ${[...new Set(types)]}`);
+assert.ok(types.length >= 71, "valvole già configurate");
 await page.fill("#palette-search", "non ritorno");
 const visible = () => page.locator(".palette-item[data-type]:visible").evaluateAll((els) => els.map((e) => e.textContent.trim()));
 assert.deepEqual(await visible(), ["Innesto rapido con non ritorno, innestato", "Innesto rapido con non ritorno, staccato",
-  "Innesto rapido senza non ritorno", "Innesto rapido con due non ritorno", "Valvola di non ritorno", "Non ritorno pilotata",
+  "Innesto rapido senza non ritorno", "Innesto rapido con due non ritorno", "Valvola di non ritorno",
+  "Valvola di non ritorno con molla", "Non ritorno pilotata",
   "Doppia non ritorno pilotata", "Regolatore di flusso unidirezionale"]);
 await page.fill("#palette-search", "5/2 bistabile");
 assert.deepEqual(await visible(), ["5/2 bistabile pneumatica", "5/2 bistabile elettrica", "5/2 bistabile elettropneumatica"]);

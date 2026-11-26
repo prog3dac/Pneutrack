@@ -9,9 +9,9 @@
 import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import { rk4Step } from "../solver/rk4";
-import type { Position, SimNetwork, ValveSpec } from "./network";
+import type { CylinderSpec, Position, SimNetwork, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
-import { isElectric, isMechanical, isReturn } from "../model/components";
+import { isElectric, isMechanical, isPilot, isReturn, isThreePosition } from "../model/components";
 
 /** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
 const ONEWAY_ZONE = 0.005;
@@ -177,7 +177,7 @@ export class Simulator {
   sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (isReturn(act)) return false;
-    if (act === "pilot") {
+    if (isPilot(act)) {
       const n = side === "14" ? v.pilot14 : v.pilot12;
       const on = n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
       if (!v.delay) return on;
@@ -223,10 +223,16 @@ export class Simulator {
   /** Il lato riporta la valvola a riposo (molla, o ritorno pneumatico con pressione). */
   private returns(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
     const act = side === "14" ? v.act14 : v.act12;
-    if (act === "spring") return true;
+    if (act === "spring" || act === "spring_air_return") return true;
     if (act !== "air_return" && act !== "air_return_ext") return false;
     const n = side === "14" ? v.pilot14 : v.pilot12;
     return n !== undefined && P[n]! - P_ATM >= v.pilotThreshold;
+  }
+
+  /** Il bloccaggio del cilindro tiene fermo lo stelo (pilotaggio sotto la pressione di sblocco). */
+  private locked(c: CylinderSpec, P: number[], x: number): boolean {
+    if (!c.lock || P[c.lock.node]! - P_ATM >= c.lock.threshold) return false;
+    return c.lock.at === "any" || x <= 1e-6;
   }
 
   /** Logica discreta delle valvole: comandi, pilotaggi, molle e memoria delle bistabili. */
@@ -235,7 +241,7 @@ export class Simulator {
     this.net.valves.forEach((v, i) => {
       const s14 = this.sideActive(v, "14", P), s12 = this.sideActive(v, "12", P);
       let pos = this.positions[i]!;
-      if (v.fn.startsWith("5/3")) {
+      if (isThreePosition(v.fn)) {
         pos = s14 && !s12 ? "14" : s12 && !s14 ? "12" : "0";
       } else if (s14 && !s12) {
         pos = "14";
@@ -257,7 +263,7 @@ export class Simulator {
     const inflow = new Array<number>(net.nodeCount).fill(0);
     for (const o of net.orifices) {
       if (o.valve !== undefined && !o.positions!.includes(this.positions[o.valve]!)) continue;
-      const pa = P[o.a]!, pb = P[o.b]!;
+      const pa = o.boost ? P_ATM + o.boost * (P[o.a]! - P_ATM) : P[o.a]!, pb = P[o.b]!;
       if (o.oneWay && pa <= pb) continue;
       let C = o.C;
       if (o.cushion && pa > pb) {
@@ -273,11 +279,12 @@ export class Simulator {
         if (g <= 0) continue;
         m *= g;
       }
-      if (o.limit !== undefined) {
+      const limit = o.limitFn ? o.limitFn(P) : o.limit;
+      if (limit !== undefined) {
         // riduttore: solo a→b, chiusura progressiva negli ultimi 0,1 bar
-        m = m > 0 ? m * Math.min(1, Math.max(0, (o.limit - pb) / (0.1 * BAR))) : 0;
+        m = m > 0 ? m * Math.min(1, Math.max(0, (limit - pb) / (0.1 * BAR))) : 0;
       }
-      inflow[o.a]! -= m;
+      inflow[o.a]! -= m * (o.boost ?? 1);
       inflow[o.b]! += m;
     }
     const V = net.baseVolume.slice();
@@ -297,6 +304,8 @@ export class Simulator {
       // di RK4 entrerebbe nell'arresto e cambierebbe il volume delle camere a vuoto, e lo
       // scatto indietro a ogni passo farebbe passare aria che non esiste (consumo fantasma)
       if ((x <= 0 && v <= 0 && acc < 0) || (x >= c.stroke && v >= 0 && acc > 0)) { v = 0; acc = 0; }
+      // bloccaggio dello stelo: fermo finché non arriva la pressione di sblocco
+      if (this.locked(c, P, x)) { v = 0; acc = 0; }
       dV[c.capNode]! += c.A1 * v;
       dV[c.rodNode]! += -c.A2 * v;
       dy[this.cylOffset + 2 * i] = v;
@@ -314,8 +323,10 @@ export class Simulator {
     this.y = rk4Step(this.deriv, this.t, this.y, DT);
     this.t += DT;
     const y = this.y;
+    const P = this.pressures(y);
     this.net.cylinders.forEach((c, i) => {
       const xi = this.cylOffset + 2 * i;
+      if (this.locked(c, P, y[xi]!)) y[xi + 1] = 0;
       if (y[xi]! <= 0) { y[xi] = 0; if (y[xi + 1]! < 0) y[xi + 1] = 0; }
       else if (y[xi]! >= c.stroke) { y[xi] = c.stroke; if (y[xi + 1]! > 0) y[xi + 1] = 0; }
     });
