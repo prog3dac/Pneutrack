@@ -11,7 +11,7 @@ import { ACTUATION_SHORT, TYPES, typeList, type Actuation, type ComponentData } 
 
 export const NOT_PARTS = new Set([
   "junction", "wire_junction", "exhaust", "pressure_source", "electric_supply", "relay_contact", "valve_solenoid",
-  "sheet_reference",
+  "sheet_reference", "wire_reference",
 ]);
 
 export interface BomRow {
@@ -92,12 +92,27 @@ export function billOfMaterials(doc: Pick<CircuitDoc, "components">): BomRow[] {
 
 export const BOM_HEADERS = ["Pos.", "Sigle", "Descrizione", "Dati da catalogo", "Codice articolo", "Q.tà"];
 
-export const bomCells = (r: BomRow): string[] =>
-  [String(r.pos), r.ids.join(", "), r.description, r.data, r.code, String(r.qty)];
+/** Foglio (numero da 1) di una sigla, nei progetti su più fogli. */
+export type SheetOf = (id: string) => number | undefined;
+
+/** Sigle della riga; con più fogli raggruppate per foglio: «fg. 1: V1, V2 · fg. 3: V5». */
+export function bomIds(ids: string[], sheetOf?: SheetOf): string {
+  if (!sheetOf) return ids.join(", ");
+  const by = new Map<number, string[]>();
+  for (const id of ids) {
+    const n = sheetOf(id) ?? 0;
+    by.set(n, [...(by.get(n) ?? []), id]);
+  }
+  return [...by.entries()].sort((a, b) => a[0] - b[0])
+    .map(([n, list]) => (n ? `fg. ${n}: ${list.join(", ")}` : list.join(", "))).join(" · ");
+}
+
+export const bomCells = (r: BomRow, sheetOf?: SheetOf): string[] =>
+  [String(r.pos), bomIds(r.ids, sheetOf), r.description, r.data, r.code, String(r.qty)];
 
 /** CSV con il punto e virgola (come lo apre Excel in italiano) e il BOM UTF-8 per gli accenti. */
-export function bomCsv(rows: BomRow[]): string {
+export function bomCsv(rows: BomRow[], sheetOf?: SheetOf): string {
   const cell = (v: string) => (/[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const lines = [BOM_HEADERS, ...rows.map(bomCells)].map((r) => r.map(cell).join(";"));
+  const lines = [BOM_HEADERS, ...rows.map((r) => bomCells(r, sheetOf))].map((r) => r.map(cell).join(";"));
   return "﻿" + lines.join("\r\n") + "\r\n";
 }

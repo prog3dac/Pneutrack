@@ -23,7 +23,7 @@ export const DESIGNATION_PREFIX: Record<string, string> = {
   // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
   electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
   relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
-  wire_junction: "N",
+  wire_junction: "N", wire_reference: "RE",
 };
 
 /** Prefisso della sigla di un tipo ("X" se il tipo non ne ha uno). */

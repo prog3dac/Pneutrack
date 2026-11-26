@@ -121,6 +121,11 @@
       </details>
     </div>
     <div id="legend" aria-label="Legenda"></div>
+    <div id="sheet-tabs" aria-label="Fogli del progetto">
+      <div id="sheet-tab-list" role="tablist"></div>
+      <button id="btn-add-sheet" class="sheet-add" title="Aggiungi un foglio dopo quello aperto (stesso formato e cartiglio)" aria-label="Aggiungi un foglio">+</button>
+    </div>
+    <div id="sheet-menu" class="floating menu-list" role="menu" hidden></div>
   </main>
 
   <aside id="side">
@@ -193,9 +198,22 @@
       <div class="dialog-bar">
         <button data-bact="csv" title="File di testo con il punto e virgola, si apre con Excel o LibreOffice">Scarica CSV</button>
         <button data-bact="pdf" title="Tabella su A4 verticale, pronta da stampare o allegare">Scarica PDF</button>
-        <label class="check" title="Disegna la distinta sopra il cartiglio del foglio di disegno, così compare anche nel PDF del foglio"><input type="checkbox" id="bom-on-sheet"> Mostra sul foglio</label>
+        <label class="check" title="Disegna sopra il cartiglio del foglio aperto la distinta dei pezzi di quel foglio, così compare anche nel PDF"><input type="checkbox" id="bom-on-sheet"> Mostra sul foglio</label>
       </div>
       <div class="bom-scroll"><table id="bom-table" class="bom-table"></table></div>
+    </div>
+  </div>
+  <div id="export-dialog" class="overlay" hidden>
+    <div class="dialog narrow" role="dialog" aria-modal="true" aria-labelledby="export-title">
+      <header>
+        <h2 id="export-title">Esporta</h2>
+        <button data-xact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <p id="export-note" class="store-label"></p>
+      <div class="export-choices">
+        <button id="export-all" class="primary"></button>
+        <button id="export-current"></button>
+      </div>
     </div>
   </div>
   <div id="toast" role="status" aria-live="polite"></div>

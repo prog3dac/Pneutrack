@@ -31,6 +31,7 @@
  * | UNDRIVEN_SOLENOID     | warning | solenoide senza bobina in uno schema con circuito elettrico |
  * | UNUSED_RELAY          | warning | relè o pressostato senza contatti                    |
  */
+import { REFERENCE_TYPES } from "./sheets";
 import { CircuitError, nets, parseRef, refCmp, refStr, type CircuitDoc } from "./circuit";
 import {
   buildComponent, hasPilotPort, internalPaths, isActuator, isCylinder, isElectric, isElectricType, ParameterError,
@@ -145,18 +146,21 @@ export function build(data: Pick<CircuitDoc, "components" | "connections">): Bui
     }
     tubes.push(tube);
   }
-  // rimandi ad altro foglio: quelli con la stessa descrizione sono collegati tra loro
+  // rimandi ad altro foglio: quelli con la stessa descrizione (e dello stesso dominio) sono collegati tra loro
   const refs = new Map<string, Component[]>();
   for (const c of components.values()) {
-    if (c.type !== "sheet_reference") continue;
+    const domain = REFERENCE_TYPES[c.type];
+    if (!domain) continue;
     const name = c.label.trim();
     if (!name) {
       issues.push(issue("warning", "SHEET_REFERENCE_NAME", `${c.id}: scrivi nella descrizione il nome del rimando`, c.id));
       continue;
     }
-    refs.set(name, [...(refs.get(name) ?? []), c]);
+    const key = `${domain}\u0000${name}`;
+    refs.set(key, [...(refs.get(key) ?? []), c]);
   }
-  for (const [name, group] of refs) {
+  for (const [key, group] of refs) {
+    const name = key.slice(key.indexOf("\u0000") + 1);
     if (group.length < 2) {
       issues.push(issue("warning", "SHEET_REFERENCE_ALONE", `${group[0]!.id}: nessun altro rimando «${name}» nello schema`, group[0]!.id));
     }

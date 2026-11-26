@@ -51,6 +51,30 @@ const nums = (s: string | null) => (s ?? "").trim().split(/[\s,]+/).filter(Boole
 /** DXF del disegno in `viewport`, ritagliato sul foglio `rect` (unità dello schema). */
 export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string {
   const dxf = new DxfWriter(DXF_LAYERS);
+  drawViewport(dxf, viewport, rect);
+  return dxf.toString();
+}
+
+/**
+ * Più fogli nello stesso DXF, affiancati da sinistra a destra con 20 mm tra uno e l'altro.
+ * `draw(i, emit)` prepara il disegno del foglio i in #viewport e, finché è disegnato, chiama
+ * `emit` con il viewport e il foglio.
+ */
+export function sheetsToDxf(count: number,
+                            draw: (i: number, emit: (viewport: SVGGraphicsElement, rect: Rect) => void) => void): string {
+  const dxf = new DxfWriter(DXF_LAYERS);
+  let x = 0;
+  for (let i = 0; i < count; i++) {
+    draw(i, (viewport, rect) => {
+      drawViewport(dxf, viewport, rect, x);
+      x += rect.w / UNITS_PER_MM + 20;
+    });
+  }
+  return dxf.toString();
+}
+
+/** Scrive in `dxf` il disegno di `viewport`, con l'angolo in basso a sinistra del foglio in (dx, 0) mm. */
+function drawViewport(dxf: DxfWriter, viewport: SVGGraphicsElement, rect: Rect, dx = 0) {
   const base = viewport.getCTM()!.inverse();
   const U = UNITS_PER_MM;
 
@@ -64,7 +88,7 @@ export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string 
     const m = base.multiply(ctm);
     const P = (x: number, y: number): Pt => {
       const p = new DOMPoint(x, y).matrixTransform(m);
-      return [(p.x - rect.x) / U, (rect.y + rect.h - p.y) / U];
+      return [dx + (p.x - rect.x) / U, (rect.y + rect.h - p.y) / U];
     };
     const scale = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) / U;
     const layer = layerOf(el);
@@ -132,5 +156,4 @@ export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string 
   };
   for (const c of viewport.children) visit(c);
   dxf.style = {};
-  return dxf.toString();
 }

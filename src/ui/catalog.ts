@@ -83,6 +83,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   pressure_switch: "Riquadro con il contatto di chiusura e la molla regolabile; l'aria arriva dalla porta 1 con una linea continua (ISO 1219-1 X11750). Elettronico: l'amplificatore (triangolo) al posto della molla (X11760). Vacuostato: il segno meno del vuoto accanto alla molla.",
   signal_lamp: "Cerchio con la croce: lampada di segnalazione.",
   wire_junction: "Pallino pieno: morsetto comune di più fili.",
+  wire_reference: "Freccia in fondo al filo con il nome del potenziale: il filo prosegue nel rimando elettrico con lo stesso nome, su un altro foglio o altrove nello schema.",
 };
 
 /** Come si legge ciascun comando delle valvole (ISO 1219-1). */

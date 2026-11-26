@@ -514,3 +514,38 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 #properties label.check { display: flex; gap: 6px; align-items: flex-start; font-size: 12.5px; margin: 8px 0; }
 #properties textarea[name="ann-text"] { width: 100%; box-sizing: border-box; margin-bottom: 8px; font: inherit; font-size: 13px;
   padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); resize: vertical; }
+
+/* schede dei fogli, sotto l'area di lavoro */
+#sheet-tabs { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: 32px; display: flex; align-items: stretch;
+  gap: 2px; padding: 0 8px; background: var(--bg); border-top: 1px solid var(--border); }
+#sheet-tab-list { display: flex; align-items: stretch; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: thin; }
+.sheet-tab { display: flex; align-items: center; gap: 6px; padding: 0 10px; margin-top: -1px; border: 1px solid transparent;
+  border-top: 0; border-radius: 0 0 7px 7px; background: none; color: var(--muted); white-space: nowrap; cursor: pointer;
+  font-size: 12.5px; max-width: 220px; }
+.sheet-tab:hover { background: var(--accent-soft); color: var(--text); }
+.sheet-tab.on { background: var(--panel); color: var(--text); border-color: var(--border); font-weight: 600;
+  box-shadow: 0 2px 0 var(--accent) inset; }
+.sheet-tab .tab-num { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sheet-tab .tab-name { overflow: hidden; text-overflow: ellipsis; }
+.sheet-tab .tab-mark { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sheet-tab .tab-mark.error { background: var(--error); }
+.sheet-tab .tab-mark.warning { background: var(--warning); }
+.sheet-tab .tab-more { padding: 0 3px; border-radius: 4px; color: var(--muted); }
+.sheet-tab .tab-more:hover { background: var(--accent-soft); color: var(--accent); }
+.sheet-tab.dragging { opacity: .5; }
+.sheet-tab.drop { box-shadow: 2px 0 0 var(--accent) inset; }
+.sheet-add { border: 0; background: none; color: var(--muted); font-size: 17px; padding: 0 10px; cursor: pointer; border-radius: 6px; }
+.sheet-add:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.tab-rename { align-self: center; font: inherit; font-size: 12.5px; padding: 2px 6px; }
+#sheet-menu { flex-direction: column; align-items: stretch; z-index: 21; min-width: 190px !important; }
+#sheet-menu .danger { color: var(--error); }
+#stage #legend { bottom: 44px; }
+#stage #view-tools { bottom: 44px; }
+.xref { font-weight: 600; fill: var(--accent); cursor: pointer; pointer-events: auto; }
+.xref:hover { text-decoration: underline; }
+:root[data-print] .xref { fill: var(--text); }
+.issue-sheet { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.sheet-xrefs { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 4px; }
+.dialog.narrow { width: min(440px, 100%); }
+.export-choices { display: grid; gap: 8px; margin-top: 4px; }
+.export-choices button { text-align: left; padding: 9px 12px; }
