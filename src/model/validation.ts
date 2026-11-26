@@ -145,6 +145,26 @@ export function build(data: Pick<CircuitDoc, "components" | "connections">): Bui
     }
     tubes.push(tube);
   }
+  // rimandi ad altro foglio: quelli con la stessa descrizione sono collegati tra loro
+  const refs = new Map<string, Component[]>();
+  for (const c of components.values()) {
+    if (c.type !== "sheet_reference") continue;
+    const name = c.label.trim();
+    if (!name) {
+      issues.push(issue("warning", "SHEET_REFERENCE_NAME", `${c.id}: scrivi nella descrizione il nome del rimando`, c.id));
+      continue;
+    }
+    refs.set(name, [...(refs.get(name) ?? []), c]);
+  }
+  for (const [name, group] of refs) {
+    if (group.length < 2) {
+      issues.push(issue("warning", "SHEET_REFERENCE_ALONE", `${group[0]!.id}: nessun altro rimando «${name}» nello schema`, group[0]!.id));
+    }
+    for (const c of group.slice(1)) {
+      connections.push([`${group[0]!.id}.1`, `${c.id}.1`]);
+      tubes.push(null);
+    }
+  }
   return { components, connections, tubes, issues };
 }
 
@@ -268,7 +288,7 @@ export function analyze(data: Pick<CircuitDoc, "components" | "connections">): A
           `${c.id}: il finecorsa ${cam.cylinder}${cam.end} non corrisponde a nessun cilindro dello schema`, c.id));
       }
     }
-    if (c.type === "sequence_valve" || c.type === "pressure_switch") {
+    if (c.type === "sequence_valve" || (c.type === "pressure_switch" && c.switch_kind !== "vacuum")) {
       const pilot = pAt(`${c.id}.${c.type === "pressure_switch" ? "1" : "12"}`);
       if (pilot > 0 && pilot < c.params.setpoint!.si * (1 - 1e-9)) {
         issues.push(issue("warning", "SETPOINT_UNREACHABLE",

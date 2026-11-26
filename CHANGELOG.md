@@ -3,6 +3,17 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.29.0 · 2026-11-26
+
+- Completate le voci a priorità media e bassa dell'elenco dalla ISO 1219-1, con simbolo, simulazione dove ha senso, descrizioni e scheda nel catalogo dei simboli.
+- Valvole distributrici: funzioni 3/3 a centro chiuso, 4/3 a centri chiusi e 4/3 a centri in scarico (il centro è la posizione di riposo). Nuovi comandi: pulsante a tirare e spingere con arresto, selettore rotativo, chiave, pedale a bilanciere, tastatore a corsa regolabile, pilotaggio differenziale, solenoide proporzionale, attuatore piezoelettrico, motore passo passo, ritorno a molla e molla pneumatica. Nuove voci della palette: 3/3, 4/3, 5/3 a selettore, 5/3 proporzionale, 3/2 a chiave.
+- Alimentazione e trattamento aria: compressore, filtro riduttore, essiccatore; il filtro ha il tipo (scarico automatico, a coalescenza, a carboni attivi, separatore di condensa, separatore centrifugo, con indicatore di intasamento, doppio), il lubrificatore lo scarico e il gruppo FRL il simbolo semplificato.
+- Regolazione: non ritorno con molla, strozzatore a rullo per rallentare a fine corsa, riduttore con scarico, riduttore pilotato a distanza, regolatore proporzionale di pressione, moltiplicatore di pressione.
+- Attuatori: cilindro con bloccaggio dello stelo (pilotaggio L) e con bloccaggio di fine corsa, attuatore a soffietto, cilindro a membrana, muscolo pneumatico; attuatore rotante a semplice effetto, motore a un senso, cilindro a doppio stelo con il secondo stelo di diametro diverso.
+- Vuoto: pompa del vuoto, soffio di distacco del generatore di vuoto (porta 4), vacuostato (opzione del pressostato, che ha anche la versione elettronica).
+- Collegamenti: rubinetto a tre vie, tubo flessibile, giunto rotante, basetta di distribuzione e rimando ad altro foglio (i rimandi con la stessa descrizione sono collegati, anche in simulazione).
+- Nuova sezione «Misura e segnalazione»: sensore di pressione analogico, indicatore ottico, digitale o acustico (si accende in simulazione), misuratore di portata, manometro differenziale, termometro.
+
 ## 0.28.0 · 2026-11-26
 
 - Simboli verificati sul testo della ISO 1219-1:2006 (regole quotate dei capitoli 5 e 9 e composizione di ogni esempio in elementi base).

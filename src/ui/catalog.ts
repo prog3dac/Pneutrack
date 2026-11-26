@@ -4,7 +4,7 @@
  * così un componente nuovo compare qui senza altro lavoro.
  */
 import {
-  ACTUATIONS, ACTUATION_LABELS, typeList, type ComponentData, type PortKind, type TypeDef,
+  ACTUATIONS, ACTUATION_LABELS, isReturn, typeList, type ComponentData, type PortKind, type TypeDef,
 } from "../model/components";
 import { geometry } from "./symbols";
 
@@ -22,7 +22,7 @@ export const SYMBOL_NOTES: Record<string, string> = {
   junction: "Pallino pieno: le linee che si incrociano qui sono collegate. Senza pallino, due linee che si incrociano non sono collegate.",
   plug: "Tratto trasversale in fondo alla linea: porta chiusa con un tappo.",
   directional_valve: "Una casella per ogni posizione; le frecce indicano i passaggi, la T le porte chiuse. Le linee esterne sono disegnate sulla casella di riposo. Ai lati, i comandi che portano in ciascuna posizione; il pulsante oltre il solenoide è il comando manuale ausiliario, con la tacca se ha l'arresto.",
-  check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera.",
+  check_valve: "Sfera appoggiata nella sede a V: il flusso passa solo dal vertice della sede verso la sfera. Con la molla, la molla sta sulla linea sopra la sfera e la preme sulla sede (ISO 1219-1 X10700).",
   pilot_check_valve: "Non ritorno racchiuso in una casella, con il pilotaggio tratteggiato che solleva la sfera dalla sede.",
   shuttle_valve: "Casella con una sede a ciascun ingresso e una sfera tra le due: l'uscita prende l'aria dall'ingresso a pressione maggiore (funzione O).",
   and_valve: "Casella con un otturatore tra due sedi: l'uscita è in pressione solo se lo sono entrambi gli ingressi (funzione E).",
@@ -47,6 +47,30 @@ export const SYMBOL_NOTES: Record<string, string> = {
   gripper: "Corpo della pinza con le due griffe parallele in alto, che si chiudono verso il centro; nella pinza a semplice effetto la molla nel corpo riapre le griffe (ISO 1219-1 X11630–X11660).",
   vacuum_ejector: "Casella con l'ugello convergente e il diffusore tra l'alimentazione 1 e lo scarico 3; la freccia indica l'aria aspirata dalla porta del vuoto 2 (ISO 1219-1 X12380).",
   suction_cup: "Campana aperta verso il pezzo, con il bordo di tenuta (ISO 1219-1 X12420).",
+  compressor: "Cerchio con il triangolo vuoto rivolto verso l'esterno, sulla mandata, e l'albero del motore (ISO 1219-1 X11380).",
+  vacuum_pump: "Cerchio con il triangolo vuoto rivolto verso lo scarico e l'aspirazione in alto: pompa del vuoto (ISO 1219-1 X12370).",
+  filter_regulator: "Filtro con lo scarico della condensa e riduttore con la molla regolabile nello stesso corpo: cornice continua, perché è un componente solo con due funzioni (ISO 1219-1 5.9).",
+  air_dryer: "Rombo dell'elemento di trattamento con i due triangoli pieni dell'essiccante (ISO 1219-1 X12300).",
+  three_way_cock: "Tre triangoli con i vertici al centro: rubinetto a tre vie. La leva indica l'uscita aperta; in simulazione si sposta da 2 a 4 con un clic.",
+  flexible_hose: "Linea curva tra le due porte: tubo flessibile (ISO 1219-1 X10630).",
+  rotary_joint: "Due cerchi concentrici sulla linea: giunto rotante a una via (ISO 1219-1 X11680).",
+  manifold: "Canale comune con i punti di connessione delle uscite: basetta di distribuzione, come nei moduli dei simboli della ISO 1219-3.",
+  sheet_reference: "Freccia in fondo alla linea: la linea prosegue nel rimando con lo stesso nome, su un altro foglio o altrove nello schema.",
+  roller_flow_control: "Strozzatore regolabile sulla linea con il rullo che lo chiude e la molla che lo riapre: strozzatore a comando meccanico (ISO 1219-1 X10660).",
+  relieving_regulator: "Casella con la freccia 1 → 2 e la freccia dello scarico 2 → 3, il pilotaggio dall'uscita e la molla regolabile: riduttore a tre vie con scarico (ISO 1219-1 X10520).",
+  piloted_regulator: "Casella del riduttore con il pilotaggio esterno 12 al posto della molla: la pressione del pilotaggio dà la taratura (ISO 1219-1 X10540).",
+  proportional_regulator: "Riduttore a tre vie con il solenoide proporzionale (rettangolo con la freccia obliqua) al posto della molla (ISO 1219-1 X10560).",
+  pressure_intensifier: "Camera grande e camera piccola con il pistone comune: l'aria sulla superficie grande spinge l'uscita a una pressione più alta (ISO 1219-1 X11590).",
+  locking_cylinder: "Cilindro a doppio effetto con l'unità di bloccaggio sulla testata: i due ceppi pieni stringono lo stelo, il pilotaggio tratteggiato L li apre (ISO 1219-1 X11580).",
+  end_lock_cylinder: "Cilindro a doppio effetto con l'aggancio pieno nel fondello, che trattiene il pistone a riposo.",
+  bellows_cylinder: "Pieghe del soffietto tra il fondo fisso e il piatto mobile (ISO 1219-1 X11610).",
+  diaphragm_cylinder: "Camicia con la membrana curva al posto del pistone e la molla di ritorno.",
+  pneumatic_muscle: "Tubo con la calza intrecciata (tratti incrociati): muscolo pneumatico, che si accorcia quando è in pressione.",
+  pressure_sensor: "Riquadro con la lettera P e l'uscita del segnale: trasduttore di pressione con uscita analogica (ISO 1219-1 X11780).",
+  pressure_indicator: "Ottico: cerchio con la croce (ISO 1219-1 X11820); digitale: display; acustico: tromba. In simulazione si accende quando c'è pressione.",
+  flow_meter: "Cerchio sulla linea con la freccia del flusso: misuratore di portata (ISO 1219-1 X11850).",
+  differential_gauge: "Strumento di misura con due attacchi: manometro differenziale (ISO 1219-1 X11800).",
+  thermometer: "Cerchio con il bulbo del termometro (ISO 1219-1 X11830).",
   electric_supply: "Tratto lungo (+) e tratto corto spesso (0V): sorgente in corrente continua.",
   pushbutton: "Contatto con la lama mobile e il comando a pulsante collegato dalla linea tratteggiata; con ritenuta, la tacca d'arresto.",
   relay_coil: "Rettangolo: bobina del relè.",
@@ -76,6 +100,16 @@ export const ACTUATION_NOTES: Record<string, string> = {
   spring: "Molla di ritorno.",
   air_return: "Molla pneumatica: riquadro con triangolo vuoto, alimentata dall'interno della valvola.",
   air_return_ext: "Molla pneumatica con la linea tratteggiata dell'alimentazione esterna.",
+  proportional: "Solenoide attraversato dalla freccia obliqua: solenoide proporzionale (ISO 1219-1 X10170).",
+  piezo: "Rettangolo con la pila di dischi: attuatore piezoelettrico.",
+  stepper: "Cerchio del motore con il gradino: motore passo passo.",
+  pilot_differential: "Pilotaggio con due superfici di area diversa sullo stesso lato: pilotaggio differenziale.",
+  pushpull_detent: "Pulsante con la testa a fungo, da spingere e da tirare, con le tacche di arresto (ISO 1219-1 X10030).",
+  rotary_knob: "Manopola con l'indice e le tacche delle posizioni: selettore rotativo.",
+  key: "Chiave con i denti e l'impugnatura ad anello (ISO 1219-1 X10060).",
+  pedal_double: "Pedale imperniato al centro: si aziona nei due versi.",
+  plunger_adjustable: "Tastatore attraversato dalla freccia obliqua: la corsa è regolabile.",
+  spring_air_return: "Molla meccanica e molla pneumatica insieme sullo stesso lato.",
 };
 
 const PORT_KIND: Record<PortKind, string> = {
@@ -116,10 +150,8 @@ export function distinctVariants(def: TypeDef): { label: string; comp: Component
 }
 
 function card(def: TypeDef, label: string, comp: ComponentData, showDoc: boolean): string {
-  const ports = def.ports({
-    function: comp.function, actuation_14: comp.actuation_14, actuation_12: comp.actuation_12, contact: comp.contact,
-    gripper_kind: comp.gripper_kind,
-  } as never);
+  // le porte dipendono solo dalle opzioni, che hanno gli stessi nomi nel file e nel componente validato
+  const ports = def.ports(comp as never);
   const portList = ports.map((p) => `<span class="cat-port"><b>${esc(p.name)}</b> ${PORT_KIND[p.kind]}</span>`).join(" ");
   return `<article class="cat-card" data-type="${def.type}">` +
     `<div class="cat-symbol">${symbolSvg(comp)}</div>` +
@@ -159,7 +191,7 @@ export function renderCatalog(): string {
   html += `<section id="cat-act"><h2>Comandi delle valvole</h2><p class="cat-doc">Ogni comando è mostrato a ` +
     `sinistra di una valvola 3/2 con ritorno a molla (la molla a destra), tranne i ritorni, mostrati a destra.</p><div class="cat-grid">`;
   for (const a of ACTUATIONS) {
-    const ret = a === "spring" || a === "air_return" || a === "air_return_ext";
+    const ret = isReturn(a);
     const comp: ComponentData = { id: "X", type: "directional_valve", function: "3/2",
       actuation_14: ret ? "manual" : a, actuation_12: ret ? a : "spring" };
     html += `<article class="cat-card"><div class="cat-symbol">${symbolSvg(comp)}</div>` +

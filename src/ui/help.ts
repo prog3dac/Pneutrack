@@ -115,6 +115,30 @@ const PARAMS: Record<string, string> = {
     "posizione impostata. Serve solo alla simulazione.",
   hysteresis: "Isteresi: differenza tra il punto in cui il componente si attiva e quello in cui si disattiva.",
   diameter: "Diametro nominale del componente, come indicato a catalogo.",
+  rod2:
+    "Diametro del secondo stelo del cilindro a doppio stelo, se è diverso dal primo: la camera A ha l'area del " +
+    "pistone meno questo stelo, la camera B meno il primo, così forze e velocità nei due versi cambiano. Se " +
+    "vuoto è uguale allo stelo.",
+  unlock_pressure:
+    "Pressione relativa alla quale il bloccaggio si apre e lascia muovere lo stelo. Sotto questo valore lo stelo " +
+    "resta fermo. Serve solo alla simulazione.",
+  ratio:
+    "Rapporto tra la pressione in uscita e quella di comando: nel moltiplicatore l'uscita arriva fino a " +
+    "rapporto × pressione in ingresso; nel riduttore pilotato l'uscita è rapporto × pressione del pilotaggio.",
+  pressed_opening:
+    "Apertura dello strozzatore quando il rullo è premuto, da 0 % (chiuso) a 100 %: la portata in quel tratto è " +
+    "questa frazione di quella libera. Serve solo alla simulazione.",
+  length: "Lunghezza del tubo. Con il diametro interno dà il volume d'aria che la simulazione aggiunge alla linea.",
+  inner_diameter:
+    "Diametro interno del tubo flessibile. Con la lunghezza dà il volume d'aria della linea, che la simulazione " +
+    "divide tra le due porte.",
+  vacuum:
+    "Vuoto prodotto dalla pompa, come pressione sotto l'atmosfera: 0,8 bar vuol dire 0,2 bar assoluti. La " +
+    "simulazione tiene la porta 1 a questo vuoto.",
+  range_max:
+    "Fondo scala del sensore: la pressione a cui l'uscita analogica arriva al massimo (per esempio 10 V o 20 mA).",
+  threshold:
+    "Pressione relativa sopra la quale l'indicatore segnala la presenza d'aria. Serve solo alla simulazione.",
   max_vacuum:
     "Vuoto massimo che l'eiettore raggiunge con la bocca di aspirazione chiusa, come valore positivo: 0,85 bar " +
     "vuol dire 0,85 bar sotto la pressione atmosferica (circa 0,15 bar assoluti). Lo si raggiunge con circa 4 bar " +
@@ -191,8 +215,9 @@ const TYPE_PARAMS: Record<string, string> = {
 const OPTIONS: Record<string, string> = {
   function:
     "Funzione della valvola, nella forma vie/posizioni. 2/2: apre o chiude una linea. 3/2: alimenta o scarica " +
-    "un'utenza (NC chiusa a riposo, NA aperta). 4/2 e 5/2: comandano un cilindro a doppio effetto. 5/3: tre " +
-    "posizioni, con il centro chiuso (blocca il cilindro), in scarico (lo lascia libero) o in pressione.",
+    "un'utenza (NC chiusa a riposo, NA aperta). 4/2 e 5/2: comandano un cilindro a doppio effetto. 3/3, 4/3 e " +
+    "5/3: tre posizioni, con il centro chiuso (blocca il cilindro), in scarico (lo lascia libero) o in pressione; " +
+    "il centro è la posizione di riposo.",
   actuation_14:
     "Comando che porta la valvola nella posizione «14» (la casella collegata a 1→4 / 1→2 attivo). Per esempio " +
     "solenoide, pilotaggio pneumatico, pulsante, leva o rullo. Con un comando meccanico puoi scegliere qui " +
@@ -235,6 +260,35 @@ const OPTIONS: Record<string, string> = {
   coupling_state:
     "Innestato: l'aria passa tra 1 e 2. Staccato: le due metà sono separate; si usa per disegnare un punto di " +
     "collegamento aperto, per esempio per un attrezzo da staccare.",
+  check_spring:
+    "Con la molla la sfera è tenuta sulla sede: la valvola apre solo quando la differenza di pressione tra 1 e 2 " +
+    "supera la pressione di apertura (se non la indichi, 0,5 bar) e si chiude anche montata in verticale.",
+  rotary_kind:
+    "Doppio effetto: l'aria fa ruotare da A in un verso e da B nell'altro. Semplice effetto: l'aria ruota da A " +
+    "e una molla riporta indietro l'albero quando A scarica.",
+  motor_kind:
+    "Reversibile: il motore gira in un verso con l'aria da 1 e nell'altro con l'aria da 2. A un senso: gira solo " +
+    "con l'aria che entra da 1 ed esce da 2.",
+  filter_kind:
+    "Tipo di filtro, come si disegna nella ISO 1219-1. Scarico manuale o automatico della condensa; a " +
+    "coalescenza per togliere olio e particelle fini; a carboni attivi per gli odori e i vapori d'olio; " +
+    "separatore di condensa o centrifugo senza cartuccia; con indicatore di intasamento; doppio, con prefiltro. " +
+    "Cambia il simbolo, non la simulazione.",
+  frl_style:
+    "Dettagliato: filtro, riduttore con manometro e lubrificatore, racchiusi nella cornice del gruppo. " +
+    "Semplificato: una sola casella, utile negli schemi piccoli. Non cambia la simulazione.",
+  lub_drain:
+    "Lubrificatore con lo scarico manuale sul fondo della tazza (per scaricare la condensa o l'olio in eccesso).",
+  switch_kind:
+    "Meccanico: contatto azionato contro una molla regolabile. Elettronico: sensore con uscita di commutazione " +
+    "(con l'amplificatore nel simbolo). Vacuostato: interviene quando il vuoto sulla porta 1 supera la taratura, " +
+    "scritta come grado di vuoto (0,5 bar vuol dire 0,5 bar sotto l'atmosfera).",
+  indicator_kind:
+    "Come segnala la pressione: ottico (un disco colorato che compare), digitale (un display) o acustico (un " +
+    "fischio o una tromba). In simulazione il simbolo si accende sopra la soglia.",
+  blowoff:
+    "Soffio di distacco: una porta 4 in più, che quando è in pressione soffia aria nella porta del vuoto 2 e " +
+    "stacca subito il pezzo dalla ventosa, invece di aspettare che il vuoto si esaurisca.",
   lamp_color:
     "Colore della lampada secondo la norma CEI EN 60204-1: verde marcia o stato normale, rosso emergenza o " +
     "guasto, giallo condizione anomala, bianco o blu informazioni.",

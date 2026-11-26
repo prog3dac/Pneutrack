@@ -53,6 +53,8 @@ export interface PressureSwitchSpec {
   /** soglia di intervento e di rilascio, pressione relativa [Pa] */
   on: number;
   off: number;
+  /** vacuostato: on e off sono gradi di vuoto */
+  vacuum?: boolean;
 }
 
 export interface ElectricNetwork {
@@ -153,7 +155,8 @@ export function compileElectric(built: Built, portNode: Record<string, number>):
     } else if (c.type === "pressure_switch") {
       const on = c.params.setpoint!.si;
       const hyst = simParam(c, "hysteresis").si;
-      net.pressureSwitches.push({ id: c.id, node: portNode[`${c.id}.1`]!, on, off: Math.max(0, on - hyst) });
+      net.pressureSwitches.push({ id: c.id, node: portNode[`${c.id}.1`]!, on, off: Math.max(0, on - hyst),
+                                  vacuum: c.switch_kind === "vacuum" });
     }
   }
   return net;
@@ -201,7 +204,8 @@ export class ElectricState {
   update(inputs: ElectricInputs): ElectricSnapshot {
     const { t } = inputs;
     for (const p of this.net.pressureSwitches) {
-      const g = inputs.gauge(p.node);
+      // vacuostato: interviene sul vuoto, cioè sulla pressione sotto l'atmosfera
+      const g = p.vacuum ? -inputs.gauge(p.node) : inputs.gauge(p.node);
       const was = this.switched.get(p.id)!;
       this.switched.set(p.id, was ? g >= p.off : g >= p.on);
     }

@@ -11,6 +11,7 @@ import { ACTUATION_SHORT, TYPES, typeList, type Actuation, type ComponentData } 
 
 export const NOT_PARTS = new Set([
   "junction", "wire_junction", "exhaust", "pressure_source", "electric_supply", "relay_contact", "valve_solenoid",
+  "sheet_reference",
 ]);
 
 export interface BomRow {
@@ -38,6 +39,10 @@ const BOM_CHOICES: Record<string, string> = {
   "magnet.no": "", "magnet.yes": "pistone magnetico",
   "coupling_state.coupled": "", "coupling_state.uncoupled": "",
   "coupling.plain": "senza non ritorno", "coupling.check_one": "con non ritorno", "coupling.check_both": "con due non ritorno",
+  "check_spring.no": "", "check_spring.yes": "con molla",
+  "frl_style.detailed": "", "frl_style.simplified": "",
+  "lub_drain.no": "", "lub_drain.yes": "con scarico",
+  "blowoff.no": "", "blowoff.yes": "con soffio di distacco",
 };
 
 function describe(c: ComponentData): string {

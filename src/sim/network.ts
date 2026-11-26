@@ -9,7 +9,7 @@
  */
 import type { CircuitDoc } from "../model/circuit";
 import { nets } from "../model/circuit";
-import { conductanceOf, cushionLength, hasPilotPort, isElectricType, isReturn, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
+import { conductanceOf, cushionLength, hasPilotPort, isElectricType, isReturn, isThreePosition, simParam, type Actuation, type Cam, type Component, type ValveFunction } from "../model/components";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { analyze, build, pneumaticPorts } from "../model/validation";
 import { BAR, P_ATM } from "../solver/constants";
@@ -28,6 +28,13 @@ export interface Orifice {
   positions?: Position[];
   /** riduttore: il flusso a→b si chiude quando la pressione in b raggiunge questo valore (Pa ass.) */
   limit?: number;
+  /** come `limit`, ma variabile con le pressioni dei nodi (riduttore pilotato) */
+  limitFn?: (P: number[]) => number;
+  /**
+   * moltiplicatore di pressione: a monte vale P_ATM + boost·(Pa − P_ATM) e il nodo `a` cede `boost` volte
+   * la massa che passa (bilancio approssimato delle aree del moltiplicatore)
+   */
+  boost?: number;
   /** solo da a verso b (non ritorno) */
   oneWay?: boolean;
   /** apertura 0..1 in funzione delle pressioni assolute dei nodi (valvole logiche, di sicurezza...) */
@@ -81,6 +88,11 @@ export interface CylinderSpec {
   frictionViscous: number;
   /** forza della molla di richiamo (semplice effetto) [N] */
   spring: number;
+  /**
+   * bloccaggio: con il nodo `node` sotto `threshold` (relativa, Pa) lo stelo è fermo in qualunque posizione
+   * ("any") o solo a riposo, tutto rientrato ("cap")
+   */
+  lock?: { node: number; threshold: number; at: "any" | "cap" };
 }
 
 export interface SimNetwork {
@@ -102,13 +114,16 @@ export type CompileResult =
   | { ok: true; network: SimNetwork; warnings: string[] }
   | { ok: false; errors: string[] };
 
+/** Attuatori a semplice effetto: una sola camera in pressione e la forza di ritorno. */
+const SINGLE_ACTING = new Set(["single_acting_cylinder", "bellows_cylinder", "diaphragm_cylinder", "pneumatic_muscle"]);
+
 /** Volume di ogni nodo di raccordo e tubo [m³]. */
 const NODE_VOLUME = 1e-6;
 const G = 9.81;
 const DEAD_VOLUME = 5e-6;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
 /** comandi alimentati dalla porta 1 della valvola stessa */
-const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return";
+const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return" || a === "spring_air_return";
 /** passaggio libero tra camera e porta del cilindro fuori dall'ammortizzo [m³/(s·Pa)] (5 dm³/(s·bar)) */
 const CUSHION_FREE_C = 5e-3 / BAR;
 /** conduttanza della vite dell'ammortizzo tutta aperta [m³/(s·Pa)] (0,3 dm³/(s·bar)) */
@@ -120,7 +135,10 @@ const CUSHION_MIN_OPENING = 0.01;
 const VALVE_PATHS: Record<ValveFunction, Partial<Record<Position, [string, string][]>>> = {
   "2/2": { "14": [["1", "2"]] },
   "3/2": { "14": [["1", "2"]], "12": [["2", "3"]] },
+  "3/3": { "14": [["1", "2"]], "12": [["2", "3"]] },
   "4/2": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]] },
+  "4/3": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]] },
+  "4/3E": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "3"]], "0": [["2", "3"], ["4", "3"]] },
   "5/2": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]] },
   "5/3": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]] },
   "5/3E": { "14": [["1", "4"], ["2", "3"]], "12": [["1", "2"], ["4", "5"]], "0": [["2", "3"], ["4", "5"]] },
@@ -147,6 +165,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   // porte che stanno sullo stesso volume interno (serbatoio)
   for (const c of built.components.values()) {
     if (c.type === "air_reservoir") ideal.push([`${c.id}.1`, `${c.id}.2`]);
+    if (c.type === "manifold") for (const p of c.ports.slice(1)) ideal.push([`${c.id}.1`, `${c.id}.${p.name}`]);
   }
   const groups = nets(pneumaticPorts(built.components), ideal);
   const portNode: Record<string, number> = {};
@@ -201,7 +220,11 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
     });
     switch (c.type) {
       case "pressure_source":
+      case "compressor":
         fixed.set(node(c, "1"), P_ATM + c.params.pressure!.si);
+        break;
+      case "vacuum_pump":
+        fixed.set(node(c, "1"), Math.max(0.05 * BAR, P_ATM - c.params.vacuum!.si));
         break;
       case "silencer":
       case "exhaust":
@@ -210,14 +233,68 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "plug":
       case "junction":
       case "pressure_gauge":
+      case "pressure_sensor":
+      case "pressure_indicator":
+      case "differential_gauge":
+      case "thermometer":
+      case "sheet_reference":
+        break;
+      case "manifold":
+        extraVolumes.push([node(c, "1"), simParam(c, "volume").si]);
         break;
       case "air_reservoir":
         extraVolumes.push([node(c, "1"), c.params.volume!.si]);
         break;
       case "pressure_regulator":
       case "frl_unit":
+      case "filter_regulator":
         orifices.push(orifice("1", "2", { limit: P_ATM + c.params.setpoint!.si }));
         break;
+      case "relieving_regulator":
+      case "proportional_regulator": {
+        const set = c.params.setpoint!.si, o2 = node(c, "2");
+        orifices.push(orifice("1", "2", { limit: P_ATM + set }));
+        // scarico: l'eccesso a valle oltre la taratura esce da 3
+        orifices.push(orifice("2", "3", { oneWay: true, gate: (P) => ramp(gauge(P, o2) - set - 0.1 * BAR, 0.1 * BAR) }));
+        break;
+      }
+      case "piloted_regulator": {
+        const x = node(c, "12"), ratio = simParam(c, "ratio").si;
+        orifices.push(orifice("1", "2", { limitFn: (P) => P_ATM + Math.max(0, ratio * gauge(P, x)) }));
+        break;
+      }
+      case "pressure_intensifier":
+        orifices.push(orifice("1", "2", { oneWay: true, boost: c.params.ratio!.si }));
+        break;
+      case "roller_flow_control": {
+        // a riposo (12) passaggio libero; con il rullo premuto (14) solo lo strozzatore
+        const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
+        const vi = valves.length, a = node(c, "1"), b = node(c, "2");
+        orifices.push({ a, b, C, bcrit, valve: vi, positions: ["12"] });
+        orifices.push({ a, b, C: C * simParam(c, "pressed_opening").si, bcrit, valve: vi, positions: ["14"] });
+        valves.push({ id: c.id, fn: "2/2", act14: "mechanical", act12: "spring", pilotThreshold: DEFAULT_PILOT_THRESHOLD,
+                      initial: "12", cam14: c.cam_14 });
+        break;
+      }
+      case "three_way_cock": {
+        const C = conductanceOf(c), bcrit = simParam(c, "critical_ratio").si;
+        const vi = valves.length;
+        orifices.push({ a: node(c, "1"), b: node(c, "2"), C, bcrit, valve: vi, positions: ["14"] });
+        orifices.push({ a: node(c, "1"), b: node(c, "4"), C, bcrit, valve: vi, positions: ["12"] });
+        // come il rubinetto: parte su 2 (lato 14 comandato), un clic lo sposta su 4
+        valves.push({ id: c.id, fn: "3/2", act14: "lever_detent", act12: "spring", pilotThreshold: DEFAULT_PILOT_THRESHOLD,
+                      initial: "14", startCommands: ["14"] });
+        break;
+      }
+      case "flexible_hose": {
+        orifices.push(orifice("1", "2"));
+        const d = c.params.inner_diameter?.si, len = c.params.length?.si;
+        if (d && len) {
+          const v = (Math.PI * d * d / 4) * len;
+          extraVolumes.push([node(c, "1"), v / 2], [node(c, "2"), v / 2]);
+        }
+        break;
+      }
       case "fixed_orifice": {
         // ugello a spigolo vivo: C ≈ 0,8 · 0,16 · d² dm³/(s·bar) con d in mm (ISO 6358, flusso sonico ideale)
         const dmm = c.params.diameter!.si * 1000;
@@ -269,6 +346,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         const Cs = simParam(c, "suction_conductance").si;
         orifices.push(orifice("2", "2", { b: sink, C: Cs, oneWay: true, gate: on }));
         orifices.push(orifice("2", "2", { b: atmosphere(), C: Cs, gate: (P) => 1 - on(P) }));
+        // soffio di distacco: l'aria della porta 4 entra nella porta del vuoto
+        if (c.blowoff === "yes") orifices.push(orifice("4", "2", { C: Cs, oneWay: true }));
         break;
       }
       case "suction_cup": {
@@ -287,15 +366,21 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "flow_control_valve":
       case "air_filter":
       case "lubricator":
-      case "air_motor":
+      case "air_dryer":
+      case "rotary_joint":
+      case "flow_meter":
         orifices.push(orifice("1", "2"));
+        break;
+      case "air_motor":
+        orifices.push(orifice("1", "2", c.motor_kind === "one_way" ? { oneWay: true } : {}));
         break;
       case "one_way_flow_control":
         orifices.push(orifice("1", "2"));
         orifices.push(orifice("2", "1", { C: simParam(c, "free_conductance").si, oneWay: true }));
         break;
       case "check_valve": {
-        const crack = simParam(c, "cracking_pressure").si;
+        // con la molla apre più tardi: 0,5 bar se la pressione di apertura non è indicata
+        const crack = c.params.cracking_pressure?.si ?? (c.check_spring === "yes" ? 0.5 * BAR : 0.1 * BAR);
         const a = node(c, "1"), b = node(c, "2");
         orifices.push(orifice("1", "2", { oneWay: true, gate: (P) => ramp(P[a]! - P[b]! - crack, 0.05 * BAR) }));
         break;
@@ -348,7 +433,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           }
         }
         const act14 = c.actuation_14!, act12 = c.actuation_12!;
-        const initial: Position = fn.startsWith("5/3") ? "0" : isReturn(act14) ? "14" : "12";
+        const initial: Position = isThreePosition(fn) ? "0" : isReturn(act14) ? "14" : "12";
         valves.push({
           id: c.id, fn, act14, act12,
           // pilotaggio pneumatico o alimentazione della valvola pilota (esterna: 14/12, interna: 1)
@@ -364,11 +449,17 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "double_acting_cylinder":
       case "double_rod_cylinder":
       case "rodless_cylinder":
+      case "locking_cylinder":
+      case "end_lock_cylinder":
+      case "bellows_cylinder":
+      case "diaphragm_cylinder":
+      case "pneumatic_muscle":
       case "gripper": {
         const d = c.params.bore!.si;
         const rod = c.params.rod?.si ?? 0;
         const full = (Math.PI * d * d) / 4, annulus = full - (Math.PI * rod * rod) / 4;
-        const single = c.type === "single_acting_cylinder" || (c.type === "gripper" && c.gripper_kind === "single");
+        const rod2 = c.params.rod2?.si ?? rod;
+        const single = SINGLE_ACTING.has(c.type) || (c.type === "gripper" && c.gripper_kind === "single");
         const through = c.type === "double_rod_cylinder" || c.type === "rodless_cylinder";
         // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
         const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
@@ -386,7 +477,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           id: c.id,
           capNode: chamber("A", "cap"),
           rodNode: single ? atmosphere() : chamber("B", "rod"),
-          A1: through ? annulus : full,
+          // doppio stelo: la camera A ha l'area meno il secondo stelo (che può essere diverso)
+          A1: c.type === "double_rod_cylinder" ? full - (Math.PI * rod2 * rod2) / 4 : through ? annulus : full,
           A2: annulus,
           stroke: c.params.stroke!.si,
           Vcap0: DEAD_VOLUME,
@@ -398,6 +490,11 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           gravity: c.type === "gripper" ? 0 : simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
           frictionViscous: 20,
           spring: single ? simParam(c, "spring_force").si : 0,
+          lock: c.type === "locking_cylinder"
+            ? { node: node(c, "L"), threshold: simParam(c, "unlock_pressure").si, at: "any" }
+            : c.type === "end_lock_cylinder"
+              ? { node: node(c, "A"), threshold: simParam(c, "unlock_pressure").si, at: "cap" }
+              : undefined,
         });
         break;
       }
