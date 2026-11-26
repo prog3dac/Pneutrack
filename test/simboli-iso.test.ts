@@ -194,3 +194,42 @@ describe("innesto rapido", () => {
     expect(buildComponent({ id: "IR1", type: "quick_coupling" }).coupling).toBe("check_one");
   });
 });
+
+describe("regole quotate della ISO 1219-1 (M = 10)", () => {
+  const valve = (fn: string, a14 = "solenoid", a12 = "spring") =>
+    geometry({ id: "V", type: "directional_valve", function: fn, actuation_14: a14, actuation_12: a12 });
+  it("RF020: porte adiacenti a 2M, anche nelle valvole a cinque vie (casella 6M, 101V8)", () => {
+    for (const fn of ["3/2", "4/2", "5/2", "5/3"]) {
+      const p = valve(fn).ports;
+      for (const row of [["5", "1", "3"], ["4", "2"], ["1", "3"]]) {
+        const xs = row.filter((n) => p[n] && p[n]!.y === p[row[0]!]?.y).map((n) => p[n]!.x).sort((a, b) => a - b);
+        for (let i = 1; i < xs.length; i++) expect(xs[i]! - xs[i - 1]!).toBe(20);
+      }
+    }
+  });
+  it("RF004: l'asse dei comandi sta 1M sopra il bordo inferiore della casella", () => {
+    const g = valve("5/2", "pilot", "pilot");
+    expect(g.ports["14"]!.y).toBe(10);
+    expect(g.ports["12"]!.y).toBe(10);
+  });
+  it("RF044: porte del cilindro 0,5M dalla camicia, pistone a riposo 1M dal fondello", () => {
+    const g = geometry({ id: "C", type: "double_acting_cylinder", params: {} });
+    expect(g.svg).toContain('<rect x="-55" y="-15" width="110" height="30" class="body"/>');
+    expect(g.ports.A!.x).toBe(-50);
+    expect(g.ports.B!.x).toBe(50);
+    expect(g.svg).toContain('<line x1="-45" y1="-15" x2="-45" y2="15" class="thick"/>');
+  });
+  it("5.9: componenti con due funzioni principali in cornice continua, non tratto e punto", () => {
+    for (const type of ["one_way_flow_control", "soft_start_valve"]) {
+      expect(geometry({ id: "X", type }).svg).not.toContain("dashdot");
+    }
+    expect(geometry({ id: "X", type: "frl_unit" }).svg).toContain("dashdot"); // 5.10: più componenti in un gruppo
+  });
+  it("X10080, X10100: l'alimentazione della molla pneumatica è una linea continua", () => {
+    for (const a of ["air_return", "air_return_ext"]) {
+      const svg = valve("5/2", "solenoid", a).svg;
+      const side12 = svg.slice(svg.indexOf('data-side="12"'));
+      expect(side12.slice(0, side12.indexOf("</g>"))).not.toContain("dash");
+    }
+  });
+});

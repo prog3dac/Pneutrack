@@ -78,17 +78,22 @@ function zigzag(x1: number, y1: number, x2: number, y2: number, n = 6, amp = 5) 
 
 // --- valvole distributrici -------------------------------------------------
 
-// posizione orizzontale delle porte all'interno di una casella (0..1): sempre a quarti, così con
-// caselle da 40 le porte cadono sui nodi della griglia (passo 10) e le linee restano dritte
+// Modulo ISO 1219-1 (5.12): M = 10 unità di disegno; la casella di una valvola è alta 4M.
+const M = 10;
+// Posizione orizzontale delle porte dal bordo sinistro della casella. ISO 1219-1 RF020: porte adiacenti a 2M
+// l'una dall'altra, sul reticolo. Fino a quattro vie la casella è un quadrato 4M × 4M (101V7); con cinque vie è
+// il rettangolo 6M × 4M (101V8), l'unico in cui tre porte stanno a 2M.
+const FIVE_PORT = { top: { 4: 2 * M, 2: 4 * M }, bottom: { 5: M, 1: 3 * M, 3: 5 * M } };
 const VALVE_LAYOUT: Record<string, { top: Record<string, number>; bottom: Record<string, number> }> = {
-  "2/2": { top: { 2: 0.5 }, bottom: { 1: 0.5 } },
-  "3/2": { top: { 2: 0.5 }, bottom: { 1: 0.25, 3: 0.75 } },
-  "4/2": { top: { 4: 0.25, 2: 0.75 }, bottom: { 1: 0.25, 3: 0.75 } },
-  "5/2": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
-  "5/3": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
-  "5/3E": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
-  "5/3P": { top: { 4: 0.25, 2: 0.75 }, bottom: { 5: 0.25, 1: 0.5, 3: 0.75 } },
+  "2/2": { top: { 2: 2 * M }, bottom: { 1: 2 * M } },
+  "3/2": { top: { 2: 2 * M }, bottom: { 1: M, 3: 3 * M } },
+  "4/2": { top: { 4: M, 2: 3 * M }, bottom: { 1: M, 3: 3 * M } },
+  "5/2": FIVE_PORT, "5/3": FIVE_PORT, "5/3E": FIVE_PORT, "5/3P": FIVE_PORT,
 };
+/** larghezza della casella: 4M fino a quattro vie (101V7), 6M con cinque (101V8) */
+const boxWidth = (fn: string) => (fn.startsWith("5/") ? 6 * M : S);
+/** ISO 1219-1 RF004: l'asse dei comandi sta 1M sopra il bordo inferiore della casella */
+const ACT_Y = S / 2 - M;
 
 type BoxItem = ["a", string, string] | ["x", string];
 // contenuto delle caselle, da sinistra (lato 14) a destra (lato 12)
@@ -115,65 +120,72 @@ const VALVE_BOXES: Record<string, BoxItem[][]> = {
   ],
 };
 
-/** tratteggio dell'alimentazione esterna del pilota: dal comando alla porta, che sta su un nodo della griglia */
+/** tratteggio dell'alimentazione esterna del pilota (422V1): dal comando alla porta, sotto, sul reticolo */
 const extPilotLine = (o: (d: number) => number) =>
-  path(`M${o(5)},8 L${o(5)},22 L${o(10)},22 L${o(10)},30`, "nofill dash");
+  path(`M${o(5)},${ACT_Y + 8} L${o(5)},${S / 2 + 4} L${o(10)},${S / 2 + 4} L${o(10)},${S / 2 + STUB}`, "nofill dash");
 
 function actuator(kind: string, x0: number, side: -1 | 1, active: boolean) {
   const o = (d: number) => x0 + side * d;
+  // i disegni sono scritti attorno all'asse y = 0 e spostati sull'asse dei comandi (RF004)
+  const y = (v: number) => ACT_Y + v;
   const cls = active ? ` class="active"` : "";
   let body = "";
   switch (kind) {
     case "solenoid":
-      body = line(o(0), 0, o(4), 0) + rect(Math.min(o(4), o(14)), -8, 10, 16) + line(o(4), 8, o(14), -8);
+      body = line(o(0), y(0), o(4), y(0)) + rect(Math.min(o(4), o(14)), y(-8), 10, 16) + line(o(4), y(8), o(14), y(-8));
       break;
     case "pilot":
-      body = line(o(9), 0, o(20), 0, "dash") + hollowHead(o(10), 0, o(1), 0, 9);
+      body = line(o(9), y(0), o(20), y(0), "dash") + hollowHead(o(10), y(0), o(1), y(0), 9);
       break;
     case "manual":
-      body = line(o(0), 0, o(14), 0) + line(o(14), -8, o(14), 8) +
-        path(`M${o(14)},-8 Q${o(20)},0 ${o(14)},8`, "nofill");
+      body = line(o(0), y(0), o(14), y(0)) + line(o(14), y(-8), o(14), y(8)) +
+        path(`M${o(14)},${y(-8)} Q${o(20)},${y(0)} ${o(14)},${y(8)}`, "nofill");
       break;
     case "lever":
     case "lever_detent":
-      // leva: asta inclinata con impugnatura; con arresto, tacche sopra lo stelo
-      body = line(o(0), 0, o(10), 0) + line(o(10), 0, o(18), -11) + circle(o(18.5), -12, 2, "fill");
-      if (kind === "lever_detent") body += line(o(1), -7, o(9), -7) + path(`M${o(2)},-7 L${o(3.5)},-4 L${o(5)},-7 L${o(6.5)},-4 L${o(8)},-7`, "nofill");
+      // leva: asta inclinata con impugnatura; con arresto, le tacche 0,5M sopra lo stelo (RF006)
+      body = line(o(0), y(0), o(10), y(0)) + line(o(10), y(0), o(18), y(-11)) + circle(o(18.5), y(-12), 2, "fill");
+      if (kind === "lever_detent") {
+        body += line(o(1), y(-5), o(9), y(-5)) +
+          path(`M${o(2)},${y(-5)} L${o(3.5)},${y(-2)} L${o(5)},${y(-5)} L${o(6.5)},${y(-2)} L${o(8)},${y(-5)}`, "nofill");
+      }
       break;
     case "pedal":
-      body = line(o(0), 0, o(10), 0) + line(o(10), 7, o(20), -7) + line(o(10), 7, o(13), 7);
+      body = line(o(0), y(0), o(10), y(0)) + line(o(10), y(7), o(20), y(-7)) + line(o(10), y(7), o(13), y(7));
       break;
     case "mechanical":
-      body = line(o(0), 0, o(10), 0) + circle(o(15), 0, 5, "nofill");
+      body = line(o(0), y(0), o(10), y(0)) + circle(o(15), y(0), 5, "nofill");
       break;
     case "plunger":
       // tastatore: asta con testa arrotondata
-      body = line(o(0), 0, o(10), 0) + path(`M${o(10)},-5 L${o(14)},-5 Q${o(19)},0 ${o(14)},5 L${o(10)},5 Z`, "nofill");
+      body = line(o(0), y(0), o(10), y(0)) +
+        path(`M${o(10)},${y(-5)} L${o(14)},${y(-5)} Q${o(19)},${y(0)} ${o(14)},${y(5)} L${o(10)},${y(5)} Z`, "nofill");
       break;
     case "roller_oneway":
       // rullo su leva ribaltabile
-      body = line(o(0), 0, o(8), 0) + line(o(8), 0, o(13), -6) + circle(o(16), -9, 4, "nofill") +
-        circle(o(8), 0, 1.5, "fill");
+      body = line(o(0), y(0), o(8), y(0)) + line(o(8), y(0), o(13), y(-6)) + circle(o(16), y(-9), 4, "nofill") +
+        circle(o(8), y(0), 1.5, "fill");
       break;
     case "solenoid_pilot":
     case "solenoid_pilot_ext": {
       // valvola pilota (triangolo) comandata dal solenoide
       const xa = Math.min(o(0), o(10));
-      body = rect(xa, -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body") +
-        rect(Math.min(o(10), o(20)), -8, 10, 16) + line(o(10), 8, o(20), -8);
+      body = rect(xa, y(-8), 10, 16) + path(`M${o(8)},${y(-4)} L${o(8)},${y(4)} L${o(2)},${y(0)} Z`, "body") +
+        rect(Math.min(o(10), o(20)), y(-8), 10, 16) + line(o(10), y(8), o(20), y(-8));
       if (kind === "solenoid_pilot_ext") body += extPilotLine(o);
       break;
     }
     case "air_return":
     case "air_return_ext":
-      // molla pneumatica (ISO 1219-1, come in ISO 1219-3 all. D): riquadro con triangolo vuoto verso la valvola;
-      // alimentazione interna: tratteggio verso il corpo valvola; esterna: tratteggio verso la porta di pilotaggio
-      body = rect(Math.min(o(0), o(10)), -8, 10, 16) + path(`M${o(8)},-4 L${o(8)},4 L${o(2)},0 Z`, "body");
-      if (kind === "air_return") body += line(o(5), 8, o(5), 16, "dash") + line(o(5), 16, o(-4), 16, "dash");
-      else body += extPilotLine(o);
+      // molla pneumatica (ISO 1219-1 X10080, X10100): riquadro con triangolo vuoto verso la valvola. La sua
+      // alimentazione è una linea continua (401V1), non un pilotaggio: interna, entra nel corpo valvola;
+      // esterna, scende alla porta
+      body = rect(Math.min(o(0), o(10)), y(-8), 10, 16) + path(`M${o(8)},${y(-4)} L${o(8)},${y(4)} L${o(2)},${y(0)} Z`, "body");
+      if (kind === "air_return") body += path(`M${o(5)},${y(-8)} L${o(5)},${y(-14)} L${o(-4)},${y(-14)}`, "nofill");
+      else body += path(`M${o(5)},${y(8)} L${o(5)},${S / 2 + 4} L${o(10)},${S / 2 + 4} L${o(10)},${S / 2 + STUB}`, "nofill");
       break;
     case "spring":
-      body = zigzag(o(0), 0, o(18), 0, 6, 6);
+      body = zigzag(o(0), y(0), o(18), y(0), 6, 6);
       break;
   }
   return `<g${cls} data-side="${side < 0 ? "14" : "12"}">${body}</g>`;
@@ -190,10 +202,11 @@ function overrideMark(kind: string, act: string, x0: number, side: -1 | 1, activ
   const reach = ELECTRIC_REACH[act];
   if (reach === undefined || (kind !== "push" && kind !== "detent")) return "";
   const o = (d: number) => x0 + side * d;
-  let body = line(o(reach), 0, o(reach + 5), 0) + line(o(reach + 5), -5, o(reach + 5), 5) +
-    path(`M${o(reach + 5)},-5 Q${o(reach + 9)},0 ${o(reach + 5)},5`, "nofill");
+  const y = (v: number) => ACT_Y + v;
+  let body = line(o(reach), y(0), o(reach + 5), y(0)) + line(o(reach + 5), y(-5), o(reach + 5), y(5)) +
+    path(`M${o(reach + 5)},${y(-5)} Q${o(reach + 9)},${y(0)} ${o(reach + 5)},${y(5)}`, "nofill");
   if (kind === "detent") {
-    body += path(`M${o(reach + 0.5)},-5 L${o(reach + 2)},-2 L${o(reach + 3.5)},-5`, "nofill");
+    body += path(`M${o(reach + 0.5)},${y(-5)} L${o(reach + 2)},${y(-2)} L${o(reach + 3.5)},${y(-5)}`, "nofill");
   }
   return `<g${active ? ` class="active"` : ""} data-side="${side < 0 ? "14" : "12"}" data-override="1">${body}</g>`;
 }
@@ -203,28 +216,29 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const boxes = VALVE_BOXES[fn]!;
   const lay = VALVE_LAYOUT[fn]!;
   const n = boxes.length;
-  const W = n * S;
+  const B = boxWidth(fn);
+  const W = n * B;
   const x0 = -W / 2;
-  const rest = x0 + S; // la casella di riposo è la seconda
+  const rest = x0 + B; // la casella di riposo è la seconda
   const kx = (name: string) => lay.top[name] ?? lay.bottom[name]!;
   const isTop = (name: string) => name in lay.top;
 
   // in simulazione le caselle scorrono: quella attiva si allinea alle porte
   const activeBox = state?.position === "14" ? 0 : state?.position === "12" ? n - 1 : 1;
-  const shift = state?.position ? (1 - activeBox) * S : 0;
+  const shift = state?.position ? (1 - activeBox) * B : 0;
 
   let moving = "";
   boxes.forEach((content, b) => {
-    const bx = x0 + b * S;
-    moving += rect(bx, -S / 2, S, S, state?.position && b === activeBox ? "box active-box" : "box");
+    const bx = x0 + b * B;
+    moving += rect(bx, -S / 2, B, S, state?.position && b === activeBox ? "box active-box" : "box");
     for (const item of content) {
       if (item[0] === "a") {
         const [, from, to] = item;
         const y1 = isTop(from) ? -S / 2 + 4 : S / 2 - 4;
         const y2 = isTop(to) ? -S / 2 + 4 : S / 2 - 4;
-        moving += arrow(bx + kx(from) * S, y1, bx + kx(to) * S, y2);
+        moving += arrow(bx + kx(from), y1, bx + kx(to), y2);
       } else {
-        const x = bx + kx(item[1]) * S;
+        const x = bx + kx(item[1]);
         const yEdge = isTop(item[1]) ? -S / 2 : S / 2;
         const yIn = isTop(item[1]) ? -S / 2 + 9 : S / 2 - 9;
         moving += line(x, yEdge, x, yIn) + line(x - 5, yIn, x + 5, yIn);
@@ -249,32 +263,32 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   let fixedPart = "";
   const ports: Record<string, PortGeom> = {};
   for (const [name, k] of Object.entries(lay.top)) {
-    const x = rest + k * S;
+    const x = rest + k;
     fixedPart += line(x, -S / 2, x, -S / 2 - STUB);
     ports[name] = { x, y: -S / 2 - STUB, dir: up };
   }
   for (const [name, k] of Object.entries(lay.bottom)) {
-    const x = rest + k * S;
+    const x = rest + k;
     fixedPart += line(x, S / 2, x, S / 2 + STUB);
     ports[name] = { x, y: S / 2 + STUB, dir: down };
   }
   // i pilotaggi restano fissi: una linea li collega al comando che si sposta
   if (a14 === "pilot") {
-    ports["14"] = { x: x0 - 20, y: 0, dir: left };
-    if (shift > 0) fixedPart += line(x0 - 20, 0, x0 - 20 + shift, 0, "dash");
+    ports["14"] = { x: x0 - 20, y: ACT_Y, dir: left };
+    if (shift > 0) fixedPart += line(x0 - 20, ACT_Y, x0 - 20 + shift, ACT_Y, "dash");
   }
   if (a12 === "pilot") {
-    ports["12"] = { x: -x0 + 20, y: 0, dir: right };
-    if (shift < 0) fixedPart += line(-x0 + 20 + shift, 0, -x0 + 20, 0, "dash");
+    ports["12"] = { x: -x0 + 20, y: ACT_Y, dir: right };
+    if (shift < 0) fixedPart += line(-x0 + 20 + shift, ACT_Y, -x0 + 20, ACT_Y, "dash");
   }
   // alimentazione esterna della valvola pilota: porta sotto il comando
   if (a14 === "solenoid_pilot_ext" || a14 === "air_return_ext") {
     ports["14"] = { x: x0 - 10, y: 30, dir: down };
-    if (shift) fixedPart += line(x0 - 10, 30, x0 - 10 + shift, 30, "dash");
+    if (shift) fixedPart += line(x0 - 10, 30, x0 - 10 + shift, 30, a14 === "air_return_ext" ? "" : "dash");
   }
   if (a12 === "solenoid_pilot_ext" || a12 === "air_return_ext") {
     ports["12"] = { x: -x0 + 10, y: 30, dir: down };
-    if (shift) fixedPart += line(-x0 + 10 + shift, 30, -x0 + 10, 30, "dash");
+    if (shift) fixedPart += line(-x0 + 10 + shift, 30, -x0 + 10, 30, a12 === "air_return_ext" ? "" : "dash");
   }
   const svg = `<g transform="translate(${shift},0)" class="valve-body">${moving}</g>${fixedPart}`;
   return { w: W + 44 + (hasOverride ? 24 : 0), h: S + 2 * STUB, ports, svg };
@@ -342,14 +356,18 @@ const checkGeometry = (): Geometry => ({
 const pilotCheckGeometry = (): Geometry => ({
   w: 64, h: 60,
   ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up }, 21: { x: 30, y: 0, dir: right } },
-  svg: rect(-14, -14, 28, 30, "box") + line(0, 30, 0, 6) + checkElement(0, -2) +
+  // ISO 1219-1 X10720: corpo (101V1), sede e sfera, molla (2002V1) sulla sfera, pilotaggio tratteggiato (422V1)
+  svg: rect(-14, -14, 28, 30, "box") + line(0, 30, 0, 6) + checkElement(0, -2) + zigzag(-3.5, -5.5, -11, -12, 4, 2.5) +
     line(0, -7, 0, -30) + line(30, 0, 6, 0, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {
   let inner: string;
   if (kind === "or") {
-    inner = path("M-11,-7 L-18,0 L-11,7", "nofill") + path("M11,-7 L18,0 L11,7", "nofill") + circle(-12.5, 0, 4, "body");
+    // ISO 1219-1 X10740: due sedi (2162V1) e la sfera (2163V1); l'uscita si innesta sulla via interna con il punto
+    // di connessione dentro il simbolo (501V2)
+    inner = line(-8.5, 0, 11, 0) + line(0, 0, 0, -9) + circle(0, 0, 2, "fill") +
+      path("M-11,-7 L-18,0 L-11,7", "nofill") + path("M11,-7 L18,0 L11,7", "nofill") + circle(-12.5, 0, 4, "body");
   } else {
     inner = line(-16, -7, -16, 7) + line(16, -7, 16, 7) + rect(-12, -4, 24, 8, "body") +
       line(-16, 0, -12, 0) + line(12, 0, 16, 0);
@@ -365,6 +383,8 @@ const quickExhaustGeometry = (): Geometry => ({
   w: 64, h: 60,
   ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -30, dir: up }, 3: { x: 0, y: 30, dir: down } },
   svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -30) + line(0, 12, 0, 30) +
+    // ISO 1219-1 X10750: vie interne riunite nel punto di connessione (501V2)
+    line(-8.5, 0, 0, 0) + line(0, 0, 0, -12) + line(0, 0, 0, 5) + circle(0, 0, 2, "fill") +
     path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-6,5 L0,12 L6,5", "nofill"),
 });
 
@@ -377,8 +397,10 @@ function oneWayFlowGeometry(): Geometry {
   return {
     w: 76, h: 60,
     ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
-    // strozzatore e non ritorno nello stesso corpo: cornice a tratto e punto (ISO 1219-1, 5.10)
-    svg: line(0, -30, 0, 30) + throttle + bypass + rect(-16, -22, 52, 44, "nofill dashdot"),
+    // ISO 1219-1 X10640: strozzatore e non ritorno sono due funzioni principali dello stesso componente, quindi
+    // cornice continua (5.9; il tratto e punto, 5.10, è per più componenti in un gruppo); punti di connessione (501V1)
+    svg: line(0, -30, 0, 30) + throttle + bypass + circle(0, -18, 2.5, "fill") + circle(0, 18, 2.5, "fill") +
+      rect(-16, -22, 52, 44, "nofill"),
   };
 }
 
@@ -405,11 +427,11 @@ function pilotedValveGeometry(comp: ComponentData, state: SymbolState | undefine
   const extra = kind === "sequence"
     // elemento di misura tarabile sopra il pilotaggio
     ? rect(x - 6, -30, 12, 14, "box") + zigzag(x, -30, x, -40, 4, 3) + adjustArrow(x - 6, -32, x + 6, -40) +
-      line(x, -16, x, -2, "dash")
+      line(x, -16, x, ACT_Y, "dash")
     // strozzatore e piccolo serbatoio sul pilotaggio
     : `<rect x="${x - 8}" y="-34" width="16" height="10" rx="4" class="body"/>` +
       path(`M${x - 4},-20 Q${x},-16 ${x - 4},-12`, "nofill") + path(`M${x + 4},-20 Q${x},-16 ${x + 4},-12`, "nofill") +
-      line(x, -24, x, -2, "dash");
+      line(x, -24, x, ACT_Y, "dash");
   return { ...g, h: g.h + 30, svg: g.svg + extra };
 }
 
@@ -424,7 +446,7 @@ const motorGeometry = (): Geometry => ({
 
 const sourceGeometry = (): Geometry => ({
   w: 30, h: 50, ports: { 1: { x: 0, y: -20, dir: up } },
-  // sorgente di energia pneumatica (ISO 1219-1 F071V1; esempi in ISO 1219-2 e 1219-3): triangolo vuoto con la punta sulla linea
+  // sorgente di energia pneumatica (ISO 1219-1 F070V1, RF059; F071V1 è quella idraulica): triangolo vuoto con la punta sulla linea
   svg: path("M0,-10 L-9,6 L9,6 Z", "body") + line(0, -10, 0, -20),
 });
 
@@ -447,7 +469,8 @@ const junctionGeometry = (): Geometry => ({
 
 const plugGeometry = (): Geometry => ({
   w: 16, h: 14, ports: { 1: { x: 0, y: -10, dir: up } },
-  svg: line(0, -10, 0, 0) + line(-7, 0, 7, 0, "thick"),
+  // via chiusa (ISO 1219-1 2172V1): tratto trasversale con lo spessore di tutte le altre linee (5.12)
+  svg: line(0, -10, 0, 0) + line(-7, 0, 7, 0),
 });
 
 function regulatorGeometry(): Geometry {
@@ -474,7 +497,8 @@ const orificeGeometry = (): Geometry => ({
 
 /**
  * Valvola di avviamento progressivo (ISO 1219-1 X10250): 2/2 normalmente chiusa pilotata dall'uscita contro una
- * molla, con lo strozzatore regolabile di riempimento in parallelo, nello stesso corpo (cornice a tratto e punto).
+ * molla, con lo strozzatore regolabile di riempimento in parallelo, nello stesso corpo: due funzioni principali,
+ * quindi cornice continua (5.9), e punti di connessione (501V1) dove il ramo dello strozzatore si stacca.
  */
 function softStartGeometry(): Geometry {
   const valve = rect(-12, -12, 24, 24, "box") + arrow(5, 10, 5, -10) + line(0, 12, 0, 30) + line(0, -12, 0, -30) +
@@ -484,7 +508,7 @@ function softStartGeometry(): Geometry {
   return {
     w: 96, h: 60,
     ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } },
-    svg: valve + bypass + rect(-28, -26, 74, 52, "nofill dashdot"),
+    svg: valve + bypass + circle(0, 23, 2.5, "fill") + circle(0, -23, 2.5, "fill") + rect(-28, -26, 74, 52, "nofill"),
   };
 }
 
@@ -508,8 +532,9 @@ const flowControlGeometry = (): Geometry => ({
 
 /** Ammortizzo regolabile (ISO 1219): tampone sul pistone che entra nella testata, con freccia di regolazione. */
 function cushionMark(pistonX: number, end: "cap" | "rod") {
-  const plug = end === "cap" ? rect(pistonX - 10, -6, 10, 12, "body") : rect(pistonX + 2, -6, 10, 12, "body");
-  const cx = end === "cap" ? -54 : 54;
+  const plug = end === "cap" ? rect(pistonX - 9, -6, 8, 12, "body") : rect(pistonX + 1, -6, 8, 12, "body");
+  // freccia di regolazione attraverso l'ammortizzo, dove il tampone entra nella testata (RF048)
+  const cx = end === "cap" ? -CYL_END + 5 : CYL_END - 5;
   return plug + line(cx - 9, 13, cx + 9, -13) + arrowHead(cx - 9, 13, cx + 9, -13, 5);
 }
 
@@ -517,18 +542,25 @@ function cushionMark(pistonX: number, end: "cap" | "rod") {
 const magnetMark = (x: number, top = -15, bottom = 15) =>
   rect(x - 3, top, 6, 4, "magnet") + rect(x - 3, bottom - 4, 6, 4, "magnet");
 
+/**
+ * Camicia del cilindro (101V13) da -CYL_END a CYL_END. ISO 1219-1 RF044: le linee delle porte stanno 0,5M dalle
+ * estremità della camicia (qui le porte a ±50, sul reticolo) e il pistone, a riposo, 1M dal fondello.
+ */
+const CYL_END = 55;
+const PISTON_LO = -CYL_END + M, PISTON_HI = CYL_END - M;
+
 function cylinderGeometry(double: boolean, state?: SymbolState, through = false, cushioning = "none",
                           magnet = false): Geometry {
-  // Camicia da -60 a 60. Il pistone (con i tamponi degli ammortizzi) resta sempre dentro la camicia
-  // per tutta la corsa; lo stelo sporge sempre dalla testata (e dal fondello, se passante).
-  const capCushion = cushioning === "cap" || cushioning === "both";
-  const lo = capCushion ? -44 : -56; // pistone a corsa 0: il tampone lato fondello sta dentro la camicia
-  const travel = 80;
-  const tip = 68; // estremità dello stelo a pistone rientrato (8 oltre la testata)
-  // senza simulazione il pistone è disegnato a un quarto di corsa
-  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0.35));
+  // Il pistone (con i tamponi degli ammortizzi) resta sempre dentro la camicia per tutta la corsa; lo stelo sporge
+  // sempre dalla testata (e dal fondello, se passante): la camicia resta aperta dove passa lo stelo (RF045),
+  // perché lo stelo, disegnato sopra, ne copre il bordo.
+  const lo = PISTON_LO;
+  const travel = PISTON_HI - PISTON_LO;
+  const tip = CYL_END + M; // estremità dello stelo a pistone rientrato (1M oltre la testata)
+  // senza simulazione il simbolo mostra la posizione di riposo (5.4): pistone rientrato
+  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0));
   const pistonX = lo + frac * travel;
-  let svg = rect(-60, -15, 120, 30, "body") +
+  let svg = rect(-CYL_END, -15, 2 * CYL_END, 30, "body") +
     rect(pistonX, -3, tip - lo, 6, "rod") +
     (through ? rect(pistonX - (lo + travel + tip), -3, lo + travel + tip, 6, "rod") : "") +
     line(pistonX, -15, pistonX, 15, "thick");
@@ -541,21 +573,21 @@ function cylinderGeometry(double: boolean, state?: SymbolState, through = false,
     svg += line(50, 15, 50, 30);
     ports.B = { x: 50, y: 30, dir: down };
   } else {
-    // molla a tutta altezza nella camera stelo e sfiato senza raccordo (triangolo) come in ISO 1219-3, all. C
-    svg += zigzag(pistonX + 2, 0, 58, 0, 8, 13);
+    // molla (2002V3) a tutta altezza nella camera stelo e sfiato senza raccordo (2174V1, RF002)
+    svg += zigzag(pistonX + 2, 0, CYL_END - 2, 0, 8, 13);
     svg += path("M46,15 L54,15 L50,22 Z", "body");
   }
   return { w: through ? 250 : 152, h: 62, ports, svg };
 }
 
-/** Cilindro senza stelo (ISO 1219-1 X11480): canna chiusa ai due lati e carrello (8.4.16) trascinato dal pistone. */
+/** Cilindro senza stelo (ISO 1219-1 X11520, X11530): canna chiusa ai due lati e carrello (101V20) trascinato dal pistone. */
 function rodlessGeometry(state?: SymbolState, cushioning = "none", magnet = false): Geometry {
   const capCushion = cushioning === "cap" || cushioning === "both";
   const rodCushion = cushioning === "rod" || cushioning === "both";
-  const lo = capCushion ? -44 : -56, hi = rodCushion ? 44 : 56;
-  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0.35));
+  const lo = PISTON_LO, hi = PISTON_HI;
+  const frac = Math.min(1, Math.max(0, state?.stroke ?? 0));
   const pistonX = lo + frac * (hi - lo);
-  let svg = rect(-60, -15, 120, 30, "body") + line(pistonX, -15, pistonX, 15, "thick") +
+  let svg = rect(-CYL_END, -15, 2 * CYL_END, 30, "body") + line(pistonX, -15, pistonX, 15, "thick") +
     line(pistonX, -15, pistonX, -21) + rect(pistonX - 14, -27, 28, 6, "body");
   if (capCushion) svg += cushionMark(pistonX, "cap");
   if (rodCushion) svg += cushionMark(pistonX, "rod");
@@ -613,10 +645,10 @@ function shutoffGeometry(state?: SymbolState): Geometry {
 function lockoutGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const g = valveGeometry({ ...comp, type: "directional_valve", function: "3/2", actuation_14: "lever_detent",
                             actuation_12: "spring", override: undefined, cam_14: undefined, cam_12: undefined }, state);
-  // lucchetto sopra la leva (8.5.1: elemento che blocca il comando)
-  const x = -S - 12, y = -30;
+  // lucchetto (F039V1) 1M sopra l'impugnatura della leva (RF014)
+  const x = -S - 12, y = -20;
   const lock = rect(x - 5, y, 10, 7, "body") + path(`M${x - 3},${y} L${x - 3},${y - 3} A3,3 0 0 1 ${x + 3},${y - 3} L${x + 3},${y}`, "nofill");
-  return { ...g, h: g.h + 16, svg: g.svg + lock };
+  return { ...g, h: g.h + 6, svg: g.svg + lock };
 }
 
 /**
@@ -649,12 +681,15 @@ function couplingGeometry(comp: ComponentData): Geometry {
 
 // --- vuoto ---------------------------------------------------------------------------
 
-/** Generatore di vuoto (ISO 1219-1 X12380): ugello convergente e diffusore tra 1 e 3, aspirazione da 2. */
+/**
+ * Generatore di vuoto (ISO 1219-1 X12380): corpo (101V1) con lo strozzatore (2031V1) sulla via 1 → 3; l'aspirazione
+ * da 2 arriva alla strozzatura.
+ */
 const ejectorGeometry = (): Geometry => ({
   w: 64, h: 64,
   ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -30, dir: up }, 3: { x: 30, y: 0, dir: right } },
-  svg: rect(-20, -14, 40, 28, "box") + line(-30, 0, -20, 0) + line(20, 0, 30, 0) + line(0, -14, 0, -30) +
-    line(-20, -7, -4, -2) + line(-20, 7, -4, 2) + line(4, -2, 20, -7) + line(4, 2, 20, 7) + arrow(0, -13, 0, -3),
+  svg: rect(-20, -14, 40, 28, "box") + line(-30, 0, 30, 0) + line(0, -14, 0, -30) + line(0, -14, 0, -4.5) +
+    path("M-10,-8 Q0,-1 10,-8", "nofill") + path("M-10,8 Q0,1 10,8", "nofill"),
 });
 
 /** Ventosa (ISO 1219-1 X12420): campana aperta verso il pezzo. */
@@ -758,11 +793,12 @@ function proximityGeometry(comp: ComponentData, state?: SymbolState): Geometry {
 }
 
 function pressureSwitchGeometry(state?: SymbolState): Geometry {
-  // pressostato: pilotaggio dal basso su una molla regolabile, con contatto elettrico
+  // pressostato (ISO 1219-1 X11750): riquadro (101V5) con contatto di chiusura (F050V1) e molla regolabile
+  // (2002V1, 201V2); l'aria arriva dalla porta con una linea continua
   const on = state?.actuated ? " active" : "";
-  const svg = line(0, 25, 0, E, "dash") + hollowHead(0, 26, 0, 17, 8) + rect(-14, -16, 28, 32, `body coil${on}`) +
-    zigzag(-8, -4, 8, -4, 4, 3) + line(10, -10, 10, -2) + line(6, -12, 12, -6) +
-    line(-8, 6, 0, 6) + line(0, 6, 6, 2);
+  const svg = line(0, 16, 0, E) + rect(-14, -16, 28, 32, `body coil${on}`) +
+    zigzag(-8, -6, 8, -6, 4, 3) + adjustArrow(-7, 0, 7, -12) +
+    line(-8, 7, 0, 7) + line(0, 7, 6, 3);
   return { w: 40, h: 2 * E, ports: { 1: eBottom() }, svg };
 }
 

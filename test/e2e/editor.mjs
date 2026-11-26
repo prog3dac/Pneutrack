@@ -545,23 +545,24 @@ assert.equal(await page.locator('.palette-item[data-type="exhaust"]').count(), 1
 assert.equal(await page.locator('.palette-item[data-type="junction"]').count(), 1);
 // punto a metà del tratto più lungo della linea dall'alimentazione, in coordinate dello schermo
 async function linePoint(from) {
-  // senza `from`: la linea con il tratto più lungo, lontano dalle porte
+  // senza `from`: la linea con il tratto più lungo, lontano dalle porte e non coperto da un componente
   return page.evaluate((from) => {
     const conns = window.pneutrack.doc.connections;
     let best = null;
     conns.forEach((c, i) => {
       if (from && c.from !== from && c.to !== from) return;
       const pl = document.querySelector(`[data-connection="${i}"] .stroke`);
+      const m = pl.getScreenCTM();
       const pts = pl.getAttribute("points").split(" ").map((p) => p.split(",").map(Number));
       for (let j = 0; j + 1 < pts.length; j++) {
         const d = Math.abs(pts[j + 1][0] - pts[j][0]) + Math.abs(pts[j + 1][1] - pts[j][1]);
-        if (!best || d > best.d) best = { d, i, pl, a: pts[j], b: pts[j + 1] };
+        const x = (pts[j][0] + pts[j + 1][0]) / 2, y = (pts[j][1] + pts[j + 1][1]) / 2;
+        const sx = m.a * x + m.c * y + m.e, sy = m.b * x + m.d * y + m.f;
+        if (document.elementFromPoint(sx, sy)?.closest("[data-component]")) continue;
+        if (!best || d > best.d) best = { d, i, x: sx, y: sy };
       }
     });
-    const m = best.pl.getScreenCTM();
-    const x = (best.a[0] + best.b[0]) / 2, y = (best.a[1] + best.b[1]) / 2;
-    return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f, index: best.i,
-             from: conns[best.i].from, to: conns[best.i].to };
+    return { x: best.x, y: best.y, index: best.i, from: conns[best.i].from, to: conns[best.i].to };
   }, from);
 }
 await page.click("#canvas", { position: { x: 40, y: 40 } });

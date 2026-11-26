@@ -3,6 +3,17 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.28.0 · 2026-11-26
+
+- Simboli verificati sul testo della ISO 1219-1:2006 (regole quotate dei capitoli 5 e 9 e composizione di ogni esempio in elementi base).
+- Valvole a cinque vie: casella rettangolare 6M × 4M (elemento 101V8) con le porte a 2M l'una dall'altra (RF020); prima le porte 5, 1 e 3 stavano a 1M. Le valvole a 5 vie sono più larghe e le loro porte si spostano.
+- Comandi delle valvole sull'asse 1M sopra il bordo inferiore della casella (RF004), non più a metà altezza; i pilotaggi 12 e 14 si spostano di un passo.
+- Molla pneumatica: l'alimentazione (interna o dalla porta esterna) è una linea continua (X10080, X10100), non tratteggiata.
+- Strozzatore unidirezionale e valvola di avviamento progressivo: cornice continua (5.9, un componente con due funzioni principali) al posto del tratto e punto, che resta per i gruppi di più componenti come l'FRL (5.10); punti di connessione dove il ramo si stacca.
+- Cilindri: porte 0,5M dalle testate e pistone, a riposo, 1M dal fondello (RF044); fuori simulazione il simbolo mostra il cilindro rientrato, la sua posizione di riposo (5.4).
+- Selettore di circuito e scarico rapido con il punto di connessione interno (X10740, X10750); non ritorno pilotata con la molla (X10720); leva con arresto con le tacche 0,5M sopra lo stelo (RF006) e lucchetto 1M dalla leva (RF014).
+- Generatore di vuoto disegnato come nella norma: corpo con lo strozzatore sulla via 1 → 3 (X12380). Pressostato senza triangolo di pilotaggio, con molla regolabile e contatto di chiusura (X11750). Tappo con lo spessore di linea normale (5.12).
+
 ## 0.27.0 · 2026-11-26
 
 - Nuovi componenti dalla ISO 1219-1, con simbolo, simulazione, descrizioni e scheda nel catalogo dei simboli: rubinetto di intercettazione, valvola 3/2 di sezionamento con lucchetto e innesto rapido (nuova sezione «Intercettazione e collegamenti»), doppia non ritorno pilotata, strozzatore fisso (ugello calibrato), valvola di avviamento progressivo, cilindro senza stelo, pinza pneumatica a doppio e semplice effetto, generatore di vuoto (eiettore) e ventosa (nuova sezione «Vuoto»).
