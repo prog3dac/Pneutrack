@@ -620,29 +620,30 @@ function lockoutGeometry(comp: ComponentData, state?: SymbolState): Geometry {
 }
 
 /**
- * Innesto rapido (ISO 1219-1 X11690–X11740): ogni metà finisce con una punta rivolta verso l'altra. Staccate,
- * davanti a ciascuna punta c'è il tratto della faccia di accoppiamento; innestate, le punte si toccano. Nella metà
- * con la valvola di non ritorno la sfera sta dentro la punta, che fa da sede. Presa (1) in basso, spina (2) in alto.
+ * Innesto rapido (ISO 1219-1 X11690–X11740): ogni metà ha una punta rivolta verso l'altra e, oltre la punta, il
+ * tratto della faccia di accoppiamento. Staccate, le due facce sono separate e la linea è interrotta; innestate,
+ * la linea è continua e le facce coincidono in un solo tratto al centro. Nella metà con la valvola di non ritorno
+ * la sfera sta dentro la punta, che fa da sede. Presa (1) in basso, spina (2) in alto.
  */
 function couplingGeometry(comp: ComponentData): Geometry {
   const coupled = comp.coupling_state !== "uncoupled";
   const check = comp.coupling ?? "check_one";
-  const tip = coupled ? 1 : 8; // distanza della punta dal centro
+  const tip = 9; // distanza della punta dal centro
+  const face = coupled ? 0 : 4; // distanza della faccia di accoppiamento dal centro
   /** metà verso la porta in y = 30·s (s = 1 presa in basso, -1 spina in alto) */
   const half = (s: 1 | -1, withCheck: boolean) => {
-    const t = s * tip, arm = s * 7;
-    let svg = path(`M-6,${t + arm} L0,${t} L6,${t + arm}`, "nofill");
+    const t = s * tip;
+    let svg = path(`M-6,${t + s * 7} L0,${t} L6,${t + s * 7}`, "nofill") + line(0, t, 0, s * face);
     if (withCheck) {
-      const ball = t + s * 7;
-      svg += line(0, 30 * s, 0, ball + s * 3.5) + circle(0, ball, 3.5, "body");
+      const ball = t + s * 4.5;
+      svg += line(0, 30 * s, 0, ball + s * 3) + circle(0, ball, 3, "body");
     } else {
       svg += line(0, 30 * s, 0, t);
     }
-    // staccata: tratto della faccia di accoppiamento davanti alla punta
-    if (!coupled) svg += line(0, t, 0, s * 4) + line(-5, s * 4, 5, s * 4);
+    if (!coupled) svg += line(-4, s * face, 4, s * face);
     return svg;
   };
-  const svg = half(1, check !== "plain") + half(-1, check === "check_both");
+  const svg = half(1, check !== "plain") + half(-1, check === "check_both") + (coupled ? line(-4, 0, 4, 0) : "");
   return { w: 30, h: 60, ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } }, svg };
 }
 
