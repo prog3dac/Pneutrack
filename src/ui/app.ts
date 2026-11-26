@@ -42,6 +42,7 @@ import { exportFile, newProjectId, openStore, type ProjectSummary, type Store } 
 import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 import { labelSpot } from "./labels";
+import { designationPrefix, paletteCategories, paletteItems } from "./palette";
 import { EXIT, routePoints, simplifyPolyline, straightenBends, type PortPoint, type RouteEnd } from "../model/route";
 
 const GRID = 10;
@@ -50,26 +51,6 @@ const STORAGE_KEY = "pneutrack.autosave.v1"; // bozza non ancora salvata come pr
 const SESSION_KEY = "pneutrack.session.v1"; // ultimo progetto aperto
 const AUTOSAVE_MS = 1200;
 
-const PREFIX: Record<string, string> = {
-  pressure_source: "P", pressure_regulator: "R", silencer: "SL", exhaust: "S", plug: "T", junction: "N",
-  directional_valve: "V", flow_control_valve: "F", single_acting_cylinder: "C",
-  double_acting_cylinder: "C", double_rod_cylinder: "C", rotary_actuator: "RA",
-  air_reservoir: "SB", air_filter: "FI", lubricator: "LU", frl_unit: "FRL", pressure_gauge: "M",
-  check_valve: "NR", pilot_check_valve: "NRP", shuttle_valve: "OR", and_valve: "AND",
-  quick_exhaust_valve: "SR", one_way_flow_control: "RF", relief_valve: "VS", sequence_valve: "SQ",
-  time_delay_valve: "TM", air_motor: "MP",
-  shutoff_valve: "RB", lockout_valve: "SZ", quick_coupling: "IR", fixed_orifice: "UG", soft_start_valve: "AP",
-  double_pilot_check: "NRD", rodless_cylinder: "C", gripper: "PZ", vacuum_ejector: "EV", suction_cup: "VT",
-  compressor: "CP", vacuum_pump: "PV", filter_regulator: "FR", air_dryer: "ES", three_way_cock: "RB",
-  flexible_hose: "TF", rotary_joint: "GR", manifold: "BD", sheet_reference: "RM", roller_flow_control: "RF",
-  relieving_regulator: "R", piloted_regulator: "R", proportional_regulator: "RP", pressure_intensifier: "MT",
-  locking_cylinder: "C", end_lock_cylinder: "C", bellows_cylinder: "C", diaphragm_cylinder: "C", pneumatic_muscle: "MU",
-  pressure_sensor: "BP", pressure_indicator: "IN", flow_meter: "FM", differential_gauge: "M", thermometer: "TT",
-  // circuito elettrico: sigle didattiche (S comandi, K relè, KT temporizzatori, Y bobine, B sensori, H lampade)
-  electric_supply: "G", pushbutton: "S", limit_switch: "S", relay_coil: "K", timer_relay: "KT",
-  relay_contact: "KA", valve_solenoid: "Y", proximity_sensor: "B", pressure_switch: "BP", signal_lamp: "H",
-  wire_junction: "N",
-};
 
 /** componenti che mostrano la pressione della porta 1 accanto al simbolo, in simulazione */
 const GAUGE_TYPES = new Set(["pressure_gauge", "air_reservoir", "pressure_sensor"]);
@@ -735,15 +716,6 @@ function renderAnnotations() {
 
 // --- pannelli ------------------------------------------------------------------
 
-/** Voce della palette: un tipo con le opzioni di una sua configurazione. */
-interface PaletteItem { type: TypeDef; preset: number; label: string; data: ComponentData }
-function paletteItems(): PaletteItem[] {
-  return catalog.filter((t) => !t.hidden).flatMap((t) => (t.presets ?? [{ label: t.label }]).map((preset, i) => ({
-    type: t, preset: t.presets ? i : -1, label: preset.label,
-    data: { id: "", type: t.type, params: { ...t.defaults, ...preset.params },
-            ...Object.fromEntries((t.options ?? []).map((o) => [o.name, preset.options?.[o.name] ?? o.default])) },
-  })));
-}
 const PALETTE_KEY = "pneutrack.palette.v1"; // categorie chiuse
 
 /** Fasce di pressione per il colore delle linee (bar relativi). */
@@ -1035,9 +1007,9 @@ function renderPalette() {
   pal.append(search);
   let closed: string[] = [];
   try { closed = JSON.parse(localStorage.getItem(PALETTE_KEY) || "[]"); } catch { closed = []; }
-  const items = paletteItems();
+  const items = paletteItems(catalog);
   const groups: HTMLDetailsElement[] = [];
-  for (const cat of [...new Set(catalog.map((t) => t.category))]) {
+  for (const cat of paletteCategories(catalog)) {
     const det = document.createElement("details");
     det.className = "palette-group";
     det.dataset.cat = cat;
@@ -2045,7 +2017,7 @@ function renderStatus() {
 // --- modifiche -----------------------------------------------------------------
 
 function nextId(type: string) {
-  const prefix = PREFIX[type] || "X";
+  const prefix = designationPrefix(type);
   let n = 1;
   while (byId(`${prefix}${n}`)) n++;
   return `${prefix}${n}`;
@@ -2183,7 +2155,7 @@ function rotateSelection() {
 
 /** Sigla libera per un tipo, saltando anche quelle già scelte in questa operazione. */
 function freeId(type: string, taken: Set<string>) {
-  const prefix = PREFIX[type] || "X";
+  const prefix = designationPrefix(type);
   let n = 1;
   while (taken.has(`${prefix}${n}`) || byId(`${prefix}${n}`)) n++;
   return `${prefix}${n}`;
