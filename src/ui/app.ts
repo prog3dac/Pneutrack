@@ -5,6 +5,7 @@ import {
 } from "../model/blocks";
 import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import { mirrorComponents, type Axis } from "../model/mirror";
+import { applyPart, partByCode, partsFor } from "../model/parts";
 import { dissolveJunction, isJunctionType, JUNCTION, splitConnection, WIRE_JUNCTION } from "../model/junctions";
 import {
   CYLINDER_SERIES, seriesOf, STANDARD_BORES, STANDARD_RODS, STANDARD_STROKES, toMm,
@@ -1008,6 +1009,52 @@ function electricRefFields(comp: ComponentData): HTMLElement[] {
   }
 }
 
+/** Codice da catalogo (Festo, SMC): compila insieme parametri e opzioni del componente. */
+function partField(comp: ComponentData): HTMLElement[] {
+  const sel = document.createElement("select");
+  sel.name = "catalog-part";
+  const none = document.createElement("option");
+  none.value = ""; none.textContent = "Nessuno (valori inseriti a mano)";
+  sel.append(none);
+  const groups = new Map<string, HTMLOptGroupElement>();
+  for (const part of partsFor(comp.type)) {
+    const key = `${part.maker} · ${part.series}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = document.createElement("optgroup");
+      g.label = key;
+      groups.set(key, g);
+      sel.append(g);
+    }
+    const o = document.createElement("option");
+    o.value = part.code;
+    o.textContent = `${part.code} · ${part.label}`;
+    g.append(o);
+  }
+  const current = partByCode(comp.code);
+  sel.value = current?.type === comp.type ? current.code : "";
+  sel.addEventListener("change", () => {
+    const part = partByCode(sel.value);
+    if (!part) return;
+    mutate(() => {
+      const c = byId(comp.id)!;
+      Object.assign(c, applyPart(c, part));
+    });
+  });
+  const out: HTMLElement[] = [field("Codice da catalogo", sel, FIELD_HELP["catalog-part"])];
+  if (current?.type === comp.type) {
+    const p = document.createElement("p");
+    p.className = "help";
+    p.append(`${current.maker} ${current.code}. ${current.note ? current.note + " " : ""}`);
+    const a = document.createElement("a");
+    a.href = current.source; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "Scheda tecnica";
+    p.append(a);
+    out.push(p);
+  }
+  return out;
+}
+
 /** Misura normalizzata del cilindro: imposta insieme alesaggio e stelo. */
 function cylinderSizeField(comp: ComponentData) {
   const sel = document.createElement("select");
@@ -1208,6 +1255,7 @@ function renderProperties() {
     const catalogParams = meta?.params.filter((p) => p.group === "catalog") ?? [];
     const simParams = meta?.params.filter((p) => p.group === "sim") ?? [];
     if (catalogParams.length) heading(panel, "Parametri da catalogo");
+    if (partsFor(comp.type).length) panel.append(...partField(comp));
     if (comp.type.endsWith("_cylinder")) panel.append(cylinderSizeField(comp));
     for (const p of catalogParams) panel.append(paramInput(comp, p));
     if (simParams.length) heading(panel, "Parametri di simulazione");

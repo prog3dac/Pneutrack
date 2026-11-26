@@ -220,6 +220,11 @@ export const FIELD_HELP: Record<string, string> = {
   "sensor-cam":
     "Cilindro di cui il sensore rileva il pistone: «C1+» a fine corsa in uscita, «C1−» in rientro. Con il " +
     "parametro Posizione dal fondello il sensore sta in un punto intermedio della corsa.",
+  "catalog-part":
+    "Articolo reale da catalogo Festo o SMC. Scegliendolo si compilano insieme i dati della scheda tecnica " +
+    "(portata nominale Qn o conduttanza C e b, pressioni, alesaggio, stelo, ammortizzo) e le opzioni del " +
+    "componente; i dati di catalogo scritti prima vengono sostituiti, corsa, massa, carico e apertura " +
+    "restano. Il codice va nella distinta. Dopo la scelta puoi ancora correggere ogni valore a mano.",
   "cylinder-size":
     "Misure normalizzate di alesaggio e stelo secondo le serie ISO 15552, ISO 6432 e ISO 21287. Scegliendone " +
     "una si compilano insieme alesaggio e diametro stelo; «Personalizzata» lascia i valori scritti a mano.",
