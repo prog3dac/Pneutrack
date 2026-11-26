@@ -18,7 +18,13 @@ Una porta può avere più linee: equivale a un raccordo a T.
 Il catalogo (`DEFS` in `components.ts`) è diviso in categorie, come la palette dell'editor.
 Le porte seguono la numerazione ISO 5599 (1 alimentazione, 2/4 utilizzo, 3/5 scarico, 12/14 pilotaggio).
 Tutti i tipi accettano `max_pressure`; i parametri di simulazione (`conductance` in dm³/(s·bar),
-`critical_ratio`) hanno valori predefiniti ragionevoli.
+`critical_ratio`) hanno valori predefiniti ragionevoli. I componenti con un passaggio d'aria
+accettano anche `flow`, la portata nominale Qn di catalogo (6 bar a monte, 5 bar a valle): se
+`conductance` manca, la simulazione ricava C da Qn con la formula ISO 6358 e il rapporto critico
+(`conductanceFromFlow`); se ci sono entrambi vale `conductance`.
+
+Le aperture (`opening` degli strozzatori, `cushion_opening` dei cilindri) si scrivono in
+percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 
 | Categoria | Tipo (`type`) | Nome | Porte | Parametri principali |
 |---|---|---|---|---|
@@ -37,12 +43,12 @@ Tutti i tipi accettano `max_pressure`; i parametri di simulazione (`conductance`
 | | `shuttle_valve` | Selettore (OR) | 1, 3 → 2 | |
 | | `and_valve` | Due pressioni (AND) | 1, 3 → 2 | |
 | | `quick_exhaust_valve` | Scarico rapido | 1, 2, 3 | |
-| Regolazione | `flow_control_valve` | Strozzatore bidirezionale | 1, 2 | `conductance` |
-| | `one_way_flow_control` | Regolatore di flusso unidirezionale | 1, 2 | `conductance`, `free_conductance` |
+| Regolazione | `flow_control_valve` | Strozzatore bidirezionale | 1, 2 | `opening` (0–100 %, predefinita 100 %), `conductance` o `flow` a tutta apertura |
+| | `one_way_flow_control` | Regolatore di flusso unidirezionale | 1, 2 | `opening`, `conductance` o `flow` a tutta apertura nel verso strozzato, `free_conductance` |
 | | `relief_valve` | Valvola limitatrice | 1, 3 | `setpoint` |
 | | `sequence_valve` | Valvola di sequenza | 1, 2, 3, 12 | `setpoint` |
 | | `time_delay_valve` | Temporizzatore | 1, 2, 3, 12 | `delay`, `pilot_pressure` |
-| Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `spring_force` |
+| Attuatori | `single_acting_cylinder` | Cilindro a semplice effetto | A | `bore`, `stroke`, `rod`?, `mass`, `load`, `friction`, `static_friction`?, `mounting_angle`?, `spring_force` |
 | | `double_acting_cylinder` | Cilindro a doppio effetto | A, B | come sopra |
 | | `double_rod_cylinder` | Cilindro a doppio stelo | A, B | `bore`, `stroke`, `rod` |
 | | `rotary_actuator` | Attuatore rotante | A, B | `angle` (non ancora simulato) |
@@ -82,9 +88,21 @@ se va simulato, il comportamento in `src/sim/network.ts`.
 I cilindri a doppio effetto e a doppio stelo hanno l'opzione `cushioning`: `none`, `both`,
 `cap` (fine corsa in rientro) o `rod` (fine corsa in uscita). `cushion_length` è il tratto
 ammortizzato (se manca, circa 0,6 × alesaggio, tra 10 e 40 mm); `cushion_opening` è l'apertura
-della vite di regolazione, da 0 (chiusa) a 1 (tutta aperta, 0,3 dm³/(s·bar)), predefinita 0,3.
+della vite di regolazione, da 0 % (chiusa) a 100 % (tutta aperta, 0,3 dm³/(s·bar)), predefinita 30 %.
 In simulazione, negli ultimi millimetri di corsa l'aria che esce dalla camera passa solo dalla
 vite; quella che entra passa libera.
+
+### Strozzatori, attrito e montaggio
+
+Negli strozzatori la conduttanza effettiva è `opening × conductance` (caratteristica lineare, come
+nei modelli predefiniti di FluidSIM e Simscape): nel flusso sonico la portata è proporzionale a C,
+quindi l'apertura è la percentuale della portata massima. Il verso libero del regolatore
+unidirezionale non dipende dall'apertura. Uno schema con la sola `conductance` vale tutto aperto.
+
+Nei cilindri `static_friction` è l'attrito di primo distacco (se manca, uguale a `friction`): a
+velocità quasi nulla l'attrito vale quello statico e oltre circa 1 cm/s scende a quello dinamico
+(curva di Stribeck). `mounting_angle` è l'inclinazione: 0° orizzontale, 90° stelo verso l'alto,
+−90° verso il basso; la simulazione aggiunge `mass × g × sin(angolo)` contro l'uscita dello stelo.
 
 ### Misure normalizzate dei cilindri
 

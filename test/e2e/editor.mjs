@@ -572,6 +572,22 @@ s = await state();
 assert.equal(s.doc.components.length, nAll);
 assert.ok(s.doc.components.some((c) => c.id === gauge), "la sigla libera torna uguale");
 
+// 16b. allineamento: centri sulla stessa orizzontale dal menu Modifica, poi annulla
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+assert.equal(await page.locator('#edit-menu [data-act="align-center-y"]').isDisabled(), true, "allinea serve una selezione");
+await page.keyboard.press("Control+a");
+assert.ok(await page.locator('#properties [data-block-act="align-left"]').count(), "comandi di allineamento nel pannello");
+const beforeAlign = (await state()).doc.layout;
+await menuAct("align-center-y", "#edit-menu");
+await settled();
+s = await state();
+assert.equal(new Set(s.doc.components.map((c) => s.doc.layout[c.id].y)).size, 1, "tutti i centri sulla stessa riga");
+assert.ok(s.doc.components.every((c) => s.doc.layout[c.id].y % 10 === 0), "sulla griglia");
+if (shots) await page.screenshot({ path: `${shots}/16b-allinea.png` });
+await page.keyboard.press("Control+z");
+await settled();
+assert.deepEqual((await state()).doc.layout, beforeAlign, "annulla rimette le posizioni");
+
 // 17. ogni campo da compilare ha una descrizione al passaggio del mouse
 const C = s.doc.components.find((c) => c.type === "double_acting_cylinder").id;
 await page.click("#canvas", { position: { x: 40, y: 40 } });

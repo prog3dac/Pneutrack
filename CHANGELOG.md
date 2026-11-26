@@ -3,12 +3,24 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
-## 0.20.0 · 2026-11-25
+## 0.21.0 · 2026-11-25
 
 - Distinta componenti (menu File): i pezzi dello schema raggruppati per tipo, varianti, dati da catalogo e codice articolo, con sigle e quantità. Si scarica in CSV (si apre con Excel o LibreOffice) o in PDF su A4.
 - Nuovo campo «Codice articolo» nel pannello di ogni componente, con la descrizione al passaggio del mouse: compare nella distinta e non cambia la simulazione.
 - Distinta sul foglio: con «Distinta sul foglio» (pannello Foglio o finestra della distinta) la tabella compare sopra il cartiglio, come vuole la ISO 7573, e finisce anche nel PDF del foglio.
 - Restano fuori dalla distinta i simboli che non si ordinano: punti di connessione, scarichi liberi, alimentazioni, contatti dei relè e bobine delle elettrovalvole.
+
+## 0.20.0 · 2026-11-25
+
+- Allineamento dei componenti selezionati (almeno 2), dal menu Modifica o dal pannello della selezione multipla: bordi a sinistra, a destra, in alto, in basso, oppure centri sulla stessa verticale (valvola sotto il suo cilindro) o sulla stessa orizzontale (fila di valvole). Le posizioni restano sulla griglia e Ctrl+Z annulla.
+- Distribuzione in orizzontale o in verticale (almeno 3 componenti): il primo e l'ultimo restano fermi, gli altri prendono lo stesso passo tra i centri.
+
+## 0.19.0 · 2026-11-25
+
+- Strozzatore bidirezionale e regolatore di flusso unidirezionale: nuovo campo «Apertura», da 0 % (chiuso) a 100 % (tutto aperto). La conduttanza C ora è quella a tutta apertura, come a catalogo, e la simulazione usa apertura × C; nel regolatore unidirezionale il verso libero non cambia. Un regolatore nuovo parte al 20 % di 1,5 dm³/(s·bar). Gli schemi salvati con la sola C simulano come prima; quelli con C vuota ora usano 1,5 dm³/(s·bar) tutto aperto: per ritrovare la velocità di prima basta scrivere 20 % nell'apertura.
+- Portata nominale Qn su valvole distributrici, filtri, riduttori, valvole logiche e di regolazione e motore pneumatico: se la conduttanza C è vuota, la simulazione la ricava da Qn (6 bar a monte, 5 bar a valle) con la formula ISO 6358. Corretto il suggerimento della conduttanza: C ≈ Qn / 260, non Qn / 600.
+- Apertura della vite dell'ammortizzo in percentuale (0–100 %); i valori già scritti come frazione restano validi e compaiono in %.
+- Cilindri: nuovi parametri «Attrito statico (di primo distacco)», per lo spunto da fermo, e «Angolo di montaggio», che aggiunge il peso della massa mobile lungo l'asse (90° stelo verso l'alto, −90° verso il basso).
 
 ## 0.18.2 · 2026-11-25
 
