@@ -17,6 +17,7 @@ export const DXF_LAYERS: Layer[] = [
   { name: "SIMBOLI", color: 7 },
   { name: "TESTI", color: 7 },
   { name: "BLOCCHI", color: 8, linetype: "DASHED" },
+  { name: "ANNOTAZIONI", color: 7 },
 ];
 
 function layerOf(el: Element): string {
@@ -24,6 +25,7 @@ function layerOf(el: Element): string {
   for (let e: Element | null = el; e; e = e.parentElement) {
     const id = e.id, cls = e.classList;
     if (id === "sheet") return "CORNICE";
+    if (id === "annotations" || id === "annotations-top") return "ANNOTAZIONI";
     if (id === "blocks") return inText ? "TESTI" : "BLOCCHI";
     if (cls?.contains("line")) {
       if (inText) return "TESTI";
@@ -67,18 +69,24 @@ export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string 
     const scale = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) / U;
     const layer = layerOf(el);
     const stroke = cs.stroke !== "none" && parseFloat(cs.strokeWidth) > 0 && Number(cs.strokeOpacity) !== 0;
-    const filled = darkFill(cs.fill, cs.fillOpacity);
+    const ann = el.closest<SVGElement>("[data-ann]");
+    // testi e forme disegnati: pieni solo se riempiti del colore del tratto (non la tinta chiara)
+    const filled = ann ? cs.fill !== "none" && Number(cs.fillOpacity) === 1 && cs.fill === cs.stroke
+      : darkFill(cs.fill, cs.fillOpacity);
     const dashed = cs.strokeDasharray !== "none" && cs.strokeDasharray !== "";
     const n = (a: string) => Number(el.getAttribute(a) ?? 0);
+    // colore, tipo di linea e spessore scelti dall'utente
+    dxf.style = ann ? { color: Number(ann.dataset.dxfColor) || undefined, linetype: ann.dataset.dxfLtype } : {};
+    const width = ann && stroke && !filled ? Number(ann.dataset.dxfWidth) || 0 : 0;
 
     const shape = (pts: Pt[], closed: boolean) => {
       if (filled && closed && (pts.length === 3 || pts.length === 4)) dxf.solid(pts, layer);
-      if (stroke || filled) dxf.polyline(pts, closed, layer, dashed);
+      if (stroke || filled) dxf.polyline(pts, closed, layer, dashed, width);
     };
 
     switch (el.tagName) {
       case "line":
-        if (stroke) dxf.line(P(n("x1"), n("y1")), P(n("x2"), n("y2")), layer, dashed);
+        if (stroke) dxf.polyline([P(n("x1"), n("y1")), P(n("x2"), n("y2"))], false, layer, dashed, width);
         break;
       case "polyline":
       case "polygon": {
@@ -104,7 +112,7 @@ export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string 
         const cx = n("cx"), cy = n("cy"), rx = n("rx"), ry = n("ry");
         const pts: Pt[] = [];
         for (let k = 0; k < 48; k++) { const t = (k / 48) * 2 * Math.PI; pts.push(P(cx + rx * Math.cos(t), cy + ry * Math.sin(t))); }
-        if (stroke || filled) dxf.polyline(pts, true, layer, dashed);
+        if (stroke || filled) dxf.polyline(pts, true, layer, dashed, width);
         break;
       }
       case "path":
@@ -123,5 +131,6 @@ export function viewportToDxf(viewport: SVGGraphicsElement, rect: Rect): string 
     }
   };
   for (const c of viewport.children) visit(c);
+  dxf.style = {};
   return dxf.toString();
 }

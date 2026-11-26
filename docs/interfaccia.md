@@ -129,6 +129,34 @@ seguono, mentre le scritte restano leggibili. Con più componenti o un blocco si
 intero attorno al suo centro, con le pieghe delle linee interne. Nel file la specchiatura è
 `"mirror": true` nel `layout` del componente; il circuito pneumatico non cambia.
 
+## Testi e forme
+
+La sezione **Annot.** della barra a sinistra porta alle voci di testo e disegno della palette:
+
+- **Testo**: testo libero, nota in riquadro, richiamo con freccia, indice di revisione (lettera in
+  un triangolo).
+- **Forme**: linea, freccia, polilinea, rettangolo, cerchio, ellisse.
+- **Elementi della norma**: contorno di gruppo tratto-punto (ISO 1219-2, per un assieme o un gruppo
+  funzionale, con titolo), linea tratto-punto, collegamento meccanico (doppia linea, ISO 1219-1),
+  direzione del flusso (triangolo vuoto).
+
+Si inseriscono come i componenti (clic o trascinamento) e si spostano trascinandone il bordo o il
+testo. Le maniglie ridimensionano rettangoli ed ellissi; nelle linee si trascinano i punti, il +
+a metà di un tratto aggiunge un punto e un doppio clic su un punto lo toglie. Il pannello a destra
+cambia colore (sette colori o uno a scelta), tipo di linea (continua, tratteggiata, tratto-punto,
+tratto-due-punti, punteggiata, doppia), spessore (0,25–0,7 mm), riempimento e terminali; per i
+testi altezza (2,5–7 mm, ISO 3098), grassetto, corsivo, allineamento, rotazione e riquadro.
+
+- Un **contorno di gruppo** con *Sposta insieme i componenti racchiusi* (attivo per quello della
+  palette) si porta dietro i componenti che contiene, con le loro linee.
+- La punta di un **richiamo** lasciata su un componente vi si aggancia e lo segue quando lo si
+  sposta; trascinandola altrove si sgancia.
+- Doppio clic su un testo per scriverlo nel pannello; `R` lo ruota di 90°. *Blocca posizione*
+  evita di spostare per sbaglio un riquadro grande.
+- Selezione con il riquadro, Maiusc+clic, copia, incolla, duplica, annulla ed elimina valgono anche
+  per testi e forme. Le forme stanno sotto le linee, i testi sopra ai simboli.
+- PDF, SVG e DXF riportano testi e forme con il loro stile; nel DXF stanno sul layer ANNOTAZIONI.
+
 ## Circuito elettrico di comando
 
 Pulsanti, relè, temporizzatori, bobine, finecorsa elettrici, sensori, pressostati e lampade sono nella categoria

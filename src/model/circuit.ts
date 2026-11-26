@@ -6,6 +6,7 @@
  * Formato file: `pneutrack/circuit` versione 1.
  */
 import type { ComponentData } from "./components";
+import { normalizeAnnotations, type AnnotationData } from "./annotations";
 import { normalizeBlocks, type BlockData } from "./blocks";
 import { parseSheet, type SheetData } from "./sheet";
 import type { TubeData } from "./tubes";
@@ -45,6 +46,8 @@ export interface CircuitDoc {
   sheet?: SheetData;
   /** blocchi: gruppi di componenti con nome e descrizione (facoltativo) */
   blocks?: BlockData[];
+  /** testi e forme disegnati sullo schema (facoltativo) */
+  annotations?: AnnotationData[];
 }
 
 export const emptyCircuit = (name = "Nuovo schema"): CircuitDoc =>
@@ -102,6 +105,11 @@ function blocksOf(d: Partial<CircuitDoc>) {
   return blocks.length ? { blocks } : {};
 }
 
+function annotationsOf(d: Partial<CircuitDoc>) {
+  const annotations = normalizeAnnotations(d.annotations);
+  return annotations.length ? { annotations } : {};
+}
+
 /** Controlla la forma generale di un file e lo normalizza. Lancia {@link CircuitError}. */
 export function normalizeCircuit(data: unknown): CircuitDoc {
   if (!data || typeof data !== "object") throw new CircuitError("il file non contiene uno schema");
@@ -117,5 +125,6 @@ export function normalizeCircuit(data: unknown): CircuitDoc {
     layout: d.layout && typeof d.layout === "object" ? d.layout : {},
     ...(parseSheet(d.sheet) ? { sheet: parseSheet(d.sheet)! } : {}),
     ...blocksOf(d),
+    ...annotationsOf(d),
   };
 }
