@@ -281,6 +281,32 @@ assert.match(pdf.suggestedFilename(), /\.pdf$/);
 const pdfBytes = Buffer.concat(await (await pdf.createReadStream()).toArray());
 assert.equal(pdfBytes.subarray(0, 5).toString(), "%PDF-");
 assert.ok(pdfBytes.length > 5000);
+// 9c. distinta componenti: codice articolo, finestra, CSV, PDF e tabella sul foglio
+await page.click('[data-component="C1"] .halo', { force: true });
+await page.fill('#properties input[name="code"]', "DSBC-32-100");
+await page.press('#properties input[name="code"]', "Enter");
+await settled();
+assert.equal((await state()).doc.components.find((c) => c.id === "C1").code, "DSBC-32-100");
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+await menuAct("bom");
+assert.ok(await page.locator("#bom-dialog").isVisible());
+const bomText = await page.textContent("#bom-table");
+assert.match(bomText, /DSBC-32-100/);
+assert.match(bomText, /Cilindro doppio effetto/);
+const [csv] = await Promise.all([page.waitForEvent("download"), page.click('[data-bact="csv"]')]);
+assert.match(csv.suggestedFilename(), /-distinta\.csv$/);
+const csvText = Buffer.concat(await (await csv.createReadStream()).toArray()).toString();
+assert.match(csvText, /^\uFEFFPos\.;Sigle;/);
+assert.match(csvText, /;C1;Cilindro doppio effetto;.*;DSBC-32-100;1/);
+const [bomPdf] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), page.click('[data-bact="pdf"]')]);
+assert.equal(Buffer.concat(await (await bomPdf.createReadStream()).toArray()).subarray(0, 5).toString(), "%PDF-");
+await page.check("#bom-on-sheet");
+await settled();
+assert.equal((await state()).doc.sheet.bom, true);
+assert.match(await page.textContent("#sheet"), /DSBC-32-100/);
+await page.click('[data-bact="close"]');
+assert.ok(await page.locator("#bom-dialog").isHidden());
+if (shots) await page.screenshot({ path: `${shots}/09c-distinta-foglio.png` });
 await page.selectOption('#properties select[name="sheet-format"]', "");
 await settled();
 assert.equal((await state()).doc.sheet, undefined);
@@ -545,6 +571,22 @@ await settled();
 s = await state();
 assert.equal(s.doc.components.length, nAll);
 assert.ok(s.doc.components.some((c) => c.id === gauge), "la sigla libera torna uguale");
+
+// 16b. allineamento: centri sulla stessa orizzontale dal menu Modifica, poi annulla
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+assert.equal(await page.locator('#edit-menu [data-act="align-center-y"]').isDisabled(), true, "allinea serve una selezione");
+await page.keyboard.press("Control+a");
+assert.ok(await page.locator('#properties [data-block-act="align-left"]').count(), "comandi di allineamento nel pannello");
+const beforeAlign = (await state()).doc.layout;
+await menuAct("align-center-y", "#edit-menu");
+await settled();
+s = await state();
+assert.equal(new Set(s.doc.components.map((c) => s.doc.layout[c.id].y)).size, 1, "tutti i centri sulla stessa riga");
+assert.ok(s.doc.components.every((c) => s.doc.layout[c.id].y % 10 === 0), "sulla griglia");
+if (shots) await page.screenshot({ path: `${shots}/16b-allinea.png` });
+await page.keyboard.press("Control+z");
+await settled();
+assert.deepEqual((await state()).doc.layout, beforeAlign, "annulla rimette le posizioni");
 
 // 17. ogni campo da compilare ha una descrizione al passaggio del mouse
 const C = s.doc.components.find((c) => c.type === "double_acting_cylinder").id;

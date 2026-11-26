@@ -65,7 +65,7 @@ export interface ComponentData {
   id: string;
   type: string;
   label?: string;
-  /** codice articolo del costruttore (distinta, libreria da catalogo) */
+  /** codice articolo del costruttore, per la distinta componenti (non conta per la simulazione) */
   code?: string;
   params?: Record<string, string>;
   function?: string;

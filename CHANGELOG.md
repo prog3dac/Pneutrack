@@ -3,10 +3,22 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
-## 0.20.0 · 2026-11-26
+## 0.22.0 · 2026-11-26
 
 - Libreria di componenti da catalogo: nel pannello di valvole distributrici, regolatori di flusso unidirezionali e cilindri a doppio effetto il menu «Codice da catalogo» compila in un colpo i dati della scheda tecnica e le opzioni. Ci sono i regolatori Festo GRLA (M5–1/2), le elettrovalvole Festo VUVG-L14 e L18 e SMC SY3000, SY5000 e SY7000 (monostabili e bistabili), i cilindri ISO 15552 Festo DSBC e SMC CP96 (Ø32–125).
-- Il codice scelto resta nel componente come codice articolo; sotto il menu compaiono il costruttore, come sono stati ricavati i valori e il collegamento alla scheda tecnica.
+- Il codice scelto finisce nel campo «Codice articolo», quindi anche nella distinta; sotto il menu compaiono il costruttore, come sono stati ricavati i valori e il collegamento alla scheda tecnica.
+
+## 0.21.0 · 2026-11-25
+
+- Distinta componenti (menu File): i pezzi dello schema raggruppati per tipo, varianti, dati da catalogo e codice articolo, con sigle e quantità. Si scarica in CSV (si apre con Excel o LibreOffice) o in PDF su A4.
+- Nuovo campo «Codice articolo» nel pannello di ogni componente, con la descrizione al passaggio del mouse: compare nella distinta e non cambia la simulazione.
+- Distinta sul foglio: con «Distinta sul foglio» (pannello Foglio o finestra della distinta) la tabella compare sopra il cartiglio, come vuole la ISO 7573, e finisce anche nel PDF del foglio.
+- Restano fuori dalla distinta i simboli che non si ordinano: punti di connessione, scarichi liberi, alimentazioni, contatti dei relè e bobine delle elettrovalvole.
+
+## 0.20.0 · 2026-11-25
+
+- Allineamento dei componenti selezionati (almeno 2), dal menu Modifica o dal pannello della selezione multipla: bordi a sinistra, a destra, in alto, in basso, oppure centri sulla stessa verticale (valvola sotto il suo cilindro) o sulla stessa orizzontale (fila di valvole). Le posizioni restano sulla griglia e Ctrl+Z annulla.
+- Distribuzione in orizzontale o in verticale (almeno 3 componenti): il primo e l'ultimo restano fermi, gli altri prendono lo stesso passo tra i centri.
 
 ## 0.19.0 · 2026-11-25
 
