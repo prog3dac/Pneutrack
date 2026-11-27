@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.35.0**.
+Aggiornato alla versione **0.36.0**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
@@ -128,7 +128,7 @@ del tipo (elencato in [componenti.md](componenti.md)).
 | `static_friction` | attrito di primo distacco, se il catalogo lo dà (di solito 1,5–2 volte quello dinamico) |
 | `mounting_angle` | angolo dell'asse del cilindro rispetto all'orizzontale |
 | `cushion_length` | lunghezza dell'ammortizzo pneumatico (scheda tecnica; se manca ≈ 0,6 × alesaggio) |
-| `cushion_opening` | apertura della vite dell'ammortizzo: si trova provando in simulazione, come in macchina |
+| `cushion_opening_rod`, `cushion_opening_cap` | aperture delle due viti dell'ammortizzo, in uscita (testata) e in rientro (fondello): si trovano provando in simulazione, come in macchina. Negli schemi delle versioni precedenti la vite unica `cushion_opening` vale per tutte e due |
 
 L'attrito che cresce con la pressione nelle camere e l'attrito viscoso non si inseriscono: il programma li
 calcola dall'alesaggio e dalle pressioni (vedi [calcoli.md](calcoli.md), §4.3).

@@ -24,6 +24,7 @@ import {
 import {
   ACTUATION_SHORT, buildComponent, cylinderInfo, isCylinder, isElectric, isLatching, isManual, isManualDetent, isMechanical, isMomentary, isElectricType, typeList,
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
+  paramApplies, upgradeComponent,
 } from "../model/components";
 import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
 import { fmtG, Quantity, type Dimension } from "../model/units";
@@ -2134,9 +2135,9 @@ function renderComponentFields(panel: HTMLElement, title: HTMLElement, comp: Com
   if (catalogParams.length) heading(more, "Parametri da catalogo");
   if (partsFor(comp.type).length) more.append(...partField(comp));
   if (comp.type.endsWith("_cylinder") && !NO_ISO_SIZES.has(comp.type)) more.append(cylinderSizeField(comp));
-  for (const p of catalogParams) more.append(paramInput(comp, p));
+  for (const p of catalogParams) if (paramApplies(comp, p.name)) more.append(paramInput(comp, p));
   if (simParams.length) heading(more, "Parametri di simulazione");
-  for (const p of simParams) more.append(paramInput(comp, p));
+  for (const p of simParams) if (paramApplies(comp, p.name)) more.append(paramInput(comp, p));
 
   const portsIn = Object.keys(geometry(comp).ports);
   if (portsIn.length) {
@@ -4418,6 +4419,7 @@ function setPages(data: Partial<CircuitDoc>) {
     doc.name = name;
     let i = 0;
     for (const c of doc.components) {
+      upgradeComponent(c); // parametri delle versioni precedenti (vite unica dell'ammortizzo)
       if (!doc.layout[c.id]) doc.layout[c.id] = { x: (i % 5) * 160, y: Math.floor(i / 5) * 140, rot: 0 };
       i++;
     }

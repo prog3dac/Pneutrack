@@ -3,6 +3,12 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.36.0 · 2026-11-27
+
+- Cilindri con l'ammortizzo ai due fine corsa: due viti di regolazione separate, «Apertura vite ammortizzo in uscita (testata)» e «in rientro (fondello)», sia nella finestra del componente sia tra i cursori della simulazione. Si vedono solo le viti dell'ammortizzo scelto. Gli schemi salvati con la vite unica si aprono come prima: il valore vale per le due viti.
+- A pari apertura il rientro resta un po' più frenato dell'uscita (la spinta agisce sull'area anulare e l'aria da frenare sta sull'area piena): è il comportamento del cilindro reale, e con le due viti si pareggia.
+- La vite e i passaggi dell'ammortizzo crescono con l'area del pistone: prima erano uguali per tutti gli alesaggi e i cilindri grandi risultavano molto più frenati (un Ø63 restava nell'ammortizzo quasi quattro volte di più di un Ø32).
+
 ## 0.35.0 · 2026-11-27
 
 - Ammortizzo dei cilindri più realistico: niente più rimbalzi e ripartenze a scatti entrando nell'ammortizzo. Lo spillo conico chiude il passaggio con continuità nei primi millimetri invece che di colpo, l'attrito delle guarnizioni cresce con la pressione nelle camere (3 % della forza di pressione) e l'attrito viscoso dipende dall'alesaggio (circa 100 N·s/m per il Ø32). Con la vite molto chiusa e una massa grande resta un piccolo rimbalzo, come in un cilindro reale regolato male.

@@ -765,7 +765,8 @@ Cilindro a doppio effetto. A: camera fondello (uscita), B: camera stelo (rientro
 | `static_friction` | Attrito statico (di primo distacco) | forza (N, kN, daN) | simulazione, facoltativo |  | uguale all'attrito |
 | `mounting_angle` | Angolo di montaggio (ammette valori negativi) | angolo (rad, deg) | simulazione, facoltativo |  | 0 deg |
 | `cushion_length` | Lunghezza ammortizzo | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | ≈ 0,6 × alesaggio |
-| `cushion_opening` | Apertura vite ammortizzo | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_rod` | Apertura vite ammortizzo in uscita (testata) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_cap` | Apertura vite ammortizzo in rientro (fondello) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
 
 **Voci della palette**: Cilindro doppio effetto; Cilindro doppio effetto ammortizzato; Cilindro doppio effetto con pistone magnetico.
 
@@ -796,7 +797,8 @@ Cilindro a doppio effetto con stelo passante: stessa area e stessa forza nei due
 | `mounting_angle` | Angolo di montaggio (ammette valori negativi) | angolo (rad, deg) | simulazione, facoltativo |  | 0 deg |
 | `rod2` | Diametro del secondo stelo | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | uguale allo stelo |
 | `cushion_length` | Lunghezza ammortizzo | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | ≈ 0,6 × alesaggio |
-| `cushion_opening` | Apertura vite ammortizzo | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_rod` | Apertura vite ammortizzo in uscita (testata) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_cap` | Apertura vite ammortizzo in rientro (fondello) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
 
 <a id="rodless-cylinder"></a>
 
@@ -824,7 +826,8 @@ Cilindro a doppio effetto senza stelo: il pistone trascina un carrello che corre
 | `static_friction` | Attrito statico (di primo distacco) | forza (N, kN, daN) | simulazione, facoltativo |  | uguale all'attrito |
 | `mounting_angle` | Angolo di montaggio (ammette valori negativi) | angolo (rad, deg) | simulazione, facoltativo |  | 0 deg |
 | `cushion_length` | Lunghezza ammortizzo | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | ≈ 0,6 × alesaggio |
-| `cushion_opening` | Apertura vite ammortizzo | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_rod` | Apertura vite ammortizzo in uscita (testata) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
+| `cushion_opening_cap` | Apertura vite ammortizzo in rientro (fondello) | numero puro (% (0–100 %) o frazione 0–1) | simulazione, facoltativo |  | 30 % |
 
 **Voci della palette**: Cilindro senza stelo; Cilindro senza stelo ad accoppiamento magnetico.
 

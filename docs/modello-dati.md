@@ -23,7 +23,7 @@ accettano anche `flow`, la portata nominale Qn di catalogo (6 bar a monte, 5 bar
 `conductance` manca, la simulazione ricava C da Qn con la formula ISO 6358 e il rapporto critico
 (`conductanceFromFlow`); se ci sono entrambi vale `conductance`.
 
-Le aperture (`opening` degli strozzatori, `cushion_opening` dei cilindri) si scrivono in
+Le aperture (`opening` degli strozzatori, `cushion_opening_rod` e `cushion_opening_cap` dei cilindri) si scrivono in
 percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 
 | Categoria | Tipo (`type`) | Nome | Porte | Parametri principali |
@@ -126,8 +126,11 @@ se va simulato, il comportamento in `src/sim/network.ts`.
 
 I cilindri a doppio effetto e a doppio stelo hanno l'opzione `cushioning`: `none`, `both`,
 `cap` (fine corsa in rientro) o `rod` (fine corsa in uscita). `cushion_length` è il tratto
-ammortizzato (se manca, circa 0,6 × alesaggio, tra 10 e 40 mm); `cushion_opening` è l'apertura
-della vite di regolazione, da 0 % (chiusa) a 100 % (tutta aperta, 0,3 dm³/(s·bar)), predefinita 30 %.
+ammortizzato (se manca, circa 0,6 × alesaggio, tra 10 e 40 mm); `cushion_opening_rod` e
+`cushion_opening_cap` sono le aperture delle due viti di regolazione, in uscita (testata) e in rientro
+(fondello), da 0 % (chiusa) a 100 % (tutta aperta, 0,3 dm³/(s·bar) per l'alesaggio 32, in proporzione
+all'area del pistone per gli altri), predefinite 30 %. I file con la vite unica `cushion_opening` delle
+versioni precedenti si aprono come prima: il valore vale per le due viti.
 In simulazione, negli ultimi millimetri di corsa l'aria che esce dalla camera passa solo dalla
 vite (lo spillo conico la chiude con continuità nel primo tratto); quella che entra passa libera.
 Formule e costanti in [manuale/calcoli.md](manuale/calcoli.md), §4.4.

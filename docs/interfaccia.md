@@ -64,7 +64,8 @@ dei problemi.
   unidirezionale e molla. Per una valvola con comando meccanico
   si può scegliere il **finecorsa** (cilindro e posizione, per esempio C1+) che la aziona.
 - **Ammortizzo**: nei cilindri a doppio effetto si sceglie l'ammortizzo regolabile (ai due fine
-  corsa o su uno solo), la sua lunghezza e l'apertura della vite.
+  corsa o su uno solo), la sua lunghezza e l'apertura delle viti: una per l'ammortizzo in uscita
+  (testata) e una per quello in rientro (fondello), ciascuna con il suo cursore in simulazione.
 - **Linee**: la linea selezionata diventa arancione e passa sopra ai simboli, le altre si
   attenuano. Il colore delle linee indica la fascia di pressione (massima raggiungibile mentre si
   disegna, istantanea in simulazione); la legenda è in basso a sinistra.

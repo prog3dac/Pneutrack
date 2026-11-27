@@ -177,10 +177,15 @@ const DEAD_VOLUME = 5e-6;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
 /** comandi alimentati dalla porta 1 della valvola stessa */
 const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return" || a === "spring_air_return";
-/** passaggio libero tra camera e porta del cilindro fuori dall'ammortizzo [m³/(s·Pa)] (5 dm³/(s·bar)) */
+/**
+ * passaggio libero tra camera e porta del cilindro fuori dall'ammortizzo [m³/(s·Pa)], per l'alesaggio 32
+ * (5 dm³/(s·bar)); cresce con l'area del pistone, come le porte e i passaggi della testata
+ */
 const CUSHION_FREE_C = 5e-3 / BAR;
-/** conduttanza della vite dell'ammortizzo tutta aperta [m³/(s·Pa)] (0,3 dm³/(s·bar)) */
+/** conduttanza della vite dell'ammortizzo tutta aperta [m³/(s·Pa)] per l'alesaggio 32 (0,3 dm³/(s·bar)) */
 const CUSHION_MAX_C = 0.3e-3 / BAR;
+/** alesaggio a cui si riferiscono le conduttanze dell'ammortizzo [m] */
+const CUSHION_REF_BORE = 0.032;
 /** apertura minima: anche a vite chiusa resta un piccolo trafilamento */
 const CUSHION_MIN_OPENING = 0.01;
 /** tratto d'ingresso dello spillo conico, come frazione della lunghezza dell'ammortizzo, tra 1 e 5 mm */
@@ -560,20 +565,23 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
         // semplice effetto in trazione: A è la camera stelo, la camera fondello sfiata, la molla spinge fuori
         const pull = c.type === "single_acting_cylinder" && c.single_kind === "pull";
         const springForce = single && c.spring_return !== "no" ? simParam(c, "spring_force").si : 0;
-        // con l'ammortizzo la camera è un nodo a sé, collegato alla porta
-        const cushions: Orifice[] = [];
+        // ogni ammortizzo ha la sua vite: in uscita frena la camera stelo (B), in rientro la camera fondello (A)
+        const cushionScale = (d / CUSHION_REF_BORE) ** 2;
+        const screw = (end: "cap" | "rod") => `cushion_opening_${end}`;
         const chamber = (portName: "A" | "B", end: "cap" | "rod") => {
           const cu = c.cushioning ?? "none";
           if (cu !== end && cu !== "both") return node(c, portName);
           const n = nodeCount++;
           const len = cushionLength(c);
-          const opening = Math.min(1, Math.max(CUSHION_MIN_OPENING, simParam(c, "cushion_opening").si));
+          const opening = Math.min(1, Math.max(CUSHION_MIN_OPENING, simParam(c, screw(end)).si));
+          const full = CUSHION_MAX_C * cushionScale;
           const o: Orifice = {
-            a: n, b: node(c, portName), C: CUSHION_FREE_C, bcrit: 0.4,
-            cushion: { cylinder: cylinders.length, end, length: len, taper: cushionTaper(len), C: opening * CUSHION_MAX_C },
+            a: n, b: node(c, portName), C: CUSHION_FREE_C * cushionScale, bcrit: 0.4,
+            cushion: { cylinder: cylinders.length, end, length: len, taper: cushionTaper(len), C: opening * full },
           };
           orifices.push(o);
-          cushions.push(o);
+          tune(c, screw(end), end === "rod" ? "Apertura vite ammortizzo in uscita (testata)" : "Apertura vite ammortizzo in rientro (fondello)",
+               "opening", simParam(c, screw(end)).si, (v) => { o.cushion!.C = Math.max(CUSHION_MIN_OPENING, v) * full; });
           return n;
         };
         cylinders.push({
@@ -602,11 +610,6 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
               ? { node: node(c, "A"), threshold: simParam(c, "unlock_pressure").si, at: "cap" }
               : undefined,
         });
-        if (cushions.length) {
-          tune(c, "cushion_opening", "Apertura vite ammortizzo", "opening", simParam(c, "cushion_opening").si, (v) => {
-            for (const o of cushions) o.cushion!.C = Math.max(CUSHION_MIN_OPENING, v) * CUSHION_MAX_C;
-          });
-        }
         break;
       }
       default:

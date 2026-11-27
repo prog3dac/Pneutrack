@@ -116,10 +116,14 @@ cataloghi (3–8 % della forza teorica). I valori di c_v misurati in letteratura
 Con `cushioning` diverso da `none` la camera ammortizzata è un nodo a sé, collegato alla porta del
 cilindro da un orifizio speciale:
 
-- **Fuori dall'ammortizzo** l'aria passa libera: C_libera = 5 dm³/(s·bar), b = 0,4.
+- **Fuori dall'ammortizzo** l'aria passa libera: C_libera = 5 dm³/(s·bar) · (D / 32 mm)², b = 0,4.
 - **Dentro l'ammortizzo** (gli ultimi L metri di corsa verso quella camera, L = `cushion_length`) l'aria
-  che esce dalla camera passa solo dalla vite: C_vite = `cushion_opening` × 0,3 dm³/(s·bar). L'apertura
-  minima è 1 % (anche a vite chiusa resta un piccolo trafilamento).
+  che esce dalla camera passa solo dalla vite di quel lato: C_vite = apertura × 0,3 dm³/(s·bar) · (D / 32 mm)².
+  Le viti sono due: `cushion_opening_rod` per l'ammortizzo in uscita (testata, frena la camera B) e
+  `cushion_opening_cap` per quello in rientro (fondello, frena la camera A). L'apertura minima è 1 %
+  (anche a vite chiusa resta un piccolo trafilamento).
+- **Scala con l'alesaggio.** I passaggi della testata e la vite crescono con l'area del pistone: così a pari
+  apertura la velocità di avvicinamento nell'ammortizzo, v ≈ Q_vite / A, è simile per tutti gli alesaggi.
 - **Spillo conico.** Il passaggio libero non si chiude di colpo: nel primo tratto dell'ammortizzo,
   lungo L_c = 0,2 · L (tra 1 e 5 mm), la conduttanza scende con continuità da C_libera a C_vite. Con
   s = profondità / L_c e k = s² (3 − 2 s):
@@ -128,6 +132,13 @@ cilindro da un orifizio speciale:
   passa sempre libera.
 - Se `cushion_length` manca: L = 0,6 · D, tra 10 e 40 mm, e mai più della corsa (della metà con
   l'ammortizzo ai due lati).
+
+**Perché uscita e rientro non sono uguali a pari apertura.** In uscita l'aria da frenare sta sull'area
+anulare A₂ e spinge l'area piena A₁; in rientro è il contrario: la spinta agisce su A₂ e la camera frenata
+ha l'area piena A₁, con più aria da far uscire dalla vite. Con la stessa apertura il rientro è quindi più
+lento nell'ammortizzo (per un Ø32 con stelo 12 circa il 20–35 % in più di tempo; la differenza cresce con
+il diametro dello stelo). Le due viti separate servono proprio a pareggiare i due fine corsa, come sul
+cilindro reale.
 
 L'aria chiusa nella camera si comprime e frena lo stelo come una molla d'aria; l'energia si dissipa
 nell'aria che passa dalla vite e nell'attrito. Con la vite molto chiusa e una massa grande lo stelo può
@@ -291,7 +302,7 @@ Dettagli e esempi in [../elettropneumatica.md](../elettropneumatica.md).
 | attrito delle guarnizioni con la pressione μ_p | 0,03 | `SEAL_PRESSURE_FRICTION`, `src/solver/constants.ts` |
 | attrito viscoso per circonferenza | 1000 N·s/m² | `VISCOUS_PER_PERIMETER`, `src/solver/constants.ts` |
 | velocità di Stribeck | 0,01 m/s | `STRIBECK_V`, `src/sim/simulator.ts` |
-| ammortizzo: C libera, C vite a tutta apertura, apertura minima | 5 e 0,3 dm³/(s·bar), 1 % | `src/sim/network.ts` |
+| ammortizzo: C libera, C vite a tutta apertura (Ø32, crescono con D²), apertura minima | 5 e 0,3 dm³/(s·bar), 1 % | `src/sim/network.ts` |
 | ammortizzo: tratto conico | 0,2 × lunghezza, tra 1 e 5 mm | `cushionTaper`, `src/sim/network.ts` |
 | tubi: λ, b | 0,03; 0,4 | `src/model/tubes.ts` |
 | passo di integrazione | 20 µs | `DT`, `src/sim/simulator.ts` |

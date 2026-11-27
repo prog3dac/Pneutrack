@@ -84,9 +84,16 @@ const PARAMS: Record<string, string> = {
   cushion_length:
     "Lunghezza dell'ammortizzo: tratto finale di corsa in cui l'aria in uscita passa solo dalla vite " +
     "di regolazione e frena il pistone. Se vuoto vale circa 0,6 volte l'alesaggio.",
-  cushion_opening:
-    "Apertura della vite di regolazione dell'ammortizzo, da 0 % (chiusa: frenata massima, rischio di " +
-    "rimbalzo) a 100 % (tutta aperta: quasi nessuna frenata). Serve solo alla simulazione.",
+  cushion_opening_rod:
+    "Apertura della vite dell'ammortizzo in uscita (sulla testata: frena l'aria della camera stelo B " +
+    "negli ultimi millimetri della corsa di uscita), da 0 % (chiusa: frenata massima, rischio di rimbalzo) " +
+    "a 100 % (tutta aperta: quasi nessuna frenata). Serve solo alla simulazione.",
+  cushion_opening_cap:
+    "Apertura della vite dell'ammortizzo in rientro (sul fondello: frena l'aria della camera A negli " +
+    "ultimi millimetri della corsa di rientro), da 0 % (chiusa: frenata massima, rischio di rimbalzo) a " +
+    "100 % (tutta aperta: quasi nessuna frenata). A pari apertura il rientro è un po' più frenato " +
+    "dell'uscita, perché la spinta agisce sull'area anulare e l'aria da frenare sta sull'area piena del " +
+    "pistone. Serve solo alla simulazione.",
   setpoint: "Pressione di taratura del componente.",
   setpoint_min:
     "Valore più basso a cui si può regolare la taratura (campo di regolazione del catalogo, per esempio " +
