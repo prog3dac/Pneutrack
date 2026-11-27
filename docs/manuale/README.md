@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.37.0**.
+Aggiornato alla versione **0.37.1**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
@@ -32,7 +32,8 @@ Altri documenti: la guida dell'interfaccia ([../interfaccia.md](../interfaccia.m
    pilotaggio che non riceve mai pressione, taratura fuori dal campo di regolazione...) la lasciano partire.
 4. **Simulazione.** *Simula* compila lo schema in una rete fisica (vedi [calcoli.md](calcoli.md)) e la fa
    avanzare nel tempo. Si azionano pulsanti, leve e solenoidi con un clic, si leggono pressioni, posizioni,
-   velocità, tempi di corsa e consumo d'aria, e si cambiano le regolazioni (riduttori, strozzatori, viti
+   velocità, tempi di corsa, consumo d'aria e la portata dei misuratori di portata (Nl/min accanto alla
+   sigla e tra i *Valori*, negativa quando l'aria va da 2 verso 1), e si cambiano le regolazioni (riduttori, strozzatori, viti
    di ammortizzo, ritardi) mentre il circuito gira.
 
 ## 2. Convenzioni

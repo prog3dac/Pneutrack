@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.37.1 · 2026-11-27
+
+- Misuratore di portata: in simulazione mostra la portata che lo attraversa, in Nl/min accanto alla sigla e tra i *Valori* del pannello, con l'aria passata dall'inizio (con il segno − quando l'aria va da 2 verso 1, per esempio nello scarico del rientro). Prima la portata era calcolata ma non compariva da nessuna parte. A cilindro fermo segna zero.
+
 ## 0.37.0 · 2026-11-27
 
 - Simulazione più veloce: circa il doppio sugli schemi grandi, e la pagina non si blocca più. L'editor dedica alla simulazione al più 12 ms per fotogramma; se uno schema grande non riesce a tenere la velocità scelta, la simulazione va più piano e accanto al tempo compare «rallentata al N %» (i risultati non cambiano).

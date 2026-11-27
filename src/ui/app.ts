@@ -356,6 +356,11 @@ function splitRef(ref: string): [string, string] {
   return [ref.slice(0, i), ref.slice(i + 1)];
 }
 const fmtBar = (bar: number) => `${bar.toFixed(bar < 10 ? 2 : 1).replace(".", ",")} bar`;
+/** portata del misuratore [Nl/min]: il segno meno quando l'aria va da 2 verso 1 */
+const fmtFlow = (q: number) => {
+  const a = Math.abs(q) < 0.05 ? 0 : q;
+  return `${a.toFixed(Math.abs(a) < 100 ? 1 : 0).replace(".", ",").replace(/^-/, "−")} Nl/min`;
+};
 
 /** Gruppi con il manometro sul corpo: FRL e, con l'opzione, riduttore e filtro riduttore (leggono la porta 2). */
 const hasIntegratedGauge = (comp: ComponentData) => comp.type === "frl_unit" ||
@@ -530,6 +535,8 @@ function render() {
       if (cyl) parts.push(comp.type === "rotary_actuator" ? rotaryAngle(comp, cyl.fraction, 0) : `${(cyl.x * 1000).toFixed(0)} mm`);
       if (sim && GAUGE_TYPES.has(comp.type)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
       if (sim && hasIntegratedGauge(comp)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.2`)));
+      const q = sim?.s.meterFlow(comp.id);
+      if (q !== undefined) parts.push(fmtFlow(q));
       if (sim && comp.type === "differential_gauge") {
         parts.push(`Δ ${fmtBar(sim.s.gauge(`${comp.id}.1`) - sim.s.gauge(`${comp.id}.2`))}`);
       }
@@ -1058,7 +1065,7 @@ function fitSheetToDrawing() {
 const VIEW_OPTIONS = [
   { key: "ids", label: "Sigle dei componenti", group: "Testi", def: true },
   { key: "desc", label: "Descrizioni", group: "Testi", def: true },
-  { key: "values", label: "Valori in simulazione (corsa, pressione, tempo)", group: "Testi", def: true },
+  { key: "values", label: "Valori in simulazione (corsa, pressione, portata, tempo)", group: "Testi", def: true },
   { key: "ports", label: "Numeri delle porte", group: "Testi", def: true },
   { key: "cams", label: "Sigle dei finecorsa", group: "Testi", def: true },
   { key: "tubes", label: "Misure di tutti i tubi", group: "Testi", def: false },
@@ -3251,6 +3258,7 @@ function renderSimPanel() {
   };
   for (const v of sim.s.net.valves) row(`Valvola ${v.id}`, `valve:${v.id}`);
   for (const c of sim.s.net.cylinders) row(`Cilindro ${c.id}`, `cyl:${c.id}`);
+  for (const m of sim.s.meters()) row(`Portata ${m}`, `meter:${m}`);
   for (const r of sim.s.electric?.net.relays ?? []) row(`${anyById(r.id)?.type === "timer_relay" ? "Temporizzatore" : "Relè"} ${r.id}`, `relay:${r.id}`);
   for (const l of sim.s.electric?.net.loads ?? []) {
     if (l.type === "valve_solenoid") row(`Bobina ${l.id}`, `load:${l.id}`);
@@ -3348,6 +3356,10 @@ function updateSimPanel() {
         : "";
       dd.textContent = msg;
       dd.hidden = !msg;
+    } else if (kind === "meter") {
+      const q = s.meterFlow(key) ?? 0;
+      dd.textContent = `${fmtFlow(q)} · ${fmtNum(s.meterVolume(key) ?? 0, 2)} Nl passati`;
+      dd.dataset.value = q.toFixed(3);
     } else if (kind === "port") {
       const bar = s.gauge(key);
       dd.textContent = fmtBar(bar);

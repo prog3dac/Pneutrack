@@ -248,7 +248,7 @@ che renderebbero instabile il calcolo.
 | Tipo | Modello |
 |---|---|
 | `pressure_sensor`, `pressure_indicator`, `differential_gauge`, `thermometer` | nessun effetto sul circuito: leggono le grandezze dei loro nodi |
-| `flow_meter` | orifizio 1 – 2: legge la portata che lo attraversa |
+| `flow_meter` | orifizio 1 – 2 (C predefinita 3 dm³/(s·bar), b 0,45): legge la portata che lo attraversa, vedi §9 |
 
 ## 7. Circuito elettrico di comando
 
@@ -292,6 +292,12 @@ Dettagli e esempi in [../elettropneumatica.md](../elettropneumatica.md).
   dell'1 % della corsa.
 - **Cicli**: dalla partenza del primo cilindro dalla posizione di riposo al ritorno di tutti a riposo; il
   consumo del ciclo parte quando la portata scende sotto 1 Nl/min.
+- **Misuratore di portata** (`flow_meter`): la simulazione integra la massa ṁ che passa nel suo orifizio
+  1 → 2 come uno stato in più di RK4; la portata mostrata è la massa passata nell'ultimo passo divisa per
+  Δt e per ρ_ANR, in Nl/min, positiva da 1 verso 2 e negativa nel verso opposto. Si usa la media pesata dei
+  quattro stadi di RK4 e non la portata istantanea perché un nodo piccolo tra due orifizi grandi (per
+  esempio tra la valvola e il misuratore, senza tubo) è rigido: RK4 vi trova un equilibrio in cui la
+  portata del singolo stadio non è zero anche a impianto fermo, mentre la massa che passa davvero sì.
 
 ## 10. Costanti del modello
 
