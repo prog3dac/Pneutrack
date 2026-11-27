@@ -2944,7 +2944,9 @@ function startSim() {
   showDiagram(true);
   fitView();
   sim.raf = requestAnimationFrame(simFrame);
-  if (r.warnings.length) toast(r.warnings[0]!);
+  if (r.warnings.length) {
+    toast(r.warnings.length > 1 ? `${r.warnings.length} avvisi: li trovi nel pannello Simulazione` : r.warnings[0]!);
+  }
 }
 
 function stopSim() {
