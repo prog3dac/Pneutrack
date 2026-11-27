@@ -210,6 +210,8 @@ button.link:hover { text-decoration: underline; }
 
 .component { cursor: move; }
 .component .halo { fill: transparent; stroke: none; }
+.component:focus { outline: none; }
+.component:focus-visible .halo { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
 .component:hover .halo { fill: var(--accent-soft); fill-opacity: .45; }
 .component.selected .halo { fill: var(--accent-soft); fill-opacity: .7; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
 .component.has-error .halo { stroke: var(--error); stroke-width: 1.5; stroke-dasharray: none; }

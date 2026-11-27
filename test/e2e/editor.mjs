@@ -326,6 +326,19 @@ s = await state();
 assert.equal(s.doc.components.length, 8);
 assert.equal(s.analysis.issues.length, 0);
 if (shots) await page.screenshot({ path: `${shots}/esempio.png` });
+{ // da tastiera: Tab seleziona un componente, le frecce lo spostano, Ctrl+Z annulla
+  await page.focus("#components [data-component]");
+  await page.keyboard.press("Tab");
+  const id = await page.evaluate(() => window.pneutrack.selection?.id);
+  assert.ok(id, "Tab seleziona un componente");
+  const x0 = (await state()).doc.layout[id].x;
+  await page.keyboard.press("ArrowRight");
+  assert.equal((await state()).doc.layout[id].x, x0 + 10, "la freccia sposta di un passo di griglia");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-component")), id, "il fuoco resta sul componente");
+  await page.keyboard.press("Control+z");
+  assert.equal((await state()).doc.layout[id].x, x0);
+  await page.keyboard.press("Escape");
+}
 // senza sigle e numeri di porta le etichette restano solo con le descrizioni
 const labelTexts = () => page.locator("#labels .label").evaluateAll((els) => els.map((e) => e.textContent));
 assert.ok((await labelTexts()).some((t) => t.startsWith("V1")));

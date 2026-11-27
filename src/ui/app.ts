@@ -405,6 +405,9 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
 }
 
 function render() {
+  // il disegno si rifà da capo: il componente che aveva il fuoco della tastiera lo ritrova dopo
+  const focused = (document.activeElement as Element | null)?.closest?.("#components [data-component]")
+    ?.getAttribute("data-component");
   viewport.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
   $("#grid-pattern").setAttribute("patternTransform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
@@ -498,6 +501,9 @@ function render() {
     const grp = el("g", {
       class: cls, "data-component": comp.id,
       transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})${l.mirror ? " scale(-1,1)" : ""}`,
+      // da tastiera: Tab passa da un componente all'altro, le frecce lo spostano, Invio apre i dati
+      tabindex: 0, role: "button",
+      "aria-label": `${comp.id}${comp.label ? ` · ${comp.label}` : ""} (${catalogEntry(comp.type)?.label ?? comp.type})`,
     });
     const pad = 6;
     grp.append(el("rect", { class: "halo", x: -g.w / 2 - pad, y: -g.h / 2 - pad,
@@ -592,6 +598,7 @@ function render() {
   positionSelbar();
   positionTunePop();
   $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
+  if (focused) document.querySelector<SVGGElement>(`#components [data-component="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
 }
 
 /** Barra mobile sopra la selezione: ruota, specchia, duplica, elimina. */
@@ -4436,8 +4443,36 @@ document.addEventListener("keydown", (e) => {
   else if (key === "v" && !mod) mirrorSelection("v");
   else if (e.key === "Escape") select(null);
   else if (e.key === "Enter" && selection?.kind === "component") { e.preventDefault(); openPropsDialog({ kind: "component", id: selection.id }); }
+  else if (e.key.startsWith("Arrow") && !mod && (selectedIds().length || selectedAnns().length)) {
+    // frecce: sposta la selezione di un passo di griglia (con Maiusc di cinque)
+    e.preventDefault();
+    const step = GRID * (e.shiftKey ? 5 : 1);
+    nudgeSelection(e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0,
+                   e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0);
+  }
   else if (key === "f" && !mod) fitView();
 });
+
+// Tab su un componente lo seleziona (solo da tastiera: il clic seleziona già, e con Maiusc aggiunge)
+$("#components").addEventListener("focusin", (e) => {
+  const g = (e.target as Element).closest<SVGGElement>("[data-component]");
+  if (!g || !g.matches(":focus-visible")) return;
+  const id = g.dataset.component!;
+  if (!selectedIds().includes(id)) select({ kind: "component", id });
+});
+
+/** Sposta componenti e annotazioni selezionati, con le pieghe delle linee tra loro (un passo di Ctrl+Z). */
+function nudgeSelection(dx: number, dy: number) {
+  if (sim || (!dx && !dy)) return;
+  const ids = new Set(selectedIds()), anns = selectedAnns();
+  mutate(() => {
+    for (const id of ids) { const l = layoutOf(id); l.x += dx; l.y += dy; }
+    for (const c of doc.connections) {
+      if (c.points && ids.has(splitRef(c.from)[0]) && ids.has(splitRef(c.to)[0])) c.points = c.points.map(([x, y]) => [x + dx, y + dy]);
+    }
+    for (const id of anns) { const a = annById(id); if (a && !a.locked) moveAnn(a, dx, dy); }
+  });
+}
 
 function selectAll() {
   select(selectionOf(doc.components.map((c) => c.id), (doc.annotations ?? []).map((a) => a.id)));
