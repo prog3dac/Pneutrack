@@ -3679,7 +3679,9 @@ function duplicatePageAt(i: number) {
     pages.splice(i + 1, 0, copy);
   });
   goToPage(i + 1);
-  toast(`Duplicato «${src.name}»: i componenti hanno sigle nuove`);
+  const refs = src.doc.components.some((c) => c.type in REFERENCE_TYPES);
+  toast(`Duplicato «${src.name}»: i componenti hanno sigle nuove` +
+        (refs ? ", i rimandi finiscono in «(copia)» e restano staccati finché non li rinomini" : ""));
 }
 
 function deletePage(i: number) {

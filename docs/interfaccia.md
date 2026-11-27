@@ -81,7 +81,8 @@ dei problemi.
 - **Fogli**: le schede sotto l'area di lavoro mostrano i fogli del progetto. Un clic apre un foglio
   (anche in simulazione; da tastiera *PagSu* / *PagGiù*), *+* ne aggiunge uno dopo quello aperto con lo
   stesso formato e cartiglio, il doppio clic rinomina, il trascinamento riordina; il menu ▾ (o il clic
-  destro) rinomina, duplica (con sigle nuove), sposta ed elimina. Ogni foglio ha il suo disegno e il suo
+  destro) rinomina, duplica (con sigle nuove; i rimandi copiati finiscono in «(copia)» e restano staccati finché
+  non li si rinomina, così la copia non si collega da sola alle linee dell'originale), sposta ed elimina. Ogni foglio ha il suo disegno e il suo
   cartiglio, che riporta «Foglio n di N» e il nome del foglio. Il circuito è uno solo: i rimandi
   (pneumatico e elettrico) con la stessa descrizione collegano i fogli, accanto a ogni rimando compare
   il foglio dove prosegue (un clic ci porta) e la simulazione tratta tutti i fogli insieme. Copia e
