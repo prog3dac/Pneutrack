@@ -3571,21 +3571,50 @@ function currentSheet(): SheetData | null {
   return { ...doc.sheet, origin: centeredOrigin(doc.sheet, box) };
 }
 
-function fitView() {
+/**
+ * Parte del foglio non coperta dai pannelli che gli stanno sopra (legenda, barra dello zoom), in coordinate
+ * dello schermo relative al foglio. Ogni pannello toglie il lato che lascia più spazio libero.
+ */
+function freeArea(): { x: number; y: number; w: number; h: number } {
   const r = svg.getBoundingClientRect();
+  let x0 = 0, y0 = 0, x1 = r.width, y1 = r.height;
+  for (const sel of ["#legend", "#view-tools"]) {
+    const e = document.querySelector<HTMLElement>(sel);
+    if (!e || e.hidden) continue;
+    const b = e.getBoundingClientRect();
+    if (!b.width || !b.height) continue;
+    const bx0 = b.left - r.left, by0 = b.top - r.top, bx1 = b.right - r.left, by1 = b.bottom - r.top;
+    // il pannello non tocca l'area ancora libera
+    if (bx1 <= x0 || bx0 >= x1 || by1 <= y0 || by0 >= y1) continue;
+    const options = [
+      { x0: Math.max(x0, bx1), y0, x1, y1 }, // a destra del pannello
+      { x0, y0, x1: Math.min(x1, bx0), y1 }, // a sinistra
+      { x0, y0: Math.max(y0, by1), x1, y1 }, // sotto
+      { x0, y0, x1, y1: Math.min(y1, by0) }, // sopra
+    ].filter((o) => o.x1 - o.x0 > r.width * 0.4 && o.y1 - o.y0 > r.height * 0.4);
+    if (!options.length) continue; // pannello troppo grande: meglio coperto che minuscolo
+    const best = options.reduce((a, o) => ((o.x1 - o.x0) * (o.y1 - o.y0) > (a.x1 - a.x0) * (a.y1 - a.y0) ? o : a));
+    ({ x0, y0, x1, y1 } = best);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function fitView() {
+  const r = freeArea();
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
   const sheet = currentSheet();
   if (sheet) {
     const s = sheetRect(sheet), pad = 30;
-    const k = Math.min(r.width / (s.w + 2 * pad), r.height / (s.h + 2 * pad));
-    view = { k, x: r.width / 2 - (s.x + s.w / 2) * k, y: r.height / 2 - (s.y + s.h / 2) * k };
+    const k = Math.min(r.w / (s.w + 2 * pad), r.h / (s.h + 2 * pad));
+    view = { k, x: cx - (s.x + s.w / 2) * k, y: cy - (s.y + s.h / 2) * k };
     return render();
   }
   const box = contentBox();
-  if (!box) { view = { x: r.width / 2, y: r.height / 2, k: 1 }; return render(); }
+  if (!box) { view = { x: cx, y: cy, k: 1 }; return render(); }
   const x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
-  const pad = 60;
-  const k = Math.max(0.3, Math.min(2, Math.min(r.width / (x1 - x0 + 2 * pad), r.height / (y1 - y0 + 2 * pad))));
-  view = { k, x: r.width / 2 - ((x0 + x1) / 2) * k, y: r.height / 2 - ((y0 + y1) / 2) * k };
+  const pad = 40;
+  const k = Math.max(0.3, Math.min(2, Math.min(r.w / (x1 - x0 + 2 * pad), r.h / (y1 - y0 + 2 * pad))));
+  view = { k, x: cx - ((x0 + x1) / 2) * k, y: cy - ((y0 + y1) / 2) * k };
   render();
 }
 
