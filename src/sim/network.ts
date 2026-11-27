@@ -267,8 +267,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
 
   const tunables: Tunable[] = [];
   const tune = (c: Component, param: string, label: string, kind: TunableKind, value: number,
-                apply: (v: number) => void) => {
-    const [min, max, step] = kind === "pressure" ? [...pressureRange(c, value), PRESSURE_STEP]
+                apply: (v: number) => void, range?: [number, number]) => {
+    const [min, max, step] = range ? [...range, kind === "pressure" ? PRESSURE_STEP / 2 : 0.01]
+      : kind === "pressure" ? [...pressureRange(c, value), PRESSURE_STEP]
       : kind === "opening" ? [0, 1, 0.01]
       : [0, Math.max(10, 3 * value), 0.1];
     tunables.push({ id: c.id, param, label, kind, min, max, step, initial: value, value, apply });
@@ -299,9 +300,13 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
              (v) => fixed.set(n, P_ATM + v));
         break;
       }
-      case "vacuum_pump":
-        fixed.set(node(c, "1"), Math.max(0.05 * BAR, P_ATM - c.params.vacuum!.si));
+      case "vacuum_pump": {
+        const n = node(c, "1"), vac = c.params.vacuum!.si;
+        fixed.set(n, Math.max(0.05 * BAR, P_ATM - vac));
+        tune(c, "vacuum", "Grado di vuoto", "pressure", vac, (v) => fixed.set(n, Math.max(0.05 * BAR, P_ATM - v)),
+             [0, Math.max(vac, P_ATM - 0.05 * BAR)]);
         break;
+      }
       case "silencer":
       case "exhaust":
         fixed.set(node(c, "1"), P_ATM);
