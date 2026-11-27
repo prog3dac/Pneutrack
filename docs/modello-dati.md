@@ -375,8 +375,9 @@ console.log(report.ok, report.pressures["C1.A"]?.text); // true "6 bar"
 concentrati: ogni rete di porte è un volume con una pressione, valvole, riduttori e strozzatori sono
 orifizi ISO 6358 (conduttanza C, rapporto critico b), i cilindri sono masse con attrito.
 `Simulator` (`src/sim/simulator.ts`) la integra con passi RK4 fissi (20 µs) e lascia cambiare i
-comandi delle valvole mentre gira. Le equazioni sono quelle del solutore di riferimento in
-`src/solver`, con cui `test/sim.test.ts` confronta i risultati.
+comandi delle valvole mentre gira. Nel caso base (orifizi, volumi, cilindro con attrito coulombiano e
+viscoso) le equazioni sono quelle del prototipo in `src/solver`, con cui `test/sim.test.ts` confronta i
+risultati; attrito di primo distacco, ammortizzo, peso, bloccaggio e consumo d'aria esistono solo in `src/sim`.
 
 ### Simulazione del circuito elettrico
 

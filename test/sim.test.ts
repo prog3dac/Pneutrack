@@ -46,6 +46,19 @@ describe("simulazione dello schema dell'editor", () => {
     expect(k).toBeGreaterThan(100);
   });
 
+  it("con un tempo di calcolo massimo avanza meno, ma nello stesso modo", () => {
+    const a = sim(direct52), b = sim(direct52);
+    a.setCommand("V1", "14", true);
+    b.setCommand("V1", "14", true);
+    expect(a.advance(0.1)).toBeCloseTo(0.1, 9);
+    // budget nullo: si ferma al primo controllo dell'orologio (100 passi)
+    const done = b.advance(0.1, 0);
+    expect(done).toBeCloseTo(100 * DT, 12);
+    expect(b.t).toBeCloseTo(done, 12);
+    while (b.t < a.t - DT / 2) b.advance(Math.min(0.01, a.t - b.t));
+    expect(b.cylinder("C1")!.x).toBe(a.cylinder("C1")!.x);
+  });
+
   it("il cilindro esce col solenoide e rientra con la molla della valvola", () => {
     const s = sim(direct52);
     s.advance(0.05);

@@ -2902,8 +2902,12 @@ interface SimRun {
   lastPanel: number;
   warnings: string[];
   recorder: Recorder;
+  /** frazione della velocità scelta che il calcolo riesce a tenere (1 = al passo) */
+  pace: number;
 }
 let sim: SimRun | null = null;
+/** tempo di calcolo massimo della simulazione per fotogramma [ms] */
+const SIM_BUDGET_MS = 12;
 /** componente con la regolazione aperta accanto al simbolo */
 let tuneOpen: string | null = null;
 /** diagramma delle fasi aperto e asse orizzontale scelto */
@@ -2925,7 +2929,7 @@ function startSim() {
   }
   const speed = Number($<HTMLSelectElement>("#sim-speed").value) || 0.25;
   sim = { s: new Simulator(r.network), playing: true, speed, raf: 0, last: performance.now(), lastPanel: 0,
-          warnings: r.warnings, recorder: null! };
+          warnings: r.warnings, recorder: null!, pace: 1 };
   sim.recorder = newRecorder(sim.s);
   sim.recorder.record(0);
   $("#app").classList.add("simulating");
@@ -3031,7 +3035,14 @@ function simFrame(ts: number) {
   if (!sim) return;
   const dt = Math.min(0.05, Math.max(0, (ts - sim.last) / 1000));
   sim.last = ts;
-  if (sim.playing) { sim.s.advance(dt * sim.speed); sim.recorder.record(sim.s.t); }
+  if (sim.playing) {
+    const want = dt * sim.speed;
+    // al più SIM_BUDGET_MS di calcolo per fotogramma: con schemi grandi la simulazione rallenta, la pagina no
+    const done = sim.s.advance(want, SIM_BUDGET_MS);
+    // velocità reale rispetto a quella scelta, media sugli ultimi fotogrammi
+    if (want > 0) sim.pace = 0.9 * sim.pace + 0.1 * Math.min(1, done / want);
+    sim.recorder.record(sim.s.t);
+  }
   render();
   if (ts - sim.lastPanel > 120) { sim.lastPanel = ts; updateSimPanel(); if (diagramOpen) renderDiagramPanel(); }
   sim.raf = requestAnimationFrame(simFrame);
@@ -3279,7 +3290,12 @@ function renderSimPanel() {
 function updateSimPanel() {
   if (!sim) return;
   const s = sim.s;
-  $("#sim-time").textContent = `t = ${s.t.toFixed(2).replace(".", ",")} s`;
+  const slow = sim.playing && sim.pace < 0.9;
+  $("#sim-time").textContent = `t = ${s.t.toFixed(2).replace(".", ",")} s` +
+    (slow ? ` · rallentata al ${Math.round(sim.pace * 100)} %` : "");
+  $("#sim-time").title = slow
+    ? "Lo schema è grande: il calcolo non tiene la velocità scelta e la simulazione va più piano. I risultati non cambiano."
+    : "";
   document.body.dataset.simTime = s.t.toFixed(3);
   const POS: Record<string, string> = { "14": "lato 14 (azionata)", "12": "lato 12", "0": "centrale" };
   const el = s.electricState();

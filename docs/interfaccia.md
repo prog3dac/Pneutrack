@@ -263,7 +263,7 @@ centrale del mouse per spostare la vista.
 |---|---|
 | `src/model/` | unità, componenti, schema, validazione ([modello-dati.md](modello-dati.md)) |
 | `src/sim/` | dallo schema alla rete fisica, simulazione interattiva |
-| `src/solver/` | solutore di riferimento (orifizi ISO 6358, RK4) |
+| `src/solver/` | prototipo del solutore (orifizi ISO 6358, RK4): riferimento indipendente per i test del caso base e `npm run demo`; non ha attrito di primo distacco, ammortizzo, peso, bloccaggio né consumo |
 | `src/ui/diagram.ts` | diagramma delle fasi (registrazione in `src/sim/recorder.ts`, tempi di corsa e cicli in `src/sim/measures.ts`) |
 | `src/ui/symbols.ts` | simboli in stile ISO 1219, posizione delle porte, stato animato |
 | `src/ui/app.ts` | stato, disegno, interazioni, annulla/ripeti, progetti, simulazione |

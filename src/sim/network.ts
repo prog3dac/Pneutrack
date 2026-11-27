@@ -30,7 +30,7 @@ export interface Orifice {
   /** riduttore: il flusso a→b si chiude quando la pressione in b raggiunge questo valore (Pa ass.) */
   limit?: number;
   /** come `limit`, ma variabile con le pressioni dei nodi (riduttore pilotato) */
-  limitFn?: (P: number[]) => number;
+  limitFn?: (P: ArrayLike<number>) => number;
   /**
    * moltiplicatore di pressione: a monte vale P_ATM + boost·(Pa − P_ATM) e il nodo `a` cede `boost` volte
    * la massa che passa (bilancio approssimato delle aree del moltiplicatore)
@@ -39,7 +39,7 @@ export interface Orifice {
   /** solo da a verso b (non ritorno) */
   oneWay?: boolean;
   /** apertura 0..1 in funzione delle pressioni assolute dei nodi (valvole logiche, di sicurezza...) */
-  gate?: (P: number[]) => number;
+  gate?: (P: ArrayLike<number>) => number;
   /**
    * ammortizzo: orifizio tra la camera `a` del cilindro e la sua porta `b`. Negli ultimi `length`
    * metri di corsa verso quella camera l'aria in uscita passa solo dalla vite (conduttanza `C`);
@@ -248,7 +248,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   });
 
   const extraVolumes: [number, number][] = [];
-  const gauge = (P: number[], n: number) => P[n]! - P_ATM;
+  const gauge = (P: ArrayLike<number>, n: number) => P[n]! - P_ATM;
   /** apertura progressiva tra 0 e 1 attorno a una soglia (evita commutazioni a scatto) */
   const ramp = (x: number, width: number) => Math.min(1, Math.max(0, x / width));
   /** valvola 3/2 NC (porte 1, 2, 3) comandata dal pilotaggio 12 */
@@ -423,7 +423,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "vacuum_ejector": {
         const i1 = node(c, "1"), vac = simParam(c, "max_vacuum").si;
         // il vuoto cresce con la pressione di alimentazione: pieno sopra circa 4 bar
-        const on = (P: number[]) => ramp(gauge(P, i1) - 0.5 * BAR, 3.5 * BAR);
+        const on = (P: ArrayLike<number>) => ramp(gauge(P, i1) - 0.5 * BAR, 3.5 * BAR);
         const sink = nodeCount++;
         fixed.set(sink, Math.max(0.05 * BAR, P_ATM - vac));
         orifices.push(orifice("1", "3"));
@@ -442,7 +442,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "double_pilot_check": {
         const threshold = simParam(c, "pilot_pressure").si;
         const p1 = node(c, "1"), p3 = node(c, "3");
-        const open = (n: number) => (P: number[]) => ramp(gauge(P, n) - threshold + 0.1 * BAR, 0.2 * BAR);
+        const open = (n: number) => (P: ArrayLike<number>) => ramp(gauge(P, n) - threshold + 0.1 * BAR, 0.2 * BAR);
         orifices.push(orifice("1", "2", { oneWay: true }), orifice("2", "1", { oneWay: true, gate: open(p3) }));
         orifices.push(orifice("3", "4", { oneWay: true }), orifice("4", "3", { oneWay: true, gate: open(p1) }));
         break;
