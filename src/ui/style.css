@@ -370,6 +370,21 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
   box-shadow: 0 12px 40px rgba(0, 0, 0, .18); padding: 16px 18px;
 }
 .dialog.wide { width: min(980px, 100%); }
+.manual-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }
+.manual-tabs button { font-size: 13px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 14px;
+  background: none; color: var(--text); cursor: pointer; }
+.manual-tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.manual { overflow-y: auto; max-height: 70vh; font-size: 13.5px; line-height: 1.5; padding-right: 6px; }
+.manual h1 { font-size: 18px; margin: 4px 0 10px; }
+.manual h2 { font-size: 16px; margin: 18px 0 6px; }
+.manual h3 { font-size: 14px; margin: 14px 0 4px; }
+.manual code { font-size: 12px; background: color-mix(in srgb, var(--text) 8%, transparent); padding: 0 3px; border-radius: 3px; }
+.manual pre { background: color-mix(in srgb, var(--text) 6%, transparent); padding: 8px; border-radius: 6px; overflow-x: auto; }
+.manual ul, .manual ol { padding-left: 20px; }
+.manual-table { overflow-x: auto; margin: 6px 0 10px; }
+.manual table { border-collapse: collapse; font-size: 12.5px; }
+.manual th, .manual td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.manual th { color: var(--muted); font-weight: 600; }
 .bom-scroll { overflow: auto; border-top: 1px solid var(--border); }
 .bom-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .bom-table th, .bom-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }

@@ -3,7 +3,8 @@
 Aggiornato alla versione **0.35.0**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
-regole con cui Pneutrack li usa per calcolare la simulazione. È diviso in tre parti:
+regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
+d'uso…», anche senza rete. È diviso in tre parti:
 
 | Parte | Contenuto |
 |---|---|

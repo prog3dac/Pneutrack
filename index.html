@@ -34,6 +34,7 @@
           <button data-act="bom" title="Elenco dei pezzi dello schema con sigle, dati, codici e quantità; si scarica in CSV o PDF">Distinta componenti…</button>
           <hr>
           <button id="btn-install" data-act="install" title="Installa Pneutrack sul computer o sul tablet: si apre in una finestra sua, anche senza rete" hidden>Installa l'app…</button>
+          <button data-act="manual" title="Convenzioni, come si ricavano i dati, formule della simulazione e parametri di tutti i componenti (anche senza rete)">Manuale d'uso…</button>
           <a class="menu-link" href="simboli.html" target="_blank" rel="noopener" title="Tutti i componenti con simbolo, descrizione e porte">Catalogo dei simboli ↗</a>
         </div>
       </details>
@@ -194,6 +195,16 @@
       </header>
       <p class="news-link"><a href="simboli.html" target="_blank" rel="noopener">Catalogo dei simboli</a>: tutti i componenti con simbolo, descrizione e porte.</p>
       <div id="news-body" class="news"></div>
+    </div>
+  </div>
+  <div id="manual-dialog" class="overlay" hidden>
+    <div class="dialog wide manual-dialog" role="dialog" aria-modal="true" aria-labelledby="manual-title">
+      <header>
+        <h2 id="manual-title">Manuale d'uso</h2>
+        <button data-mact="close" class="icon" aria-label="Chiudi">✕</button>
+      </header>
+      <div id="manual-tabs" class="manual-tabs" role="tablist"></div>
+      <div id="manual-body" class="manual"></div>
     </div>
   </div>
   <div id="bom-dialog" class="overlay" hidden>

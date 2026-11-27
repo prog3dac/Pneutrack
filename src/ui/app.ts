@@ -35,6 +35,7 @@ import { strokes, summarize } from "../sim/measures";
 import { diagramHeight, fmt as fmtNum, renderDiagram, type DiagramMode } from "./diagram";
 import { BAR, P_ATM } from "../solver/constants";
 import { APP_VERSION, parseChangelog } from "./changelog";
+import { MANUAL_PARTS, renderManual } from "./manual";
 import { bomToPdf, sheetSvg, svgsToPdf } from "./pdf";
 import { BOM_HEADERS, billOfMaterials, bomCells, bomCsv } from "../model/bom";
 import { dxfBytes, sheetsToDxf } from "./dxf";
@@ -4344,6 +4345,7 @@ document.addEventListener("keydown", (e) => {
   if (mod && key === "s") { e.preventDefault(); saveProject({ asNew: e.shiftKey }); return; }
   if (e.key === "Escape" && !$("#projects-dialog").hidden) { closeProjects(); return; }
   if (e.key === "Escape" && !$("#news-dialog").hidden) { closeNews(); return; }
+  if (e.key === "Escape" && !$("#manual-dialog").hidden) { closeManual(); return; }
   if (e.key === "Escape" && !$("#bom-dialog").hidden) { closeBom(); return; }
   if (e.key === "Escape" && !$("#export-dialog").hidden) { closeExportScope(null); return; }
   if (e.key === "Escape" && sheetMenuFor >= 0) { closeSheetMenu(); return; }
@@ -4991,6 +4993,7 @@ $("#toolbar").addEventListener("click", (e) => {
     case "paste": pasteClip(); break;
     case "redo": redo(); break;
     case "whats-new": openNews(); break;
+    case "manual": openManual(); break;
     case "sim": startSim(); break;
   }
 });
@@ -5020,6 +5023,33 @@ function openNews() {
   try { localStorage.setItem(VERSION_KEY, APP_VERSION); } catch { /* nessuna memoria */ }
 }
 function closeNews() { $("#news-dialog").hidden = true; }
+
+// --- manuale d'uso ------------------------------------------------------------------
+let manualPart = MANUAL_PARTS[0]!.file;
+const manualHtml = new Map<string, string>();
+
+/** Apre il manuale sulla parte `file` (se manca, l'ultima letta) e scorre fino all'ancora. */
+function openManual(file = manualPart, anchor = "") {
+  const part = MANUAL_PARTS.find((p) => p.file === file) ?? MANUAL_PARTS[0]!;
+  manualPart = part.file;
+  const tabs = $("#manual-tabs");
+  tabs.replaceChildren(...MANUAL_PARTS.map((p) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = p.title;
+    b.dataset.manualPart = p.file;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(p.file === part.file));
+    return b;
+  }));
+  const body = $("#manual-body");
+  if (!manualHtml.has(part.file)) manualHtml.set(part.file, renderManual(part.text));
+  body.innerHTML = manualHtml.get(part.file)!;
+  $("#manual-dialog").hidden = false;
+  const el = anchor ? body.querySelector<HTMLElement>(`[id="${CSS.escape(anchor)}"]`) : null;
+  if (el) el.scrollIntoView({ block: "start" }); else body.scrollTop = 0;
+}
+function closeManual() { $("#manual-dialog").hidden = true; }
 
 // --- distinta componenti --------------------------------------------------------------
 /** foglio di ogni sigla per la distinta (solo con più fogli) */
@@ -5085,6 +5115,14 @@ $("#bom-on-sheet").addEventListener("change", () => {
   const on = $<HTMLInputElement>("#bom-on-sheet").checked;
   if (on && !doc.sheet) fitSheetToDrawing();
   mutate(() => { if (!doc.sheet) return; if (on) doc.sheet.bom = true; else delete doc.sheet.bom; });
+});
+$("#manual-dialog").addEventListener("click", (e) => {
+  const t = target(e);
+  if (t.id === "manual-dialog" || t.closest("[data-mact=close]")) { closeManual(); return; }
+  const link = t.closest<HTMLElement>("[data-manual-part], [data-manual-anchor]");
+  if (!link) return;
+  e.preventDefault();
+  openManual(link.dataset.manualPart || manualPart, link.dataset.manualAnchor ?? "");
 });
 $("#news-dialog").addEventListener("click", (e) => {
   if (target(e).id === "news-dialog" || target(e).closest("[data-nact=close]")) closeNews();

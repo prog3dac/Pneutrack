@@ -76,6 +76,18 @@ await page.keyboard.press("Escape");
 assert.ok(await page.locator("#news-dialog").isHidden());
 assert.equal(await page.locator("#legend li").count(), 10);
 
+// manuale d'uso: dal menu File, con le tre parti e i collegamenti tra le parti
+await page.click("#file-menu summary");
+await page.click('[data-act="manual"]');
+assert.match(await page.textContent("#manual-body"), /Convenzioni/);
+assert.equal(await page.locator("#manual-tabs button").count(), 3);
+await page.click('#manual-tabs button[data-manual-part="calcoli.md"]');
+assert.match(await page.textContent("#manual-body"), /ISO 6358/);
+await page.click('#manual-tabs button[data-manual-part="componenti.md"]');
+assert.match(await page.textContent("#manual-body"), /double_acting_cylinder/);
+await page.keyboard.press("Escape");
+assert.ok(await page.locator("#manual-dialog").isHidden());
+
 // menu Mostra: nasconde la legenda e la ripristina
 await page.click("#view-filter summary");
 await page.uncheck('#view-filter input[name="show-legend"]');
