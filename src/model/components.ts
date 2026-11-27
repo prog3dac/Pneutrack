@@ -1103,9 +1103,14 @@ const DEFS: TypeDef[] = [
   },
   {
     type: "rotary_actuator", label: "Attuatore rotante", category: ACTUATORS,
-    doc: "Attuatore rotante ad angolo limitato, a doppio effetto o a semplice effetto con richiamo a molla " +
-      "(non ancora simulato).",
-    params: [p("angle", "Angolo", "angle", { required: true }), MAX_P, MIN_P],
+    doc: "Attuatore rotante ad angolo limitato (pignone e cremagliera), a doppio effetto o a semplice effetto con " +
+      "richiamo a molla. Il volume per corsa è quello di catalogo (aria per una rotazione completa dell'angolo, una camera).",
+    params: [p("angle", "Angolo", "angle", { required: true }), MAX_P, MIN_P,
+             p("displacement", "Volume per corsa", "volume", { group: "sim", simDefault: "30 cm3" }),
+             p("mass", "Massa equivalente sul raggio primitivo", "mass", { group: "sim", simDefault: "0.5 kg" }),
+             p("load", "Carico sul raggio primitivo", "force", { group: "sim", simDefault: "0 N" }),
+             p("friction", "Attrito", "force", { group: "sim", simDefault: "5 N" }),
+             p("spring_force", "Forza molla (semplice effetto)", "force", { group: "sim", simDefault: "30 N" })],
     options: [{ name: "rotary_kind", label: "Tipo", default: "double", choices: [
       ["double", "Doppio effetto"], ["single", "Semplice effetto (richiamo a molla)"]] }],
     defaults: { angle: "90 deg", max_pressure: "10 bar" },

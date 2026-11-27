@@ -973,7 +973,7 @@ Muscolo pneumatico: con la porta A in pressione si accorcia e tira; scaricato to
 
 ### Attuatore rotante · `rotary_actuator`
 
-Attuatore rotante ad angolo limitato, a doppio effetto o a semplice effetto con richiamo a molla (non ancora simulato).
+Attuatore rotante ad angolo limitato (pignone e cremagliera), a doppio effetto o a semplice effetto con richiamo a molla. Il volume per corsa è quello di catalogo (aria per una rotazione completa dell'angolo, una camera).
 
 **Porte**: `A` utilizzo, `B` utilizzo.
 
@@ -986,6 +986,11 @@ Attuatore rotante ad angolo limitato, a doppio effetto o a semplice effetto con 
 | `angle` | Angolo | angolo (rad, deg) | catalogo, obbligatorio | `90 deg` | obbligatorio |
 | `max_pressure` | Pressione max | pressione (Pa, kPa, MPa, bar, mbar, psi) | catalogo, facoltativo | `10 bar` | — |
 | `min_pressure` | Pressione min | pressione (Pa, kPa, MPa, bar, mbar, psi) | catalogo, facoltativo |  | — |
+| `displacement` | Volume per corsa | volume (m3, l, cm3) | simulazione, facoltativo |  | 30 cm3 |
+| `mass` | Massa equivalente sul raggio primitivo | massa (kg, g) | simulazione, facoltativo |  | 0.5 kg |
+| `load` | Carico sul raggio primitivo | forza (N, kN, daN) | simulazione, facoltativo |  | 0 N |
+| `friction` | Attrito | forza (N, kN, daN) | simulazione, facoltativo |  | 5 N |
+| `spring_force` | Forza molla (semplice effetto) | forza (N, kN, daN) | simulazione, facoltativo |  | 30 N |
 
 **Voci della palette**: Attuatore rotante a doppio effetto; Attuatore rotante a semplice effetto.
 

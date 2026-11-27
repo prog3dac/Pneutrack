@@ -174,6 +174,8 @@ function pressureRange(c: Component, value: number): [number, number] {
 const NODE_VOLUME = 1e-6;
 const G = 9.81;
 const DEAD_VOLUME = 5e-6;
+/** raggio primitivo del pignone degli attuatori rotanti [m]: la rotazione diventa una corsa lineare */
+export const ROTARY_PITCH_RADIUS = 0.01;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
 /** comandi alimentati dalla porta 1 della valvola stessa */
 const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return" || a === "spring_air_return";
@@ -609,6 +611,22 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
             : c.type === "end_lock_cylinder"
               ? { node: node(c, "A"), threshold: simParam(c, "unlock_pressure").si, at: "cap" }
               : undefined,
+        });
+        break;
+      }
+      case "rotary_actuator": {
+        // pignone e cremagliera: la rotazione θ è la corsa r·θ di un pistone di area V / (r·θ) con le due camere
+        // uguali; massa, carico e attrito sono riportati al raggio primitivo r
+        const theta = c.params.angle!.si, stroke = ROTARY_PITCH_RADIUS * theta;
+        const A = simParam(c, "displacement").si / stroke;
+        const single = c.rotary_kind === "single";
+        cylinders.push({
+          id: c.id, capNode: node(c, "A"), rodNode: single ? atmosphere() : node(c, "B"),
+          A1: A, A2: A, stroke, Vcap0: DEAD_VOLUME, Vrod0: DEAD_VOLUME,
+          mass: simParam(c, "mass").si, load: simParam(c, "load").si,
+          frictionCoulomb: simParam(c, "friction").si, frictionStatic: simParam(c, "friction").si, gravity: 0,
+          frictionViscous: VISCOUS_PER_PERIMETER * 2 * Math.sqrt(Math.PI * A), frictionPressure: SEAL_PRESSURE_FRICTION,
+          spring: single ? simParam(c, "spring_force").si : 0,
         });
         break;
       }

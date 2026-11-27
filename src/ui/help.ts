@@ -195,6 +195,10 @@ const TYPE_PARAMS: Record<string, string> = {
   "sequence_valve.setpoint":
     "Pressione sul pilotaggio 12 alla quale la valvola di sequenza commuta e mette in comunicazione 1 con 2. " +
     "Si usa per far partire un movimento solo quando il precedente ha raggiunto una certa forza.",
+  displacement:
+    "Volume d'aria di una camera per una rotazione completa dell'angolo, come a catalogo (cm³). Con l'angolo dà " +
+    "la coppia: M = p · V / θ. La simulazione tratta l'attuatore come pignone e cremagliera con raggio primitivo " +
+    "di 10 mm. Serve solo alla simulazione.",
   "pressure_switch.setpoint":
     "Pressione alla quale il pressostato commuta il suo contatto elettrico.",
   "pressure_switch.hysteresis":

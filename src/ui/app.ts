@@ -521,7 +521,7 @@ function render() {
     if (show.desc && comp.label) parts.push(comp.label);
     if (show.values) {
       const cyl = sim?.s.cylinder(comp.id);
-      if (cyl) parts.push(`${(cyl.x * 1000).toFixed(0)} mm`);
+      if (cyl) parts.push(comp.type === "rotary_actuator" ? rotaryAngle(comp, cyl.fraction, 0) : `${(cyl.x * 1000).toFixed(0)} mm`);
       if (sim && GAUGE_TYPES.has(comp.type)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
       if (sim && hasIntegratedGauge(comp)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.2`)));
       if (sim && comp.type === "differential_gauge") {
@@ -3289,6 +3289,13 @@ function renderSimPanel() {
   updateSimPanel();
 }
 
+/** Angolo raggiunto da un attuatore rotante, in gradi. */
+function rotaryAngle(comp: ComponentData, fraction: number, digits: number): string {
+  let angle = 90;
+  try { angle = Quantity.parse(comp.params?.angle ?? "90 deg").si * 180 / Math.PI; } catch { /* già segnalato */ }
+  return `${(fraction * angle).toFixed(digits).replace(".", ",")}°`;
+}
+
 function updateSimPanel() {
   if (!sim) return;
   const s = sim.s;
@@ -3314,7 +3321,10 @@ function updateSimPanel() {
       const c = s.cylinder(key)!;
       const state = Math.abs(c.v) > 1e-3 ? (c.v > 0 ? "esce" : "rientra")
         : c.fraction > 0.995 ? "tutto fuori" : c.fraction < 0.005 ? "tutto dentro" : "fermo";
-      dd.textContent = `${(c.x * 1000).toFixed(1).replace(".", ",")} mm · ${state}`;
+      const comp = allComponents().find((x) => x.id === key);
+      const where = comp?.type === "rotary_actuator" ? rotaryAngle(comp, c.fraction, 1)
+        : `${(c.x * 1000).toFixed(1).replace(".", ",")} mm`;
+      dd.textContent = `${where} · ${state}`;
       dd.dataset.value = c.fraction.toFixed(4);
     } else if (kind === "relay" && el) {
       const left = s.electric!.remaining(key, s.t);
