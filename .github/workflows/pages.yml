@@ -1,8 +1,12 @@
 # Pubblica l'editor su GitHub Pages: https://prog3dac.github.io/Pneutrack/
 # Richiede Settings → Pages → Source: "GitHub Actions".
+# Parte quando il workflow «ci» (test, build ed e2e nel browser) è finito verde su main:
+# una modifica che rompe l'editor nel browser non va online.
 name: pages
 on:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -17,9 +21,13 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # il commit che «ci» ha controllato, non l'ultimo di main
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
