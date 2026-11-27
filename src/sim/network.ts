@@ -174,6 +174,8 @@ function pressureRange(c: Component, value: number): [number, number] {
 const NODE_VOLUME = 1e-6;
 const G = 9.81;
 const DEAD_VOLUME = 5e-6;
+/** valvole OR e AND: differenza di pressione tra gli ingressi in cui l'uscita passa da uno all'altro [Pa] */
+const LOGIC_SWAP = 0.02 * BAR;
 /** raggio primitivo del pignone degli attuatori rotanti [m]: la rotazione diventa una corsa lineare */
 export const ROTARY_PITCH_RADIUS = 0.01;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
@@ -492,16 +494,19 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       }
       case "shuttle_valve": {
         // la sfera chiude l'ingresso a pressione minore: l'uscita resta collegata all'altro
+        // la sfera passa da una sede all'altra in LOGIC_SWAP: con i due ingressi quasi uguali restano aperti entrambi
         const i1 = node(c, "1"), i3 = node(c, "3");
-        orifices.push(orifice("1", "2", { gate: (P) => (P[i1]! >= P[i3]! ? 1 : 0) }));
-        orifices.push(orifice("3", "2", { gate: (P) => (P[i3]! > P[i1]! ? 1 : 0) }));
+        const g1 = (P: ArrayLike<number>) => ramp(P[i1]! - P[i3]! + LOGIC_SWAP / 2, LOGIC_SWAP);
+        orifices.push(orifice("1", "2", { gate: g1 }));
+        orifices.push(orifice("3", "2", { gate: (P) => 1 - g1(P) }));
         break;
       }
       case "and_valve": {
         // passa l'ingresso a pressione minore: in uscita c'è aria solo se ci sono entrambi
         const i1 = node(c, "1"), i3 = node(c, "3");
-        orifices.push(orifice("1", "2", { gate: (P) => (P[i1]! <= P[i3]! ? 1 : 0) }));
-        orifices.push(orifice("3", "2", { gate: (P) => (P[i3]! < P[i1]! ? 1 : 0) }));
+        const g1 = (P: ArrayLike<number>) => ramp(P[i3]! - P[i1]! + LOGIC_SWAP / 2, LOGIC_SWAP);
+        orifices.push(orifice("1", "2", { gate: g1 }));
+        orifices.push(orifice("3", "2", { gate: (P) => 1 - g1(P) }));
         break;
       }
       case "quick_exhaust_valve": {
