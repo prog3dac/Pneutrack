@@ -26,7 +26,10 @@ La finestra ha due modalità, scelte con l'interruttore al centro della barra in
   compare una barra con ✎ (dati del componente), Ruota, Specchia ↔ / ↕, Duplica ed Elimina; in basso a destra del foglio ci sono
   zoom, *Adatta* e il menu *Mostra*.
 - **Simula**: palette e barra delle sezioni si nascondono; a destra ci sono comandi e valori in tempo
-  reale, in basso la fascia con Pausa, Ricomincia, velocità, tempo e il diagramma delle fasi.
+  reale, in basso la fascia con Pausa, Ricomincia, velocità, tempo e il diagramma delle fasi. Con schemi
+  grandi, se il calcolo non tiene la velocità scelta, accanto al tempo compare «rallentata al N %»: la
+  simulazione va più piano ma la pagina resta fluida e i risultati non cambiano. *Adatta* (e l'ingresso in
+  Simula) centra lo schema nella parte del foglio non coperta da legenda e zoom.
 
 Nella barra in alto il menu **File** raccoglie Progetti, Nuovo, Salva, Salva copia, Importa ed Esporta;
 **Modifica** raccoglie Taglia, Copia, Incolla e Seleziona tutto. Annulla, Ripeti, Esempi e PDF restano a vista.
@@ -81,7 +84,8 @@ dei problemi.
 - **Fogli**: le schede sotto l'area di lavoro mostrano i fogli del progetto. Un clic apre un foglio
   (anche in simulazione; da tastiera *PagSu* / *PagGiù*), *+* ne aggiunge uno dopo quello aperto con lo
   stesso formato e cartiglio, il doppio clic rinomina, il trascinamento riordina; il menu ▾ (o il clic
-  destro) rinomina, duplica (con sigle nuove), sposta ed elimina. Ogni foglio ha il suo disegno e il suo
+  destro) rinomina, duplica (con sigle nuove; i rimandi copiati finiscono in «(copia)» e restano staccati finché
+  non li si rinomina, così la copia non si collega da sola alle linee dell'originale), sposta ed elimina. Ogni foglio ha il suo disegno e il suo
   cartiglio, che riporta «Foglio n di N» e il nome del foglio. Il circuito è uno solo: i rimandi
   (pneumatico e elettrico) con la stessa descrizione collegano i fogli, accanto a ogni rimando compare
   il foglio dove prosegue (un clic ci porta) e la simulazione tratta tutti i fogli insieme. Copia e
@@ -116,7 +120,9 @@ dei problemi.
   La finestra *Progetti* elenca i progetti (più recenti in alto), con ricerca, apertura,
   rinomina, duplicazione, eliminazione con conferma, nuovo progetto e importazione di un file.
   Alla riapertura della pagina torna l'ultimo progetto aperto; uno schema non ancora salvato
-  resta come bozza nel browser.
+  resta come bozza nel browser. Aprendo un esempio, un file, un progetto o uno schema nuovo, una bozza
+  con lavoro non salvato non si perde: diventa un progetto («Bozza del …» se non ha un nome) e un messaggio
+  lo dice. Un esempio o un file aperto e non modificato non lascia nulla.
 - **File**: *Esporta* scarica lo schema come `.pneu.json` (formato `pneutrack/circuit` con la
   disposizione grafica in `layout`); *Importa file…* nella finestra Progetti lo ricarica.
 
@@ -209,7 +215,7 @@ cortocircuito o di un relè che continua a commutare da solo.
 Durante la simulazione il diagramma delle fasi occupa la fascia in basso (il pulsante «📈 Diagramma delle fasi» lo nasconde o lo riapre):
 una corsia per ogni cilindro (corsa da 0, tutto dentro, a 1, tutto fuori) e una per ogni bobina, lampada e
 contatto di relè (acceso o spento). Senza circuito elettrico al posto delle bobine ci sono le valvole (azionata o
-a riposo). «Tempo» mette in orizzontale i secondi (diagramma spostamento-tempo); «Passi» mette a distanza uguale
+a riposo; quelle a tre posizioni con tre livelli: casella 14 in alto, centro, casella 12 in basso). «Tempo» mette in orizzontale i secondi (diagramma spostamento-tempo); «Passi» mette a distanza uguale
 gli istanti in cui un cilindro arriva a fine corsa (diagramma spostamento-passo). Si registrano gli ultimi 60 s;
 «Ricomincia» azzera il diagramma. L'etichetta di un componente compare accanto alla sua sigla.
 
@@ -255,7 +261,10 @@ Un blocco raggruppa componenti e i condotti che li collegano, con un nome e una 
 
 Scorciatoie: `R` ruota, `H`/`V` specchia sinistra↔destra / alto↕basso, `Canc` elimina, `Ctrl+Z`/`Ctrl+Y` annulla/ripeti, `Ctrl+D` duplica,
 `Ctrl+G`/`Ctrl+Maiusc+G` unisci/dividi, `Ctrl+A` seleziona tutto, `Ctrl+S` salva, `F` adatta la vista, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copia/taglia/incolla, rotella per lo zoom, `Spazio`+trascina o tasto
-centrale del mouse per spostare la vista.
+centrale del mouse per spostare la vista. Da tastiera: `Tab` passa da un componente all'altro e lo seleziona,
+le frecce spostano la selezione di un passo di griglia (`Maiusc`+freccia di cinque), `Invio` apre i dati del
+componente. Le linee in pressione cambiano colore e spessore con il livello, così si distinguono anche senza
+vedere i colori.
 
 ## Struttura
 
@@ -263,7 +272,7 @@ centrale del mouse per spostare la vista.
 |---|---|
 | `src/model/` | unità, componenti, schema, validazione ([modello-dati.md](modello-dati.md)) |
 | `src/sim/` | dallo schema alla rete fisica, simulazione interattiva |
-| `src/solver/` | solutore di riferimento (orifizi ISO 6358, RK4) |
+| `src/solver/` | prototipo del solutore (orifizi ISO 6358, RK4): riferimento indipendente per i test del caso base e `npm run demo`; non ha attrito di primo distacco, ammortizzo, peso, bloccaggio né consumo |
 | `src/ui/diagram.ts` | diagramma delle fasi (registrazione in `src/sim/recorder.ts`, tempi di corsa e cicli in `src/sim/measures.ts`) |
 | `src/ui/symbols.ts` | simboli in stile ISO 1219, posizione delle porte, stato animato |
 | `src/ui/app.ts` | stato, disegno, interazioni, annulla/ripeti, progetti, simulazione |

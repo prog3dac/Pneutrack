@@ -229,6 +229,9 @@ export function duplicatePage(src: Page, id: string, name: string,
     }
     if (typeof c.relay === "string") c.relay = fixId(c.relay);
     if (typeof c.drives === "string") c.drives = fixRef(c.drives);
+    // un rimando copiato con la stessa descrizione si collegherebbe da solo alle linee dell'originale:
+    // la copia resta staccata (e segnalata come rimando isolato) finché non le si dà un nome
+    if (c.type in REFERENCE_TYPES && typeof c.label === "string" && c.label.trim()) c.label = `${c.label.trim()} (copia)`;
   }
   for (const c of d.connections) { c.from = fixRef(c.from); c.to = fixRef(c.to); delete c.id; }
   const layout: Record<string, Placement> = {};

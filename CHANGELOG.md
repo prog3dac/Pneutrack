@@ -3,6 +3,22 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.37.0 · 2026-11-27
+
+- Simulazione più veloce: circa il doppio sugli schemi grandi, e la pagina non si blocca più. L'editor dedica alla simulazione al più 12 ms per fotogramma; se uno schema grande non riesce a tenere la velocità scelta, la simulazione va più piano e accanto al tempo compare «rallentata al N %» (i risultati non cambiano).
+- Attuatore rotante simulato (pignone e cremagliera): ruota di tutto l'angolo, a semplice effetto torna con la molla; in simulazione mostra l'angolo raggiunto. Nuovi dati: volume per corsa, massa, carico, attrito e forza della molla. Ora tutti i componenti del catalogo sono simulati.
+- Pompa del vuoto: il grado di vuoto si regola anche durante la simulazione.
+- Valvole OR e AND: con i due ingressi quasi alla stessa pressione l'uscita passa gradualmente da uno all'altro, senza scatti a ogni passo di calcolo.
+- Una bozza non salvata non si perde più aprendo un esempio, un file, un progetto o uno schema nuovo: diventa un progetto («Bozza del …» se non ha nome) e un messaggio lo dice.
+- *Adatta* e l'ingresso in Simula centrano lo schema nella parte del foglio non coperta da legenda e zoom.
+- Duplicando un foglio, i rimandi copiati finiscono in «(copia)» e restano staccati finché non li si rinomina: prima la copia si collegava da sola alle linee del foglio originale.
+- Diagramma delle fasi: le valvole a tre posizioni hanno tre livelli (casella 14, centro, casella 12).
+- Tastiera: *Tab* passa da un componente all'altro, le frecce spostano la selezione (con *Maiusc* di cinque passi).
+- Le linee in pressione cambiano anche spessore con il livello, non solo colore.
+- I file esportati tengono le lettere accentate e i segni + e − del nome dello schema («…_con_relè», «A+_B+»).
+- Con più avvisi all'avvio della simulazione il messaggio rimanda al pannello che li elenca tutti.
+- Sviluppo: vitest 5 e vite 8 (nessuna vulnerabilità segnalata da npm audit); il sito su GitHub Pages si pubblica solo dopo che test, build e prove nel browser sono passati; test nel browser più stabili.
+
 ## 0.36.0 · 2026-11-27
 
 - Cilindri con l'ammortizzo ai due fine corsa: due viti di regolazione separate, «Apertura vite ammortizzo in uscita (testata)» e «in rientro (fondello)», sia nella finestra del componente sia tra i cursori della simulazione. Si vedono solo le viti dell'ammortizzo scelto. Gli schemi salvati con la vite unica si aprono come prima: il valore vale per le due viti.

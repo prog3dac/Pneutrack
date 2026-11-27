@@ -12,10 +12,12 @@ sono sviluppati da zero.
 installazione). Disegna lo schema, guarda la validazione in tempo reale e premi *Simula* per
 animarlo.
 
-> Stato: prima versione. Editor, archivio dei progetti, validazione e simulazione di 25 tipi di
-> componenti (trattamento aria, serbatoi, valvole distributrici e logiche, regolatori, finecorsa,
-> temporizzatori, cilindri e motori), più il circuito elettrico di comando a 24 V (pulsanti, relè,
-> temporizzatori, bobine, finecorsa, sensori, pressostati) simulato insieme alla parte pneumatica.
+> Stato: editor su più fogli, archivio dei progetti, validazione in tempo reale e simulazione di tutti i
+> 73 tipi di componenti del catalogo (trattamento aria, serbatoi, valvole distributrici e logiche,
+> regolatori, finecorsa, temporizzatori, cilindri, attuatori rotanti, motori e vuoto), più il circuito
+> elettrico di comando a 24 V (pulsanti, relè, temporizzatori, bobine, finecorsa, sensori, pressostati)
+> simulato insieme alla parte pneumatica. Diagramma delle fasi, misure di consumo, esportazione in PDF,
+> SVG, DXF e distinta. Pensata per computer e tablet, non per il telefono.
 > Dettagli in [docs/interfaccia.md](docs/interfaccia.md), [docs/modello-dati.md](docs/modello-dati.md),
 > [docs/elettropneumatica.md](docs/elettropneumatica.md) e [docs/PIANO.md](docs/PIANO.md).
 
@@ -31,7 +33,7 @@ apertura.
 - **Chrome o Edge** (Windows, Mac, Linux, Android): apri <https://prog3dac.github.io/Pneutrack/>
   e scegli *File* → *Installa l'app…*, oppure l'icona di installazione nella barra degli indirizzi.
 - **Safari su Mac**: menu *File* → *Aggiungi al Dock*.
-- **Safari su iPhone e iPad**: *Condividi* → *Aggiungi alla schermata Home*.
+- **Safari su iPad**: *Condividi* → *Aggiungi alla schermata Home*.
 
 I progetti restano salvati nel browser con cui si è installata l'app. Quando esce una versione
 nuova l'app lo segnala con il pulsante *Aggiorna*.

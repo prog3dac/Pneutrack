@@ -2,21 +2,22 @@
  * Simulazione interattiva: avanza nel tempo con passi RK4 fissi e lascia
  * cambiare i comandi delle valvole mentre gira (pulsanti, solenoidi).
  *
- * Fisica dei nodi e dei cilindri identica a src/solver/simulate.ts:
+ * Equazioni dei nodi e dei cilindri:
  *   dp/dt = κRT/V · ṁ − κ p/V · dV/dt
  *   m ẍ = p_A A1 − p_B A2 − p_atm (A1 − A2) − carico − attrito − molla
+ *
+ * Il caso base (orifizi, volumi, cilindro con attrito coulombiano e viscoso) coincide con il prototipo in
+ * src/solver/simulate.ts, che test/sim.test.ts usa come riferimento indipendente. Il prototipo non ha
+ * attrito di primo distacco, ammortizzo, peso, bloccaggio, arresto a fine corsa né consumo d'aria: quelli
+ * esistono solo qui.
  */
-import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
+import { BAR, KAPPA, ONEWAY_MIN_SPEED, ONEWAY_ZONE, P_ATM, R_AIR, RHO_ANR, ROLLER_ZONE } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
-import { rk4Step } from "../solver/rk4";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
 import { isElectric, isManual, profileForce, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
 
-/** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
-const ONEWAY_ZONE = 0.005;
-/** velocità minima dello stelo perché la leva ribaltabile venga azionata [m/s] */
-const ONEWAY_MIN_SPEED = 1e-3;
+
 
 /** velocità sotto la quale l'attrito vale quello statico [m/s] */
 const STRIBECK_V = 0.01;
@@ -49,8 +50,23 @@ export interface CylinderState {
 
 export class Simulator {
   t = 0;
-  private y: number[];
+  private y: Float64Array;
   private readonly stateOfNode: number[];
+  /** pressione dei nodi fissi [Pa ass.] (copia di `net.fixed`, letta a ogni passo) e indicatore di nodo fisso */
+  private readonly fixedP: Float64Array;
+  private readonly isFixed: Uint8Array;
+  /** indice di ogni cilindro per sigla */
+  private readonly cylIndex = new Map<string, number>();
+  // memoria di lavoro del passo di integrazione, allocata una volta sola
+  private readonly bufP: Float64Array;
+  private readonly bufInflow: Float64Array;
+  private readonly bufV: Float64Array;
+  private readonly bufDV: Float64Array;
+  private readonly k1: Float64Array;
+  private readonly k2: Float64Array;
+  private readonly k3: Float64Array;
+  private readonly k4: Float64Array;
+  private readonly yTmp: Float64Array;
   private readonly freeNodes: number[] = [];
   private readonly cylOffset: number;
   /** indice dello stato che integra la massa d'aria uscita dalle alimentazioni [kg] */
@@ -79,7 +95,21 @@ export class Simulator {
     }
     this.cylOffset = this.freeNodes.length;
     this.airIndex = this.cylOffset + 2 * net.cylinders.length;
-    this.y = new Array<number>(this.airIndex + 1).fill(0);
+    const len = this.airIndex + 1;
+    this.y = new Float64Array(len);
+    this.fixedP = new Float64Array(net.nodeCount);
+    this.isFixed = new Uint8Array(net.nodeCount);
+    this.syncFixed();
+    net.cylinders.forEach((c, i) => this.cylIndex.set(c.id, i));
+    this.bufP = new Float64Array(net.nodeCount);
+    this.bufInflow = new Float64Array(net.nodeCount);
+    this.bufV = new Float64Array(net.nodeCount);
+    this.bufDV = new Float64Array(net.nodeCount);
+    this.k1 = new Float64Array(len);
+    this.k2 = new Float64Array(len);
+    this.k3 = new Float64Array(len);
+    this.k4 = new Float64Array(len);
+    this.yTmp = new Float64Array(len);
     this.supplyNodes = [...net.fixed].filter(([, p]) => p > P_ATM + 1).map(([n]) => n);
     for (const n of this.freeNodes) this.y[this.stateOfNode[n]!] = P_ATM;
     net.cylinders.forEach((c, i) => { this.y[this.cylOffset + 2 * i] = c.x0 ?? 0; });
@@ -104,6 +134,7 @@ export class Simulator {
     if (!t || !Number.isFinite(value)) return null;
     t.value = Math.min(t.max, Math.max(t.min, value));
     t.apply(t.value);
+    this.syncFixed(); // la pressione di un'alimentazione sta tra i nodi fissi
     return t.value;
   }
 
@@ -159,16 +190,37 @@ export class Simulator {
     return this.overrides.get(`${valveId}.${side}`) ?? false;
   }
 
-  /** Avanza di `duration` secondi (a passi di {@link DT}). */
-  advance(duration: number): void {
+  /**
+   * Avanza di `duration` secondi (a passi di {@link DT}). Con `budgetMs` si ferma prima se il calcolo supera quel
+   * tempo (per non bloccare la pagina con schemi grandi). Restituisce il tempo simulato davvero percorso [s].
+   */
+  advance(duration: number, budgetMs = Infinity): number {
     const steps = Math.max(1, Math.round(duration / DT));
-    for (let i = 0; i < steps; i++) this.step();
+    const start = budgetMs < Infinity ? performance.now() : 0;
+    let i = 0;
+    while (i < steps) {
+      this.step();
+      i++;
+      // l'orologio si legge ogni 100 passi (2 ms simulati): leggerlo a ogni passo costerebbe
+      if (i % 100 === 0 && budgetMs < Infinity && performance.now() - start > budgetMs) break;
+    }
+    return i * DT;
   }
 
   /** Pressione assoluta di ogni nodo [Pa]. */
-  pressures(y = this.y): number[] {
-    const out = new Array<number>(this.net.nodeCount);
-    for (let n = 0; n < this.net.nodeCount; n++) out[n] = this.net.fixed.get(n) ?? y[this.stateOfNode[n]!]!;
+  pressures(): number[] {
+    return Array.from(this.fillPressures(this.y, new Float64Array(this.net.nodeCount)));
+  }
+
+  private syncFixed(): void {
+    this.isFixed.fill(0);
+    for (const [n, p] of this.net.fixed) { this.fixedP[n] = p; this.isFixed[n] = 1; }
+  }
+
+  /** Pressioni assolute dello stato `y` scritte in `out`. */
+  private fillPressures(y: ArrayLike<number>, out: Float64Array): Float64Array {
+    const sn = this.stateOfNode, fx = this.isFixed, fp = this.fixedP;
+    for (let n = 0; n < out.length; n++) out[n] = fx[n] ? fp[n]! : y[sn[n]!]!;
     return out;
   }
 
@@ -176,12 +228,12 @@ export class Simulator {
   gauge(port: string): number {
     const n = this.net.portNode[port];
     if (n === undefined) return 0;
-    return (this.pressures()[n]! - P_ATM) / BAR;
+    return ((this.isFixed[n] ? this.fixedP[n]! : this.y[this.stateOfNode[n]!]!) - P_ATM) / BAR;
   }
 
   cylinder(id: string): CylinderState | undefined {
-    const i = this.net.cylinders.findIndex((c) => c.id === id);
-    if (i < 0) return undefined;
+    const i = this.cylIndex.get(id);
+    if (i === undefined) return undefined;
     const x = this.y[this.cylOffset + 2 * i]!, v = this.y[this.cylOffset + 2 * i + 1]!;
     return { x, v, fraction: x / this.net.cylinders[i]!.stroke };
   }
@@ -193,7 +245,9 @@ export class Simulator {
 
   /** Portata istantanea che esce dalle alimentazioni [Nl/min, ANR]. */
   airFlow(): number {
-    return (this.deriv(this.t, this.y)[this.airIndex]! / RHO_ANR) * 1000 * 60;
+    const out = new Float64Array(this.y.length);
+    this.deriv(this.y, out);
+    return (out[this.airIndex]! / RHO_ANR) * 1000 * 60;
   }
 
   valvePosition(id: string): Position | undefined {
@@ -205,7 +259,7 @@ export class Simulator {
   private readonly pilotSince = new Map<string, number>();
 
   /** Lato comandato in questo istante (pilotaggio, finecorsa o comando esterno, o il secondo comando del lato). */
-  sideActive(v: ValveSpec, side: "14" | "12", P = this.pressures()): boolean {
+  sideActive(v: ValveSpec, side: "14" | "12", P: ArrayLike<number> = this.pressures()): boolean {
     return this.mainActive(v, side, P) || this.auxActive(v, side);
   }
 
@@ -221,9 +275,10 @@ export class Simulator {
 
   /** Rullo o tastatore premuto dal cilindro del finecorsa. */
   private camPressed(act: Actuation, cam: Cam): boolean {
-    const c = this.cylinder(cam.cylinder);
-    if (!c) return false;
-    const stroke = this.net.cylinders.find((x) => x.id === cam.cylinder)!.stroke;
+    const i = this.cylIndex.get(cam.cylinder);
+    if (i === undefined) return false;
+    const c = this.cylinder(cam.cylinder)!;
+    const stroke = this.net.cylinders[i]!.stroke;
     if (act === "roller_oneway") {
       // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
       const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
@@ -232,11 +287,11 @@ export class Simulator {
       return inZone && towards;
     }
     // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
-    const tol = 0.002 / stroke;
+    const tol = ROLLER_ZONE / stroke;
     return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
   }
 
-  private mainActive(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
+  private mainActive(v: ValveSpec, side: "14" | "12", P: ArrayLike<number>): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (isReturn(act)) return false;
     if (isPilot(act)) {
@@ -269,7 +324,7 @@ export class Simulator {
   }
 
   /** Il lato riporta la valvola a riposo (molla, o ritorno pneumatico con pressione). */
-  private returns(v: ValveSpec, side: "14" | "12", P: number[]): boolean {
+  private returns(v: ValveSpec, side: "14" | "12", P: ArrayLike<number>): boolean {
     const act = side === "14" ? v.act14 : v.act12;
     if (act === "spring" || act === "spring_air_return") return true;
     if (act !== "air_return" && act !== "air_return_ext") return false;
@@ -278,14 +333,14 @@ export class Simulator {
   }
 
   /** Il bloccaggio del cilindro tiene fermo lo stelo (pilotaggio sotto la pressione di sblocco). */
-  private locked(c: CylinderSpec, P: number[], x: number): boolean {
+  private locked(c: CylinderSpec, P: ArrayLike<number>, x: number): boolean {
     if (!c.lock || P[c.lock.node]! - P_ATM >= c.lock.threshold) return false;
     return c.lock.at === "any" || x <= 1e-6;
   }
 
   /** Logica discreta delle valvole: comandi, pilotaggi, molle e memoria delle bistabili. */
   private updateValves(): void {
-    const P = this.pressures();
+    const P = this.fillPressures(this.y, this.bufP);
     this.net.valves.forEach((v, i) => {
       const s14 = this.sideActive(v, "14", P), s12 = this.sideActive(v, "12", P);
       let pos = this.positions[i]!;
@@ -308,11 +363,13 @@ export class Simulator {
     });
   }
 
-  private deriv = (_t: number, y: number[]): number[] => {
+  /** Derivate dello stato `y`, scritte in `dy` (senza allocare: gira quattro volte a ogni passo). */
+  private deriv(y: Float64Array, dy: Float64Array): void {
     const net = this.net;
-    const P = this.pressures(y);
-    const inflow = new Array<number>(net.nodeCount).fill(0);
-    for (const o of net.orifices) {
+    const P = this.fillPressures(y, this.bufP);
+    const inflow = this.bufInflow.fill(0);
+    for (let k = 0; k < net.orifices.length; k++) {
+      const o = net.orifices[k]!;
       if (o.valve !== undefined && !o.positions!.includes(this.positions[o.valve]!)) continue;
       const pa = o.boost ? P_ATM + o.boost * (P[o.a]! - P_ATM) : P[o.a]!, pb = P[o.b]!;
       if (o.oneWay && pa <= pb) continue;
@@ -339,10 +396,12 @@ export class Simulator {
       inflow[o.a]! -= m * (o.boost ?? 1);
       inflow[o.b]! += m;
     }
-    const V = net.baseVolume.slice();
-    const dV = new Array<number>(net.nodeCount).fill(0);
-    const dy = new Array<number>(y.length).fill(0);
-    net.cylinders.forEach((c, i) => {
+    const V = this.bufV;
+    for (let n = 0; n < V.length; n++) V[n] = net.baseVolume[n]!;
+    const dV = this.bufDV.fill(0);
+    dy.fill(0);
+    for (let i = 0; i < net.cylinders.length; i++) {
+      const c = net.cylinders[i]!;
       const x = y[this.cylOffset + 2 * i]!;
       let v = y[this.cylOffset + 2 * i + 1]!;
       V[c.capNode]! += c.Vcap0 + c.A1 * x;
@@ -366,20 +425,33 @@ export class Simulator {
       dV[c.rodNode]! += -c.A2 * v;
       dy[this.cylOffset + 2 * i] = v;
       dy[this.cylOffset + 2 * i + 1] = acc;
-    });
+    }
     for (const n of this.freeNodes) {
       dy[this.stateOfNode[n]!] = ((KAPPA * this.RT) / V[n]!) * inflow[n]! - (KAPPA * P[n]! * dV[n]!) / V[n]!;
     }
     // consumo: aria che esce dalle alimentazioni (quella che vi rientra si sottrae)
     for (const n of this.supplyNodes) dy[this.airIndex]! -= inflow[n]!;
-    return dy;
-  };
+  }
+
+  /** Un passo Runge-Kutta 4 a passo fisso, sul posto. */
+  private rk4(h: number): void {
+    const { y, yTmp, k1, k2, k3, k4 } = this;
+    const n = y.length;
+    this.deriv(y, k1);
+    for (let i = 0; i < n; i++) yTmp[i] = y[i]! + (h / 2) * k1[i]!;
+    this.deriv(yTmp, k2);
+    for (let i = 0; i < n; i++) yTmp[i] = y[i]! + (h / 2) * k2[i]!;
+    this.deriv(yTmp, k3);
+    for (let i = 0; i < n; i++) yTmp[i] = y[i]! + h * k3[i]!;
+    this.deriv(yTmp, k4);
+    for (let i = 0; i < n; i++) y[i] = y[i]! + (h / 6) * (k1[i]! + 2 * k2[i]! + 2 * k3[i]! + k4[i]!);
+  }
 
   private step(): void {
-    this.y = rk4Step(this.deriv, this.t, this.y, DT);
+    this.rk4(DT);
     this.t += DT;
     const y = this.y;
-    const P = this.pressures(y);
+    const P = this.fillPressures(y, this.bufP);
     this.net.cylinders.forEach((c, i) => {
       const xi = this.cylOffset + 2 * i;
       if (this.locked(c, P, y[xi]!)) y[xi + 1] = 0;

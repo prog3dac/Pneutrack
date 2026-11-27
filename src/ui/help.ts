@@ -25,6 +25,10 @@ const UNITS: Record<string, string> = {
 
 /** Parametri dei componenti. */
 const PARAMS: Record<string, string> = {
+  displacement:
+    "Volume d'aria di una camera per una rotazione completa dell'angolo, come a catalogo (cm³). Con l'angolo dà " +
+    "la coppia: M = p · V / θ. La simulazione tratta l'attuatore come pignone e cremagliera con raggio primitivo " +
+    "di 10 mm. Serve solo alla simulazione.",
   max_pressure:
     "Pressione massima di esercizio dichiarata a catalogo. Se nella rete a cui è collegato il " +
     "componente la pressione può superarla, la validazione segnala un errore di sovrapressione.",

@@ -1,3 +1,8 @@
+/**
+ * Prototipo del solutore (fase 0): riferimento indipendente per i test del caso base di src/sim e per
+ * `npm run demo`. Non ha attrito di primo distacco, ammortizzo, peso, bloccaggio, arresto a fine corsa né
+ * consumo d'aria: la simulazione dell'editor è in src/sim/simulator.ts.
+ */
 import { KAPPA, P_ATM, R_AIR } from "./constants";
 import { signedFlow } from "./flow";
 import { rk4Step } from "./rk4";

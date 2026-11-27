@@ -159,7 +159,9 @@ apre fino a quando l'arrivo è morbido e senza ritorni.
 - **Bistabile**: senza comandi resta dov'è; parte nella casella `initial`.
 - **Tre posizioni**: con un solo lato comandato va in quella casella, altrimenti nella centrale.
 - **Segnale dominante** (`dominant`): con 14 e 12 comandati insieme vince il lato indicato.
-- **Rulli e tastatori** (`cam_14`, `cam_12`): premuti negli ultimi **2 mm** di corsa del cilindro indicato.
+- **Rulli e tastatori** (`cam_14`, `cam_12`): premuti negli ultimi **2 mm** di corsa del cilindro indicato
+  (le stesse soglie valgono per i finecorsa elettrici: `ROLLER_ZONE`, `ONEWAY_ZONE`, `ONEWAY_MIN_SPEED` in
+  `src/solver/constants.ts`).
   **Leva ribaltabile** (`roller_oneway`): azionata negli ultimi 5 mm, solo mentre lo stelo va verso quel
   fine corsa a più di 1 mm/s.
 - **Comando manuale ausiliario e secondo comando** (`aux_14`, `aux_12`): si azionano con un clic; un rullo
@@ -203,8 +205,8 @@ che renderebbero instabile il calcolo.
 | `check_valve` | solo 1 → 2; apre quando p₁ − p₂ supera la pressione di apertura `cracking_pressure` (0,1 bar, 0,5 bar con la molla), del tutto 0,05 bar più su |
 | `pilot_check_valve` | 1 → 2 libero; 2 → 1 solo con il pilotaggio 21 sopra `pilot_pressure` (apertura progressiva da −0,1 a +0,1 bar attorno alla soglia) |
 | `double_pilot_check` | 1 → 2 e 3 → 4 liberi; i ritorni 2 → 1 e 4 → 3 aperti dalla pressione dell'altra linea, come sopra |
-| `shuttle_valve` (OR) | l'uscita 2 è collegata all'ingresso a pressione maggiore |
-| `and_valve` (AND) | l'uscita 2 è collegata all'ingresso a pressione minore |
+| `shuttle_valve` (OR) | l'uscita 2 è collegata all'ingresso a pressione maggiore; con gli ingressi entro 0,02 bar l'uno dall'altro la sfera passa gradualmente da una sede all'altra (restano aperti entrambi in parte) |
+| `and_valve` (AND) | l'uscita 2 è collegata all'ingresso a pressione minore, con lo stesso passaggio graduale di 0,02 bar |
 | `quick_exhaust_valve` | 1 → 2 libero; 2 → 3 (conduttanza `exhaust_conductance`) quando p₂ supera p₁ di più di 0,1 bar, del tutto a 0,2 bar |
 
 ### Regolazione di portata e pressione
@@ -231,13 +233,13 @@ che renderebbero instabile il calcolo.
 | `locking_cylinder`, `end_lock_cylinder` | §4, con il bloccaggio (§4.2) |
 | `gripper`, `bellows_cylinder`, `diaphragm_cylinder`, `pneumatic_muscle` | §4.1 (cilindri con la loro corsa e area); la pinza non sente il peso |
 | `air_motor` | orifizio 1 – 2 (solo 1 → 2 se `motor_kind` è `one_way`): ne simula il consumo, non la rotazione |
-| `rotary_actuator` | non ancora simulato: porte chiuse, con avviso |
+| `rotary_actuator` | pignone e cremagliera con raggio primitivo r = 10 mm: la rotazione θ (`angle`) è la corsa r·θ di un pistone di area A = `displacement` / (r·θ), uguale nelle due camere (A e B; a semplice effetto B sfiata e la molla `spring_force` lo riporta). `mass`, `load` e `friction` sono riportati al raggio primitivo (massa equivalente J / r², carico M / r). Coppia teorica M = p · `displacement` / θ. In simulazione mostra l'angolo raggiunto |
 
 ### Vuoto
 
 | Tipo | Modello |
 |---|---|
-| `vacuum_pump` | nodo a pressione imposta p_atm − `vacuum` (almeno 0,05 bar assoluti) |
+| `vacuum_pump` | nodo a pressione imposta p_atm − `vacuum` (almeno 0,05 bar assoluti); il grado di vuoto si regola anche durante la simulazione |
 | `vacuum_ejector` | consuma aria da 1 a 3; aspira dalla porta 2 verso un nodo a p_atm − `max_vacuum` con `suction_conductance`. Il vuoto cresce con l'alimentazione: nullo sotto 0,5 bar, pieno sopra 4 bar. Senza aria la porta 2 sfiata all'atmosfera. Con il soffio (`blowoff`) l'aria della porta 4 entra nella porta 2 |
 | `suction_cup` | volume π d²/4 · d/4 aggiunto al nodo |
 
@@ -277,7 +279,10 @@ Dettagli e esempi in [../elettropneumatica.md](../elettropneumatica.md).
   sotto 1 kPa assoluto, la logica delle valvole si aggiorna; ogni 50 passi (1 ms) si aggiorna il circuito
   elettrico.
 - Le **regolazioni** cambiate durante la simulazione (riduttori, strozzatori, viti, ritardi, pressione
-  dell'alimentazione) agiscono subito sulla rete, senza ripartire.
+  dell'alimentazione, grado di vuoto) agiscono subito sulla rete, senza ripartire.
+- **Tempo di calcolo**: l'editor dedica alla simulazione al più 12 ms per fotogramma (`SIM_BUDGET_MS`,
+  `src/ui/app.ts`). Con schemi grandi, se il calcolo non tiene la velocità scelta, la simulazione va più
+  piano e accanto al tempo compare «rallentata al N %»: i passi e quindi i risultati restano gli stessi.
 
 ## 9. Grandezze misurate
 
@@ -307,3 +312,6 @@ Dettagli e esempi in [../elettropneumatica.md](../elettropneumatica.md).
 | tubi: λ, b | 0,03; 0,4 | `src/model/tubes.ts` |
 | passo di integrazione | 20 µs | `DT`, `src/sim/simulator.ts` |
 | aggiornamento del circuito elettrico | 1 ms | `ELECTRIC_EVERY`, `src/sim/simulator.ts` |
+| finecorsa: rullo, leva ribaltabile, velocità minima della leva | 2 mm; 5 mm; 1 mm/s | `ROLLER_ZONE`, `ONEWAY_ZONE`, `ONEWAY_MIN_SPEED`, `src/solver/constants.ts` |
+| valvole OR e AND: passaggio tra gli ingressi | 0,02 bar | `LOGIC_SWAP`, `src/sim/network.ts` |
+| attuatore rotante: raggio primitivo | 10 mm | `ROTARY_PITCH_RADIUS`, `src/sim/network.ts` |

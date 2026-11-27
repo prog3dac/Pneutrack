@@ -49,7 +49,16 @@ async function menuAct(act, menu = "#file-menu") {
 // finestra dei dati di un componente: doppio clic sul simbolo, OK per confermare
 const D = ".props-dialog";
 async function openProps(id) {
-  await page.dblclick(`[data-component="${id}"] .halo`, { force: true });
+  // un punto del simbolo non coperto da altri componenti (quelli incollati possono finirci sopra)
+  const at = await page.evaluate((id) => {
+    const h = document.querySelector(`[data-component="${id}"] .halo`).getBoundingClientRect();
+    for (const fy of [0.5, 0.3, 0.7, 0.15, 0.85]) for (const fx of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+      const x = h.x + h.width * fx, y = h.y + h.height * fy;
+      if (document.elementFromPoint(x, y)?.closest("[data-component]")?.dataset.component === id) return { x, y };
+    }
+    return { x: h.x + h.width / 2, y: h.y + h.height / 2 };
+  }, id);
+  await page.mouse.dblclick(at.x, at.y);
   await page.waitForSelector(D);
 }
 async function okProps() {
@@ -289,6 +298,8 @@ await page.press(`${D} input[name="id"]`, "Enter");
 await page.waitForFunction((d) => /Y1/.test(document.querySelector(`${d} h2`)?.textContent ?? ""), D);
 await page.keyboard.press("Control+Enter");
 await page.waitForSelector(D, { state: "detached" });
+// la validazione dopo la rinomina ridisegna i simboli: si clicca solo a disegno fermo
+await settled();
 await page.click("#canvas", { position: { x: 40, y: 40 } });
 await page.click('[data-component="Y1"] .halo', { force: true });
 await page.keyboard.press("r");
@@ -296,13 +307,38 @@ s = await state();
 assert.equal(s.doc.connections[0].to === "Y1.1" || s.doc.connections[0].from === "Y1.1", true);
 assert.equal(s.doc.layout.Y1.rot, 1);
 
-// 8. esempio dal menu
+// 8. esempio dal menu: la bozza con il lavoro fatto finora non si perde, diventa un progetto
 await page.selectOption("#examples", "doppio_effetto_bistabile");
 await settled();
+assert.match(await page.textContent("#toast"), /La bozza di prima è tra i progetti: «Bozza del /);
+{ // il progetto della bozza c'è, con i componenti; poi lo si toglie per non contarlo nei passi dopo
+  const kept = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("pneutrack.project."))
+    .map((k) => [k, JSON.parse(localStorage.getItem(k))]).filter(([, p]) => p.name.startsWith("Bozza del ")));
+  assert.equal(kept.length, 1);
+  assert.deepEqual(kept[0][1].circuit.components.map((c) => c.id), ["P1", "Y1"]);
+  await page.evaluate((k) => localStorage.removeItem(k), kept[0][0]);
+}
+// un esempio non modificato non diventa un progetto: il secondo caricamento non salva niente
+await page.selectOption("#examples", "doppio_effetto_bistabile");
+await settled();
+assert.doesNotMatch(await page.textContent("#toast"), /Bozza/);
 s = await state();
 assert.equal(s.doc.components.length, 8);
 assert.equal(s.analysis.issues.length, 0);
 if (shots) await page.screenshot({ path: `${shots}/esempio.png` });
+{ // da tastiera: Tab seleziona un componente, le frecce lo spostano, Ctrl+Z annulla
+  await page.focus("#components [data-component]");
+  await page.keyboard.press("Tab");
+  const id = await page.evaluate(() => window.pneutrack.selection?.id);
+  assert.ok(id, "Tab seleziona un componente");
+  const x0 = (await state()).doc.layout[id].x;
+  await page.keyboard.press("ArrowRight");
+  assert.equal((await state()).doc.layout[id].x, x0 + 10, "la freccia sposta di un passo di griglia");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("data-component")), id, "il fuoco resta sul componente");
+  await page.keyboard.press("Control+z");
+  assert.equal((await state()).doc.layout[id].x, x0);
+  await page.keyboard.press("Escape");
+}
 // senza sigle e numeri di porta le etichette restano solo con le descrizioni
 const labelTexts = () => page.locator("#labels .label").evaluateAll((els) => els.map((e) => e.textContent));
 assert.ok((await labelTexts()).some((t) => t.startsWith("V1")));

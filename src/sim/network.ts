@@ -30,7 +30,7 @@ export interface Orifice {
   /** riduttore: il flusso a→b si chiude quando la pressione in b raggiunge questo valore (Pa ass.) */
   limit?: number;
   /** come `limit`, ma variabile con le pressioni dei nodi (riduttore pilotato) */
-  limitFn?: (P: number[]) => number;
+  limitFn?: (P: ArrayLike<number>) => number;
   /**
    * moltiplicatore di pressione: a monte vale P_ATM + boost·(Pa − P_ATM) e il nodo `a` cede `boost` volte
    * la massa che passa (bilancio approssimato delle aree del moltiplicatore)
@@ -39,7 +39,7 @@ export interface Orifice {
   /** solo da a verso b (non ritorno) */
   oneWay?: boolean;
   /** apertura 0..1 in funzione delle pressioni assolute dei nodi (valvole logiche, di sicurezza...) */
-  gate?: (P: number[]) => number;
+  gate?: (P: ArrayLike<number>) => number;
   /**
    * ammortizzo: orifizio tra la camera `a` del cilindro e la sua porta `b`. Negli ultimi `length`
    * metri di corsa verso quella camera l'aria in uscita passa solo dalla vite (conduttanza `C`);
@@ -174,6 +174,10 @@ function pressureRange(c: Component, value: number): [number, number] {
 const NODE_VOLUME = 1e-6;
 const G = 9.81;
 const DEAD_VOLUME = 5e-6;
+/** valvole OR e AND: differenza di pressione tra gli ingressi in cui l'uscita passa da uno all'altro [Pa] */
+const LOGIC_SWAP = 0.02 * BAR;
+/** raggio primitivo del pignone degli attuatori rotanti [m]: la rotazione diventa una corsa lineare */
+export const ROTARY_PITCH_RADIUS = 0.01;
 const DEFAULT_PILOT_THRESHOLD = 2 * BAR;
 /** comandi alimentati dalla porta 1 della valvola stessa */
 const internalPilot = (a: Actuation) => a === "solenoid_pilot" || a === "air_return" || a === "spring_air_return";
@@ -248,7 +252,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
   });
 
   const extraVolumes: [number, number][] = [];
-  const gauge = (P: number[], n: number) => P[n]! - P_ATM;
+  const gauge = (P: ArrayLike<number>, n: number) => P[n]! - P_ATM;
   /** apertura progressiva tra 0 e 1 attorno a una soglia (evita commutazioni a scatto) */
   const ramp = (x: number, width: number) => Math.min(1, Math.max(0, x / width));
   /** valvola 3/2 NC (porte 1, 2, 3) comandata dal pilotaggio 12 */
@@ -265,8 +269,9 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
 
   const tunables: Tunable[] = [];
   const tune = (c: Component, param: string, label: string, kind: TunableKind, value: number,
-                apply: (v: number) => void) => {
-    const [min, max, step] = kind === "pressure" ? [...pressureRange(c, value), PRESSURE_STEP]
+                apply: (v: number) => void, range?: [number, number]) => {
+    const [min, max, step] = range ? [...range, kind === "pressure" ? PRESSURE_STEP / 2 : 0.01]
+      : kind === "pressure" ? [...pressureRange(c, value), PRESSURE_STEP]
       : kind === "opening" ? [0, 1, 0.01]
       : [0, Math.max(10, 3 * value), 0.1];
     tunables.push({ id: c.id, param, label, kind, min, max, step, initial: value, value, apply });
@@ -297,9 +302,13 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
              (v) => fixed.set(n, P_ATM + v));
         break;
       }
-      case "vacuum_pump":
-        fixed.set(node(c, "1"), Math.max(0.05 * BAR, P_ATM - c.params.vacuum!.si));
+      case "vacuum_pump": {
+        const n = node(c, "1"), vac = c.params.vacuum!.si;
+        fixed.set(n, Math.max(0.05 * BAR, P_ATM - vac));
+        tune(c, "vacuum", "Grado di vuoto", "pressure", vac, (v) => fixed.set(n, Math.max(0.05 * BAR, P_ATM - v)),
+             [0, Math.max(vac, P_ATM - 0.05 * BAR)]);
         break;
+      }
       case "silencer":
       case "exhaust":
         fixed.set(node(c, "1"), P_ATM);
@@ -423,7 +432,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "vacuum_ejector": {
         const i1 = node(c, "1"), vac = simParam(c, "max_vacuum").si;
         // il vuoto cresce con la pressione di alimentazione: pieno sopra circa 4 bar
-        const on = (P: number[]) => ramp(gauge(P, i1) - 0.5 * BAR, 3.5 * BAR);
+        const on = (P: ArrayLike<number>) => ramp(gauge(P, i1) - 0.5 * BAR, 3.5 * BAR);
         const sink = nodeCount++;
         fixed.set(sink, Math.max(0.05 * BAR, P_ATM - vac));
         orifices.push(orifice("1", "3"));
@@ -442,7 +451,7 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "double_pilot_check": {
         const threshold = simParam(c, "pilot_pressure").si;
         const p1 = node(c, "1"), p3 = node(c, "3");
-        const open = (n: number) => (P: number[]) => ramp(gauge(P, n) - threshold + 0.1 * BAR, 0.2 * BAR);
+        const open = (n: number) => (P: ArrayLike<number>) => ramp(gauge(P, n) - threshold + 0.1 * BAR, 0.2 * BAR);
         orifices.push(orifice("1", "2", { oneWay: true }), orifice("2", "1", { oneWay: true, gate: open(p3) }));
         orifices.push(orifice("3", "4", { oneWay: true }), orifice("4", "3", { oneWay: true, gate: open(p1) }));
         break;
@@ -485,16 +494,19 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       }
       case "shuttle_valve": {
         // la sfera chiude l'ingresso a pressione minore: l'uscita resta collegata all'altro
+        // la sfera passa da una sede all'altra in LOGIC_SWAP: con i due ingressi quasi uguali restano aperti entrambi
         const i1 = node(c, "1"), i3 = node(c, "3");
-        orifices.push(orifice("1", "2", { gate: (P) => (P[i1]! >= P[i3]! ? 1 : 0) }));
-        orifices.push(orifice("3", "2", { gate: (P) => (P[i3]! > P[i1]! ? 1 : 0) }));
+        const g1 = (P: ArrayLike<number>) => ramp(P[i1]! - P[i3]! + LOGIC_SWAP / 2, LOGIC_SWAP);
+        orifices.push(orifice("1", "2", { gate: g1 }));
+        orifices.push(orifice("3", "2", { gate: (P) => 1 - g1(P) }));
         break;
       }
       case "and_valve": {
         // passa l'ingresso a pressione minore: in uscita c'è aria solo se ci sono entrambi
         const i1 = node(c, "1"), i3 = node(c, "3");
-        orifices.push(orifice("1", "2", { gate: (P) => (P[i1]! <= P[i3]! ? 1 : 0) }));
-        orifices.push(orifice("3", "2", { gate: (P) => (P[i3]! < P[i1]! ? 1 : 0) }));
+        const g1 = (P: ArrayLike<number>) => ramp(P[i3]! - P[i1]! + LOGIC_SWAP / 2, LOGIC_SWAP);
+        orifices.push(orifice("1", "2", { gate: g1 }));
+        orifices.push(orifice("3", "2", { gate: (P) => 1 - g1(P) }));
         break;
       }
       case "quick_exhaust_valve": {
@@ -609,6 +621,22 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
             : c.type === "end_lock_cylinder"
               ? { node: node(c, "A"), threshold: simParam(c, "unlock_pressure").si, at: "cap" }
               : undefined,
+        });
+        break;
+      }
+      case "rotary_actuator": {
+        // pignone e cremagliera: la rotazione θ è la corsa r·θ di un pistone di area V / (r·θ) con le due camere
+        // uguali; massa, carico e attrito sono riportati al raggio primitivo r
+        const theta = c.params.angle!.si, stroke = ROTARY_PITCH_RADIUS * theta;
+        const A = simParam(c, "displacement").si / stroke;
+        const single = c.rotary_kind === "single";
+        cylinders.push({
+          id: c.id, capNode: node(c, "A"), rodNode: single ? atmosphere() : node(c, "B"),
+          A1: A, A2: A, stroke, Vcap0: DEAD_VOLUME, Vrod0: DEAD_VOLUME,
+          mass: simParam(c, "mass").si, load: simParam(c, "load").si,
+          frictionCoulomb: simParam(c, "friction").si, frictionStatic: simParam(c, "friction").si, gravity: 0,
+          frictionViscous: VISCOUS_PER_PERIMETER * 2 * Math.sqrt(Math.PI * A), frictionPressure: SEAL_PRESSURE_FRICTION,
+          spring: single ? simParam(c, "spring_force").si : 0,
         });
         break;
       }

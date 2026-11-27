@@ -3,7 +3,7 @@
 import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
-import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import { emptyCircuit, fileBaseName, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import {
   defaultPageName, duplicatePage, joinPages, mergedCircuit, newPageId, pageOfComponent, REFERENCE_TYPES,
   referenceTargets, referenceText, splitPages, type Page, type ReferenceTarget,
@@ -405,6 +405,9 @@ function symbolState(comp: ComponentData): SymbolState | undefined {
 }
 
 function render() {
+  // il disegno si rifà da capo: il componente che aveva il fuoco della tastiera lo ritrova dopo
+  const focused = (document.activeElement as Element | null)?.closest?.("#components [data-component]")
+    ?.getAttribute("data-component");
   viewport.setAttribute("transform", `translate(${view.x},${view.y}) scale(${view.k})`);
   $("#grid-pattern").setAttribute("patternTransform", `translate(${view.x},${view.y}) scale(${view.k})`);
 
@@ -498,6 +501,9 @@ function render() {
     const grp = el("g", {
       class: cls, "data-component": comp.id,
       transform: `translate(${l.x},${l.y}) rotate(${(l.rot || 0) * 90})${l.mirror ? " scale(-1,1)" : ""}`,
+      // da tastiera: Tab passa da un componente all'altro, le frecce lo spostano, Invio apre i dati
+      tabindex: 0, role: "button",
+      "aria-label": `${comp.id}${comp.label ? ` · ${comp.label}` : ""} (${catalogEntry(comp.type)?.label ?? comp.type})`,
     });
     const pad = 6;
     grp.append(el("rect", { class: "halo", x: -g.w / 2 - pad, y: -g.h / 2 - pad,
@@ -521,7 +527,7 @@ function render() {
     if (show.desc && comp.label) parts.push(comp.label);
     if (show.values) {
       const cyl = sim?.s.cylinder(comp.id);
-      if (cyl) parts.push(`${(cyl.x * 1000).toFixed(0)} mm`);
+      if (cyl) parts.push(comp.type === "rotary_actuator" ? rotaryAngle(comp, cyl.fraction, 0) : `${(cyl.x * 1000).toFixed(0)} mm`);
       if (sim && GAUGE_TYPES.has(comp.type)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.1`)));
       if (sim && hasIntegratedGauge(comp)) parts.push(fmtBar(sim.s.gauge(`${comp.id}.2`)));
       if (sim && comp.type === "differential_gauge") {
@@ -592,6 +598,7 @@ function render() {
   positionSelbar();
   positionTunePop();
   $("#zoom-level").textContent = `${Math.round(view.k * 100)}%`;
+  if (focused) document.querySelector<SVGGElement>(`#components [data-component="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
 }
 
 /** Barra mobile sopra la selezione: ruota, specchia, duplica, elimina. */
@@ -2902,8 +2909,12 @@ interface SimRun {
   lastPanel: number;
   warnings: string[];
   recorder: Recorder;
+  /** frazione della velocità scelta che il calcolo riesce a tenere (1 = al passo) */
+  pace: number;
 }
 let sim: SimRun | null = null;
+/** tempo di calcolo massimo della simulazione per fotogramma [ms] */
+const SIM_BUDGET_MS = 12;
 /** componente con la regolazione aperta accanto al simbolo */
 let tuneOpen: string | null = null;
 /** diagramma delle fasi aperto e asse orizzontale scelto */
@@ -2925,7 +2936,7 @@ function startSim() {
   }
   const speed = Number($<HTMLSelectElement>("#sim-speed").value) || 0.25;
   sim = { s: new Simulator(r.network), playing: true, speed, raf: 0, last: performance.now(), lastPanel: 0,
-          warnings: r.warnings, recorder: null! };
+          warnings: r.warnings, recorder: null!, pace: 1 };
   sim.recorder = newRecorder(sim.s);
   sim.recorder.record(0);
   $("#app").classList.add("simulating");
@@ -2940,7 +2951,9 @@ function startSim() {
   showDiagram(true);
   fitView();
   sim.raf = requestAnimationFrame(simFrame);
-  if (r.warnings.length) toast(r.warnings[0]!);
+  if (r.warnings.length) {
+    toast(r.warnings.length > 1 ? `${r.warnings.length} avvisi: li trovi nel pannello Simulazione` : r.warnings[0]!);
+  }
 }
 
 function stopSim() {
@@ -3031,7 +3044,14 @@ function simFrame(ts: number) {
   if (!sim) return;
   const dt = Math.min(0.05, Math.max(0, (ts - sim.last) / 1000));
   sim.last = ts;
-  if (sim.playing) { sim.s.advance(dt * sim.speed); sim.recorder.record(sim.s.t); }
+  if (sim.playing) {
+    const want = dt * sim.speed;
+    // al più SIM_BUDGET_MS di calcolo per fotogramma: con schemi grandi la simulazione rallenta, la pagina no
+    const done = sim.s.advance(want, SIM_BUDGET_MS);
+    // velocità reale rispetto a quella scelta, media sugli ultimi fotogrammi
+    if (want > 0) sim.pace = 0.9 * sim.pace + 0.1 * Math.min(1, done / want);
+    sim.recorder.record(sim.s.t);
+  }
   render();
   if (ts - sim.lastPanel > 120) { sim.lastPanel = ts; updateSimPanel(); if (diagramOpen) renderDiagramPanel(); }
   sim.raf = requestAnimationFrame(simFrame);
@@ -3276,10 +3296,22 @@ function renderSimPanel() {
   updateSimPanel();
 }
 
+/** Angolo raggiunto da un attuatore rotante, in gradi. */
+function rotaryAngle(comp: ComponentData, fraction: number, digits: number): string {
+  let angle = 90;
+  try { angle = Quantity.parse(comp.params?.angle ?? "90 deg").si * 180 / Math.PI; } catch { /* già segnalato */ }
+  return `${(fraction * angle).toFixed(digits).replace(".", ",")}°`;
+}
+
 function updateSimPanel() {
   if (!sim) return;
   const s = sim.s;
-  $("#sim-time").textContent = `t = ${s.t.toFixed(2).replace(".", ",")} s`;
+  const slow = sim.playing && sim.pace < 0.9;
+  $("#sim-time").textContent = `t = ${s.t.toFixed(2).replace(".", ",")} s` +
+    (slow ? ` · rallentata al ${Math.round(sim.pace * 100)} %` : "");
+  $("#sim-time").title = slow
+    ? "Lo schema è grande: il calcolo non tiene la velocità scelta e la simulazione va più piano. I risultati non cambiano."
+    : "";
   document.body.dataset.simTime = s.t.toFixed(3);
   const POS: Record<string, string> = { "14": "lato 14 (azionata)", "12": "lato 12", "0": "centrale" };
   const el = s.electricState();
@@ -3296,7 +3328,10 @@ function updateSimPanel() {
       const c = s.cylinder(key)!;
       const state = Math.abs(c.v) > 1e-3 ? (c.v > 0 ? "esce" : "rientra")
         : c.fraction > 0.995 ? "tutto fuori" : c.fraction < 0.005 ? "tutto dentro" : "fermo";
-      dd.textContent = `${(c.x * 1000).toFixed(1).replace(".", ",")} mm · ${state}`;
+      const comp = allComponents().find((x) => x.id === key);
+      const where = comp?.type === "rotary_actuator" ? rotaryAngle(comp, c.fraction, 1)
+        : `${(c.x * 1000).toFixed(1).replace(".", ",")} mm`;
+      dd.textContent = `${where} · ${state}`;
       dd.dataset.value = c.fraction.toFixed(4);
     } else if (kind === "relay" && el) {
       const left = s.electric!.remaining(key, s.t);
@@ -3555,21 +3590,50 @@ function currentSheet(): SheetData | null {
   return { ...doc.sheet, origin: centeredOrigin(doc.sheet, box) };
 }
 
-function fitView() {
+/**
+ * Parte del foglio non coperta dai pannelli che gli stanno sopra (legenda, barra dello zoom), in coordinate
+ * dello schermo relative al foglio. Ogni pannello toglie il lato che lascia più spazio libero.
+ */
+function freeArea(): { x: number; y: number; w: number; h: number } {
   const r = svg.getBoundingClientRect();
+  let x0 = 0, y0 = 0, x1 = r.width, y1 = r.height;
+  for (const sel of ["#legend", "#view-tools"]) {
+    const e = document.querySelector<HTMLElement>(sel);
+    if (!e || e.hidden) continue;
+    const b = e.getBoundingClientRect();
+    if (!b.width || !b.height) continue;
+    const bx0 = b.left - r.left, by0 = b.top - r.top, bx1 = b.right - r.left, by1 = b.bottom - r.top;
+    // il pannello non tocca l'area ancora libera
+    if (bx1 <= x0 || bx0 >= x1 || by1 <= y0 || by0 >= y1) continue;
+    const options = [
+      { x0: Math.max(x0, bx1), y0, x1, y1 }, // a destra del pannello
+      { x0, y0, x1: Math.min(x1, bx0), y1 }, // a sinistra
+      { x0, y0: Math.max(y0, by1), x1, y1 }, // sotto
+      { x0, y0, x1, y1: Math.min(y1, by0) }, // sopra
+    ].filter((o) => o.x1 - o.x0 > r.width * 0.4 && o.y1 - o.y0 > r.height * 0.4);
+    if (!options.length) continue; // pannello troppo grande: meglio coperto che minuscolo
+    const best = options.reduce((a, o) => ((o.x1 - o.x0) * (o.y1 - o.y0) > (a.x1 - a.x0) * (a.y1 - a.y0) ? o : a));
+    ({ x0, y0, x1, y1 } = best);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function fitView() {
+  const r = freeArea();
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
   const sheet = currentSheet();
   if (sheet) {
     const s = sheetRect(sheet), pad = 30;
-    const k = Math.min(r.width / (s.w + 2 * pad), r.height / (s.h + 2 * pad));
-    view = { k, x: r.width / 2 - (s.x + s.w / 2) * k, y: r.height / 2 - (s.y + s.h / 2) * k };
+    const k = Math.min(r.w / (s.w + 2 * pad), r.h / (s.h + 2 * pad));
+    view = { k, x: cx - (s.x + s.w / 2) * k, y: cy - (s.y + s.h / 2) * k };
     return render();
   }
   const box = contentBox();
-  if (!box) { view = { x: r.width / 2, y: r.height / 2, k: 1 }; return render(); }
+  if (!box) { view = { x: cx, y: cy, k: 1 }; return render(); }
   const x0 = box.x, y0 = box.y, x1 = box.x + box.w, y1 = box.y + box.h;
-  const pad = 60;
-  const k = Math.max(0.3, Math.min(2, Math.min(r.width / (x1 - x0 + 2 * pad), r.height / (y1 - y0 + 2 * pad))));
-  view = { k, x: r.width / 2 - ((x0 + x1) / 2) * k, y: r.height / 2 - ((y0 + y1) / 2) * k };
+  const pad = 40;
+  const k = Math.max(0.3, Math.min(2, Math.min(r.w / (x1 - x0 + 2 * pad), r.h / (y1 - y0 + 2 * pad))));
+  view = { k, x: cx - ((x0 + x1) / 2) * k, y: cy - ((y0 + y1) / 2) * k };
   render();
 }
 
@@ -3634,7 +3698,9 @@ function duplicatePageAt(i: number) {
     pages.splice(i + 1, 0, copy);
   });
   goToPage(i + 1);
-  toast(`Duplicato «${src.name}»: i componenti hanno sigle nuove`);
+  const refs = src.doc.components.some((c) => c.type in REFERENCE_TYPES);
+  toast(`Duplicato «${src.name}»: i componenti hanno sigle nuove` +
+        (refs ? ", i rimandi finiscono in «(copia)» e restano staccati finché non li rinomini" : ""));
 }
 
 function deletePage(i: number) {
@@ -4377,8 +4443,36 @@ document.addEventListener("keydown", (e) => {
   else if (key === "v" && !mod) mirrorSelection("v");
   else if (e.key === "Escape") select(null);
   else if (e.key === "Enter" && selection?.kind === "component") { e.preventDefault(); openPropsDialog({ kind: "component", id: selection.id }); }
+  else if (e.key.startsWith("Arrow") && !mod && (selectedIds().length || selectedAnns().length)) {
+    // frecce: sposta la selezione di un passo di griglia (con Maiusc di cinque)
+    e.preventDefault();
+    const step = GRID * (e.shiftKey ? 5 : 1);
+    nudgeSelection(e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0,
+                   e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0);
+  }
   else if (key === "f" && !mod) fitView();
 });
+
+// Tab su un componente lo seleziona (solo da tastiera: il clic seleziona già, e con Maiusc aggiunge)
+$("#components").addEventListener("focusin", (e) => {
+  const g = (e.target as Element).closest<SVGGElement>("[data-component]");
+  if (!g || !g.matches(":focus-visible")) return;
+  const id = g.dataset.component!;
+  if (!selectedIds().includes(id)) select({ kind: "component", id });
+});
+
+/** Sposta componenti e annotazioni selezionati, con le pieghe delle linee tra loro (un passo di Ctrl+Z). */
+function nudgeSelection(dx: number, dy: number) {
+  if (sim || (!dx && !dy)) return;
+  const ids = new Set(selectedIds()), anns = selectedAnns();
+  mutate(() => {
+    for (const id of ids) { const l = layoutOf(id); l.x += dx; l.y += dy; }
+    for (const c of doc.connections) {
+      if (c.points && ids.has(splitRef(c.from)[0]) && ids.has(splitRef(c.to)[0])) c.points = c.points.map(([x, y]) => [x + dx, y + dy]);
+    }
+    for (const id of anns) { const a = annById(id); if (a && !a.locked) moveAnn(a, dx, dy); }
+  });
+}
 
 function selectAll() {
   select(selectionOf(doc.components.map((c) => c.id), (doc.annotations ?? []).map((a) => a.id)));
@@ -4454,10 +4548,11 @@ let saveError = "";
 let lastSavedAt: string | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 let saving: Promise<void> | null = null; // un solo salvataggio alla volta
+/** stato della bozza appena aperta (esempio, file importato, schema nuovo): finché resta così non c'è lavoro da tenere */
+let draftBase: string | null = null;
 
 const isDirty = () => fileJson() !== savedSnapshot;
-const fileName = () =>
-  `${(doc.name || "schema").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "schema"}.pneu.json`;
+const fileName = () => `${fileBaseName(doc.name)}.pneu.json`;
 const fmtTime = (iso: string) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
@@ -4533,6 +4628,7 @@ async function saveProject({ asNew = false, silent = false } = {}) {
 
 async function openProject(id: string) {
   if (project && isDirty()) await saveProject();
+  const kept = await keepDraft();
   try {
     const p = await store!.get(id);
     clearTimeout(autosaveTimer);
@@ -4547,20 +4643,33 @@ async function openProject(id: string) {
     remember(STORAGE_KEY, null);
     closeProjects();
     renderStatus();
-    toast(`Aperto «${p.name}»`);
+    toast(kept ? `Aperto «${p.name}». La bozza di prima è tra i progetti: «${kept}»` : `Aperto «${p.name}»`);
   } catch (err) {
     toast(`Impossibile aprire il progetto: ${(err as Error).message}`);
   }
 }
 
+/**
+ * Una bozza con lavoro non salvato non si perde aprendo un altro schema: diventa un progetto.
+ * Restituisce il nome del progetto creato ("" se non c'era niente da tenere).
+ */
+async function keepDraft(): Promise<string> {
+  if (project || !store || !allComponents().length || fileJson() === draftBase) return "";
+  if (!doc.name || doc.name === emptyCircuit().name) setProjectName(`Bozza del ${new Date().toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`);
+  await saveProject({ silent: true });
+  return project && saveState === "saved" ? doc.name : "";
+}
+
 async function newDocument(data: Partial<CircuitDoc> = emptyCircuit(), message = "Nuovo schema") {
   if (project && isDirty()) await saveProject();
+  const kept = await keepDraft();
   project = null;
   savedSnapshot = null;
   saveState = "idle";
   remember(SESSION_KEY, null);
   loadDoc(data);
-  toast(`${message} (Ctrl+Z per tornare indietro)`);
+  draftBase = fileJson();
+  toast(kept ? `${message}. La bozza di prima è tra i progetti: «${kept}»` : `${message} (Ctrl+Z per tornare indietro)`);
 }
 
 /**

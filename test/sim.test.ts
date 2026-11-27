@@ -46,6 +46,19 @@ describe("simulazione dello schema dell'editor", () => {
     expect(k).toBeGreaterThan(100);
   });
 
+  it("con un tempo di calcolo massimo avanza meno, ma nello stesso modo", () => {
+    const a = sim(direct52), b = sim(direct52);
+    a.setCommand("V1", "14", true);
+    b.setCommand("V1", "14", true);
+    expect(a.advance(0.1)).toBeCloseTo(0.1, 9);
+    // budget nullo: si ferma al primo controllo dell'orologio (100 passi)
+    const done = b.advance(0.1, 0);
+    expect(done).toBeCloseTo(100 * DT, 12);
+    expect(b.t).toBeCloseTo(done, 12);
+    while (b.t < a.t - DT / 2) b.advance(Math.min(0.01, a.t - b.t));
+    expect(b.cylinder("C1")!.x).toBe(a.cylinder("C1")!.x);
+  });
+
   it("il cilindro esce col solenoide e rientra con la molla della valvola", () => {
     const s = sim(direct52);
     s.advance(0.05);
@@ -130,7 +143,7 @@ describe("simulazione dello schema dell'editor", () => {
     expect(s.gauge("R.2")).toBeLessThan(3.01);
   });
 
-  it("non simula uno schema con errori, e avvisa per i componenti non simulati", () => {
+  it("non simula uno schema con errori; ogni componente del catalogo è simulato (nessun avviso)", () => {
     const bad = compileSim(doc([{ id: "V", type: "directional_valve", function: "3/2" }], []));
     expect(bad.ok).toBe(false);
     const rot = compileSim(doc(
@@ -141,6 +154,43 @@ describe("simulazione dello schema dell'editor", () => {
       ],
       [["P.1", "R.A"], ["R.B", "T.1"]],
     ));
-    expect(rot.ok && rot.warnings.length).toBe(1);
+    expect(rot.ok && rot.warnings.length).toBe(0);
+  });
+});
+
+describe("attuatore rotante", () => {
+  const rotary = (kind: "double" | "single") => doc(
+    [
+      { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+      { id: "V1", type: "directional_valve", function: kind === "double" ? "5/2" : "3/2",
+        actuation_14: "solenoid", actuation_12: "spring" },
+      { id: "R1", type: "rotary_actuator", rotary_kind: kind, params: { angle: "90 deg" } },
+    ],
+    kind === "double" ? [["P.1", "V1.1"], ["V1.4", "R1.A"], ["V1.2", "R1.B"]] : [["P.1", "V1.1"], ["V1.2", "R1.A"]],
+  );
+
+  it("doppio effetto: ruota di tutto l'angolo e torna indietro", () => {
+    const r = compileSim(rotary("double"));
+    if (!r.ok) throw new Error(r.errors.join("; "));
+    expect(r.warnings).toEqual([]);
+    const s = new Simulator(r.network);
+    s.setCommand("V1", "14", true);
+    s.advance(1);
+    expect(s.cylinder("R1")!.fraction).toBe(1);
+    s.setCommand("V1", "14", false);
+    s.advance(1);
+    expect(s.cylinder("R1")!.fraction).toBe(0);
+  });
+
+  it("semplice effetto: la molla lo riporta a riposo", () => {
+    const r = compileSim(rotary("single"));
+    if (!r.ok) throw new Error(r.errors.join("; "));
+    const s = new Simulator(r.network);
+    s.setCommand("V1", "14", true);
+    s.advance(1);
+    expect(s.cylinder("R1")!.fraction).toBe(1);
+    s.setCommand("V1", "14", false);
+    s.advance(1.5);
+    expect(s.cylinder("R1")!.fraction).toBe(0);
   });
 });

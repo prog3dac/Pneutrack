@@ -4,14 +4,18 @@
  * valvole, e aria consumata nel tempo.
  */
 import { BAR, P_ATM } from "../solver/constants";
+import { isThreePosition } from "../model/components";
 import { CycleTracker } from "./measures";
 import type { Simulator } from "./simulator";
 
 export interface Channel {
   id: string;
   label: string;
-  /** "cyl": corsa 0..1; "bool": acceso/spento; "bar": pressione relativa [bar] */
-  kind: "cyl" | "bool" | "bar";
+  /**
+   * "cyl": corsa 0..1; "bool": acceso/spento; "bar": pressione relativa [bar];
+   * "pos3": valvola a tre posizioni, 0 casella 12, 0,5 centro, 1 casella 14
+   */
+  kind: "cyl" | "bool" | "bar" | "pos3";
   /** fondo scala dei canali "bar" [bar] */
   max?: number;
   /** cilindri: frazione di corsa entro cui lo stelo è a fine corsa (vedi sim/measures) */
@@ -69,6 +73,11 @@ export class Recorder {
       }
     } else {
       for (const v of s.net.valves) {
+        if (isThreePosition(v.fn)) {
+          ch.push({ id: v.id, label: lab(v.id, ""), kind: "pos3" });
+          read.push(() => { const p = s.valvePosition(v.id); return p === "14" ? 1 : p === "12" ? 0 : 0.5; });
+          continue;
+        }
         ch.push({ id: v.id, label: lab(v.id, ""), kind: "bool" });
         read.push(() => (s.valvePosition(v.id) === (v.act14 === "spring" ? "12" : "14") ? 1 : 0));
       }

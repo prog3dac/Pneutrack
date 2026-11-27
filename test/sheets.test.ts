@@ -147,6 +147,10 @@ describe("fogli del progetto", () => {
     expect(copy.doc.blocks?.[0]?.components).toContain(v.id);
     expect(copy.doc.layout[v.id]).toEqual({ x: 0, y: 100, rot: 0 });
     expect(copy.doc.connections.every((c) => ids.includes(c.from.split(".")[0]!) && ids.includes(c.to.split(".")[0]!))).toBe(true);
+    // i rimandi copiati non si collegano alle linee dell'originale
+    const refs = copy.doc.components.filter((c) => c.type === "sheet_reference" || c.type === "wire_reference");
+    expect(refs.length).toBeGreaterThan(0);
+    expect(refs.every((c) => c.label!.endsWith(" (copia)"))).toBe(true);
     // l'originale non cambia
     expect(pages[1]!.doc.components[1]!.id).toBe("V1");
   });

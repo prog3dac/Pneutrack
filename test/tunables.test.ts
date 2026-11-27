@@ -135,3 +135,21 @@ describe("campo di regolazione nello schema", () => {
     expect(a.issues.some((i) => i.code === "SETPOINT_RANGE" && i.severity === "error")).toBe(true);
   });
 });
+
+describe("pompa del vuoto", () => {
+  it("il grado di vuoto si regola mentre la simulazione gira", () => {
+    const s = simOf({
+      components: [{ id: "PV", type: "vacuum_pump", params: { vacuum: "0.6 bar" } },
+        { id: "T", type: "air_reservoir", params: { volume: "0.1 l" } }],
+      connections: [{ from: "PV.1", to: "T.1" }],
+    });
+    const t = s.tunable("PV", "vacuum")!;
+    expect(t.min).toBe(0);
+    expect(t.max).toBeGreaterThan(0.9 * BAR);
+    s.advance(0.5);
+    expect(s.gauge("T.1")).toBeCloseTo(-0.6, 2);
+    expect(s.setTunable("PV", "vacuum", 0.8 * BAR)).toBeCloseTo(0.8 * BAR);
+    s.advance(0.5);
+    expect(s.gauge("T.1")).toBeCloseTo(-0.8, 2);
+  });
+});

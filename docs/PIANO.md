@@ -8,11 +8,11 @@ Obiettivo: editor di schemi pneumatici (ISO 1219) con simulazione animata, sul m
 - Schemi salvati in JSON versionato. Simboli ISO 1219 disegnati in proprio (SVG).
 
 ## Fasi
-0. **Prototipo di fattibilità** (fatto): alimentazione → 5/2 → cilindro doppio effetto, test automatici. Codice in `src/solver`.
-1. **Editor** (fatto, base): canvas zoom/pan/snap, palette, collegamenti, undo/redo, progetti, validazione. Da ampliare: canvas zoom/pan/snap, palette ~20 componenti, collegamenti, undo/redo, salvataggio JSON, validazione.
-2. **Simulazione pneumatica** (avviata: valvole, riduttore, strozzatore, cilindri animati; mancano attuatore rotante e grafici): compilazione grafo → rete di volumi/resistenze, tutti i componenti, animazione (colori pressione, pistoni), grafici.
-3. **Elettropneumatica** (circuito elettrico: modello, validazione, solutore, simboli, simulazione nell'editor, esempi e diagramma delle fasi fatti, guida in [elettropneumatica.md](elettropneumatica.md)): solenoidi, relè, contatti, temporizzatori, fine corsa, diagramma di fase.
-4. **Finitura**: esempi didattici, export PDF/SVG, i18n it/en, pacchetto desktop (Tauri).
+0. **Prototipo di fattibilità** (fatto): alimentazione → 5/2 → cilindro doppio effetto, test automatici. Codice in `src/solver`, oggi riferimento per i test del caso base.
+1. **Editor** (fatto): canvas zoom/pan/snap, palette con tutto il catalogo ISO 1219, collegamenti, linee e tubi, più fogli con rimandi, blocchi, testi e forme, undo/redo, progetti, validazione, uso da tastiera.
+2. **Simulazione pneumatica** (fatta): compilazione grafo → rete di volumi/resistenze, tutti i 73 componenti del catalogo (anche l'attuatore rotante), ammortizzo, regolazioni durante la simulazione, animazione, diagramma delle fasi e misure di consumo.
+3. **Elettropneumatica** (fatta, guida in [elettropneumatica.md](elettropneumatica.md)): solenoidi, relè, contatti, temporizzatori, fine corsa, sensori, pressostati, diagramma delle fasi.
+4. **Finitura** (in corso): esempi didattici e manuale d'uso (fatti), export PDF, SVG, DXF e distinta (fatti), app installabile e uso senza rete (fatti); da fare: i18n it/en, pacchetto desktop (Tauri).
 Dopo la v1: GRAFCET, ladder PLC, catalogo parametri reali.
 
 ## Rischi
