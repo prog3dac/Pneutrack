@@ -58,6 +58,14 @@ export interface CircuitDoc {
 export const emptyCircuit = (name = "Nuovo schema"): CircuitDoc =>
   ({ format: FORMAT, version: 1, name, components: [], connections: [], layout: {} });
 
+/**
+ * Nome di file dal nome dello schema: tiene lettere (anche accentate), cifre, «+», «-» e «_», toglie i caratteri
+ * vietati nei nomi di file e mette «_» al posto degli spazi. «Sequenza A+ B+ con relè» → «Sequenza_A+_B+_con_relè».
+ */
+export function fileBaseName(name: string | undefined): string {
+  return (name ?? "").normalize("NFC").replace(/[^\p{L}\p{N}_+\- ]+/gu, " ").trim().replace(/\s+/g, "_") || "schema";
+}
+
 export class CircuitError extends Error {
   override name = "CircuitError";
 }

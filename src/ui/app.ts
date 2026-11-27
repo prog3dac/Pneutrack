@@ -3,7 +3,7 @@
 import {
   blockOf, extractFragment, insertFragment, mergeBlock, parseFragment, pruneBlocks, splitBlock, type Fragment,
 } from "../model/blocks";
-import { emptyCircuit, type CircuitDoc, type ConnectionData } from "../model/circuit";
+import { emptyCircuit, fileBaseName, type CircuitDoc, type ConnectionData } from "../model/circuit";
 import {
   defaultPageName, duplicatePage, joinPages, mergedCircuit, newPageId, pageOfComponent, REFERENCE_TYPES,
   referenceTargets, referenceText, splitPages, type Page, type ReferenceTarget,
@@ -4507,8 +4507,7 @@ let saving: Promise<void> | null = null; // un solo salvataggio alla volta
 let draftBase: string | null = null;
 
 const isDirty = () => fileJson() !== savedSnapshot;
-const fileName = () =>
-  `${(doc.name || "schema").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "schema"}.pneu.json`;
+const fileName = () => `${fileBaseName(doc.name)}.pneu.json`;
 const fmtTime = (iso: string) => {
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();

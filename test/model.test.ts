@@ -1,7 +1,7 @@
 // Modello, unità e validazione (portati dai test Python originali).
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { nets, normalizeCircuit, parseRef, CircuitError, type CircuitDoc } from "../src/model/circuit";
+import { fileBaseName, nets, normalizeCircuit, parseRef, CircuitError, type CircuitDoc } from "../src/model/circuit";
 import {
   buildComponent, cylinderInfo, internalPaths, ParameterError, typeList, type ComponentData,
 } from "../src/model/components";
@@ -288,5 +288,14 @@ describe("validazione", () => {
     ], [["P.1", "R.1"], ["P.1", "V.1"], ["R.2", "V.14"], ["V.2", "C.A"]]));
     expect(under.issues.map((i) => [i.code, i.severity])).toEqual([["UNDERPRESSURE", "warning"]]);
     expect(under.issues[0]!.message).toContain("1.5 bar");
+  });
+});
+
+describe("nome del file esportato", () => {
+  it("tiene le lettere accentate e i segni + e -", () => {
+    expect(fileBaseName("Elettropneumatica: sequenza A+ B+ B- A- con relè")).toBe("Elettropneumatica_sequenza_A+_B+_B-_A-_con_relè");
+    expect(fileBaseName("Pressa / banco 1")).toBe("Pressa_banco_1");
+    expect(fileBaseName("  ")).toBe("schema");
+    expect(fileBaseName(undefined)).toBe("schema");
   });
 });
