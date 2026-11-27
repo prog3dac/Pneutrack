@@ -17,3 +17,11 @@ export const SEAL_PRESSURE_FRICTION = 0.03;
  * guarnizioni, ≈ 100 N·s/m per l'alesaggio 32 (valori misurati in letteratura: 50–150 N·s/m).
  */
 export const VISCOUS_PER_PERIMETER = 1000;
+
+// Finecorsa (valvole a rullo, finecorsa elettrici): stesse soglie per la parte pneumatica e per quella elettrica.
+/** tratto finale di corsa in cui un rullo o un tastatore è premuto [m] */
+export const ROLLER_ZONE = 0.002;
+/** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
+export const ONEWAY_ZONE = 0.005;
+/** velocità minima dello stelo perché la leva ribaltabile venga azionata [m/s] */
+export const ONEWAY_MIN_SPEED = 1e-3;

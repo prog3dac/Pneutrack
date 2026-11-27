@@ -11,16 +11,13 @@
  * attrito di primo distacco, ammortizzo, peso, bloccaggio, arresto a fine corsa né consumo d'aria: quelli
  * esistono solo qui.
  */
-import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
+import { BAR, KAPPA, ONEWAY_MIN_SPEED, ONEWAY_ZONE, P_ATM, R_AIR, RHO_ANR, ROLLER_ZONE } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
 import { isElectric, isManual, profileForce, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
 
-/** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
-const ONEWAY_ZONE = 0.005;
-/** velocità minima dello stelo perché la leva ribaltabile venga azionata [m/s] */
-const ONEWAY_MIN_SPEED = 1e-3;
+
 
 /** velocità sotto la quale l'attrito vale quello statico [m/s] */
 const STRIBECK_V = 0.01;
@@ -290,7 +287,7 @@ export class Simulator {
       return inZone && towards;
     }
     // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
-    const tol = 0.002 / stroke;
+    const tol = ROLLER_ZONE / stroke;
     return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
   }
 

@@ -12,6 +12,7 @@
  * di elettrovalvola comandano subito il solenoide.
  */
 import { nets } from "../model/circuit";
+import { ONEWAY_MIN_SPEED, ONEWAY_ZONE, ROLLER_ZONE } from "../solver/constants";
 import { isCylinder, simParam, type Cam, type Component, type ContactKind } from "../model/components";
 import { electricPorts, type Built } from "../model/validation";
 
@@ -94,11 +95,6 @@ export interface ElectricSnapshot {
   oscillating: string[];
 }
 
-/** tratto finale di corsa in cui il rullo è premuto [m] */
-const ROLLER_ZONE = 0.002;
-/** tratto finale di corsa in cui la leva ribaltabile è a contatto con la camma [m] */
-const ONEWAY_ZONE = 0.005;
-const ONEWAY_MIN_SPEED = 1e-3;
 /** oltre questo numero di commutazioni al secondo un relè è considerato in oscillazione */
 const OSCILLATION_LIMIT = 20;
 
