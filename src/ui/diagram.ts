@@ -23,7 +23,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 const num = (x: number) => (Math.round(x * 10) / 10).toString();
 /** numero con la virgola e `d` decimali */
 export const fmt = (x: number, d: number) => x.toFixed(d).replace(".", ",");
-const laneH = (c: Channel) => (c.kind === "cyl" ? CYL_H : c.kind === "bar" ? BAR_H : BOOL_H);
+const laneH = (c: Channel) => (c.kind === "cyl" || c.kind === "pos3" ? CYL_H : c.kind === "bar" ? BAR_H : BOOL_H);
 const hasCylinders = (channels: Channel[]) => channels.some((c) => c.kind === "cyl");
 
 /** Altezza del disegno per questi canali [px]. */
@@ -78,6 +78,12 @@ export function renderDiagram(channels: Channel[], samples: Sample[], mode: Diag
       parts.push(`<line class="dg-base dg-top" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/>`);
       parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${y + 4}" text-anchor="end">1</text>`);
       parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${y + h + 3}" text-anchor="end">0</text>`);
+    } else if (c.kind === "pos3") {
+      // le tre caselle: 14 in alto, centro, 12 in basso
+      parts.push(`<line class="dg-base dg-mid" x1="${x0}" x2="${x1}" y1="${y + h / 2}" y2="${y + h / 2}"/>`);
+      parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${y + 4}" text-anchor="end">14</text>`);
+      parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${num(y + h / 2 + 3)}" text-anchor="end">0</text>`);
+      parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${y + h + 3}" text-anchor="end">12</text>`);
     } else if (c.kind === "bar") {
       parts.push(`<line class="dg-base dg-top" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/>`);
       parts.push(`<text class="dg-tick" x="${x0 - 4}" y="${y + 4}" text-anchor="end">${c.max ?? 10}</text>`);
@@ -90,7 +96,7 @@ export function renderDiagram(channels: Channel[], samples: Sample[], mode: Diag
       const v = Math.min(1, Math.max(0, (s.v[i] ?? 0) * scale));
       const x = xOf(s.t);
       const isLast = k === samples.length - 1;
-      if (c.kind === "bool") {
+      if (c.kind === "bool" || c.kind === "pos3") {
         // a gradino: si aggiunge un punto solo quando lo stato cambia
         if (v !== lastV) {
           if (pts.length) pts.push(`${num(x)},${num(y + h - lastV * h)}`);

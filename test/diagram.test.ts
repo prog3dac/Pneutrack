@@ -35,6 +35,30 @@ describe("registrazione", () => {
     expect(rec.channels.some((c) => c.kind === "bool")).toBe(true);
   });
 
+  it("le valvole a tre posizioni hanno tre livelli: 12, centro e 14", () => {
+    const r = compileSim({
+      components: [
+        { id: "P", type: "pressure_source", params: { pressure: "6 bar" } },
+        { id: "V1", type: "directional_valve", function: "5/3", actuation_14: "solenoid", actuation_12: "solenoid" },
+        { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", rod: "12 mm", stroke: "50 mm" } },
+      ],
+      connections: [{ from: "P.1", to: "V1.1" }, { from: "V1.4", to: "C1.A" }, { from: "V1.2", to: "C1.B" }],
+    });
+    if (!r.ok) throw new Error(r.errors.join("; "));
+    const s = new Simulator(r.network);
+    const rec = new Recorder(s);
+    const i = rec.channels.findIndex((c) => c.id === "V1");
+    expect(rec.channels[i]!.kind).toBe("pos3");
+    const at = () => { rec.record(s.t); return rec.samples[rec.samples.length - 1]!.v[i]; };
+    expect(at()).toBe(0.5);
+    s.setCommand("V1", "14", true); s.advance(0.01);
+    expect(at()).toBe(1);
+    s.setCommand("V1", "14", false); s.setCommand("V1", "12", true); s.advance(0.01);
+    expect(at()).toBe(0);
+    const svg = renderDiagram(rec.channels, rec.samples, "time", 600);
+    expect(svg).toContain('class="dg-lane pos3"');
+  });
+
   it("riparte da zero se il tempo torna indietro", () => {
     const s = sim("elettro_autoritenuta");
     const rec = new Recorder(s);
