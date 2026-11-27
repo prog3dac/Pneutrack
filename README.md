@@ -19,6 +19,9 @@ animarlo.
 > Dettagli in [docs/interfaccia.md](docs/interfaccia.md), [docs/modello-dati.md](docs/modello-dati.md),
 > [docs/elettropneumatica.md](docs/elettropneumatica.md) e [docs/PIANO.md](docs/PIANO.md).
 
+**Manuale d'uso**: [docs/manuale](docs/manuale/README.md), con le convenzioni, come si ricavano i dati
+dai cataloghi, le formule con cui la simulazione calcola ogni componente e il riferimento di tutti i parametri.
+
 ## Installare l'app
 
 Pneutrack si può installare come app dal browser, senza scaricare nulla: si apre in una
@@ -138,6 +141,11 @@ elencati in [docs/modello-dati.md](docs/modello-dati.md#validazione).
 Il progetto è aperto a contributi: segnalazioni, proposte di componenti, simboli,
 modelli di simulazione e documentazione. Apri una issue per discutere una modifica prima
 di inviare una pull request di grandi dimensioni.
+
+Ogni modifica che cambia componenti, parametri, formule o convenzioni della simulazione aggiorna anche il
+[manuale d'uso](docs/manuale/README.md) nella stessa pull request: `npm run manuale` rigenera il riferimento
+dei componenti, il modello fisico si descrive a mano in `docs/manuale/calcoli.md`. Il test
+`test/manuale.test.ts` lo controlla.
 
 ## Licenza
 

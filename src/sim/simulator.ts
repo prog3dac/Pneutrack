@@ -22,6 +22,19 @@ const ONEWAY_MIN_SPEED = 1e-3;
 const STRIBECK_V = 0.01;
 
 export const DT = 2e-5;
+
+/**
+ * Conduttanza dello scarico di una camera ammortizzata: lo spillo conico entra nella guarnizione e chiude il
+ * passaggio libero `free` con continuità fino a lasciare solo la vite `screw`. `s` è la frazione del tratto
+ * conico già percorsa (0 all'ingresso, da 1 in poi resta solo la vite). L'interpolazione è sul logaritmo, con un
+ * raccordo morbido ai due capi, perché la conduttanza cambia di ordini di grandezza.
+ */
+export function cushionConductance(free: number, screw: number, s: number): number {
+  if (s <= 0) return free;
+  if (s >= 1) return screw;
+  const k = s * s * (3 - 2 * s);
+  return Math.exp(Math.log(free) + (Math.log(screw) - Math.log(free)) * k);
+}
 /** il circuito elettrico si aggiorna ogni millisecondo simulato */
 export const ELECTRIC_EVERY = 50;
 
@@ -308,8 +321,9 @@ export class Simulator {
         // aria che esce dalla camera: dentro l'ammortizzo passa solo dalla vite
         const cy = net.cylinders[o.cushion.cylinder]!;
         const x = y[this.cylOffset + 2 * o.cushion.cylinder]!;
-        const inside = o.cushion.end === "cap" ? x < o.cushion.length : x > cy.stroke - o.cushion.length;
-        if (inside) C = o.cushion.C;
+        // profondità dentro l'ammortizzo: 0 all'ingresso dello spillo, cresce verso il fine corsa
+        const depth = o.cushion.end === "cap" ? o.cushion.length - x : x - (cy.stroke - o.cushion.length);
+        if (depth > 0) C = cushionConductance(o.C, o.cushion.C, depth / o.cushion.taper);
       }
       let m = signedFlow(pa, pb, C, o.bcrit, net.temperature);
       if (o.gate) {
@@ -335,7 +349,10 @@ export class Simulator {
       V[c.rodNode]! += c.Vrod0 + c.A2 * (c.stroke - x);
       const force = P[c.capNode]! * c.A1 - P[c.rodNode]! * c.A2 - P_ATM * (c.A1 - c.A2) - c.spring;
       // attrito di Stribeck: dal valore statico a quello dinamico man mano che la velocità supera STRIBECK_V
-      const coulomb = c.frictionCoulomb + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
+      // le guarnizioni premono di più con la camera in pressione: l'attrito coulombiano cresce con la pressione
+      const sealLoad = c.frictionPressure *
+        (Math.max(0, P[c.capNode]! - P_ATM) * c.A1 + Math.max(0, P[c.rodNode]! - P_ATM) * c.A2);
+      const coulomb = c.frictionCoulomb + sealLoad + (c.frictionStatic - c.frictionCoulomb) * Math.exp(-((v / STRIBECK_V) ** 2));
       const fr = coulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
       const load = c.loadProfile ? profileForce(c.loadProfile, x) : c.load;
       let acc = (force - load - c.gravity - fr) / c.mass;

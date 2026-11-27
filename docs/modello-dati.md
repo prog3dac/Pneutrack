@@ -129,7 +129,8 @@ I cilindri a doppio effetto e a doppio stelo hanno l'opzione `cushioning`: `none
 ammortizzato (se manca, circa 0,6 × alesaggio, tra 10 e 40 mm); `cushion_opening` è l'apertura
 della vite di regolazione, da 0 % (chiusa) a 100 % (tutta aperta, 0,3 dm³/(s·bar)), predefinita 30 %.
 In simulazione, negli ultimi millimetri di corsa l'aria che esce dalla camera passa solo dalla
-vite; quella che entra passa libera.
+vite (lo spillo conico la chiude con continuità nel primo tratto); quella che entra passa libera.
+Formule e costanti in [manuale/calcoli.md](manuale/calcoli.md), §4.4.
 
 ### Strozzatori, attrito e montaggio
 

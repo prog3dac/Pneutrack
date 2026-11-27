@@ -65,7 +65,8 @@ export function simulateNetwork(net: Network, opt: SimOptions): SimResult {
       V[c.rodNode]! += c.Vrod0 + c.A2 * (c.stroke - x);
       dV[c.rodNode]! += -c.A2 * v;
       const force = P[c.capNode]! * c.A1 - P[c.rodNode]! * c.A2 - P_ATM * (c.A1 - c.A2);
-      const fr = c.frictionCoulomb * Math.tanh(v / 1e-3) + c.frictionViscous * v;
+      const seal = c.frictionPressure * (Math.max(0, P[c.capNode]! - P_ATM) * c.A1 + Math.max(0, P[c.rodNode]! - P_ATM) * c.A2);
+      const fr = (c.frictionCoulomb + seal) * Math.tanh(v / 1e-3) + c.frictionViscous * v;
       dy[cylOffset + 2 * i] = v;
       dy[cylOffset + 2 * i + 1] = (force - c.load - fr) / c.mass;
     });

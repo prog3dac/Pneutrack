@@ -13,7 +13,7 @@ import { conductanceOf, cushionLength, hasPilotPort, isElectricType, restPositio
 import { boxPaths, STANDARD_BOXES, type BoxPosition } from "../model/valveBody";
 import { TUBE_CRITICAL_RATIO, tubeConductance, tubeVolume } from "../model/tubes";
 import { analyze, build, pneumaticPorts } from "../model/validation";
-import { BAR, P_ATM } from "../solver/constants";
+import { BAR, P_ATM, SEAL_PRESSURE_FRICTION, VISCOUS_PER_PERIMETER } from "../solver/constants";
 import { compileElectric, type ElectricNetwork } from "./electric";
 
 /** Posizione di una valvola: casella lato 14, lato 12, o centrale (5/3). */
@@ -43,9 +43,11 @@ export interface Orifice {
   /**
    * ammortizzo: orifizio tra la camera `a` del cilindro e la sua porta `b`. Negli ultimi `length`
    * metri di corsa verso quella camera l'aria in uscita passa solo dalla vite (conduttanza `C`);
-   * in ingresso passa libera (valvola di non ritorno dell'ammortizzo).
+   * in ingresso passa libera (valvola di non ritorno dell'ammortizzo). Nei primi `taper` metri dell'ammortizzo
+   * lo spillo conico chiude il passaggio libero a poco a poco: la conduttanza scende con continuità da `free`
+   * (quella dell'orifizio) a `C`.
    */
-  cushion?: { cylinder: number; end: "cap" | "rod"; length: number; C: number };
+  cushion?: { cylinder: number; end: "cap" | "rod"; length: number; taper: number; C: number };
 }
 
 export interface ValveSpec {
@@ -92,6 +94,11 @@ export interface CylinderSpec {
   /** peso della massa mobile lungo l'asse, positivo se si oppone all'uscita dello stelo [N] */
   gravity: number;
   frictionViscous: number;
+  /**
+   * attrito delle guarnizioni che cresce con la pressione: frazione della forza di pressione relativa che
+   * preme le labbra delle guarnizioni di ogni camera [-]
+   */
+  frictionPressure: number;
   /** forza della molla di richiamo (semplice effetto) [N]; negativa se spinge lo stelo fuori (in trazione) */
   spring: number;
   /** posizione di partenza [m] (in trazione con la molla lo stelo parte fuori) */
@@ -176,7 +183,16 @@ const CUSHION_FREE_C = 5e-3 / BAR;
 const CUSHION_MAX_C = 0.3e-3 / BAR;
 /** apertura minima: anche a vite chiusa resta un piccolo trafilamento */
 const CUSHION_MIN_OPENING = 0.01;
+/** tratto d'ingresso dello spillo conico, come frazione della lunghezza dell'ammortizzo, tra 1 e 5 mm */
+const CUSHION_TAPER_FRACTION = 0.2;
+const CUSHION_TAPER_MIN = 1e-3;
+const CUSHION_TAPER_MAX = 5e-3;
 
+
+/** Tratto d'ingresso dello spillo conico per un ammortizzo lungo `length` [m]. */
+export function cushionTaper(length: number): number {
+  return Math.min(length, Math.min(CUSHION_TAPER_MAX, Math.max(CUSHION_TAPER_MIN, CUSHION_TAPER_FRACTION * length)));
+}
 
 export interface CompileOptions {
   /** volume di ogni nodo di raccordo [m³] (predefinito 1 cm³) */
@@ -550,10 +566,11 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           const cu = c.cushioning ?? "none";
           if (cu !== end && cu !== "both") return node(c, portName);
           const n = nodeCount++;
+          const len = cushionLength(c);
           const opening = Math.min(1, Math.max(CUSHION_MIN_OPENING, simParam(c, "cushion_opening").si));
           const o: Orifice = {
             a: n, b: node(c, portName), C: CUSHION_FREE_C, bcrit: 0.4,
-            cushion: { cylinder: cylinders.length, end, length: cushionLength(c), C: opening * CUSHION_MAX_C },
+            cushion: { cylinder: cylinders.length, end, length: len, taper: cushionTaper(len), C: opening * CUSHION_MAX_C },
           };
           orifices.push(o);
           cushions.push(o);
@@ -574,7 +591,8 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
           frictionCoulomb: simParam(c, "friction").si,
           frictionStatic: c.params.static_friction?.si ?? simParam(c, "friction").si,
           gravity: c.type === "gripper" ? 0 : simParam(c, "mass").si * G * Math.sin(simParam(c, "mounting_angle").si),
-          frictionViscous: 20,
+          frictionViscous: VISCOUS_PER_PERIMETER * Math.PI * d,
+          frictionPressure: SEAL_PRESSURE_FRICTION,
           spring: pull ? -springForce : springForce,
           x0: pull && springForce > 0 ? c.params.stroke!.si : 0,
           loadProfile: c.loadProfile,
