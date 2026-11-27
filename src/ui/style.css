@@ -237,6 +237,10 @@ button.link:hover { text-decoration: underline; }
 .line.pressurized .stroke { stroke: var(--air); stroke-width: 2.4; }
 .line.p1 .stroke { stroke: var(--p1); } .line.p2 .stroke { stroke: var(--p2); } .line.p3 .stroke { stroke: var(--p3); }
 .line.p4 .stroke { stroke: var(--p4); } .line.p5 .stroke { stroke: var(--p5); }
+/* oltre al colore, lo spessore cresce con la pressione: i livelli si distinguono anche senza vedere i colori */
+:root:not([data-print]) .line.p1 .stroke { stroke-width: 1.8; } :root:not([data-print]) .line.p2 .stroke { stroke-width: 2.2; }
+:root:not([data-print]) .line.p3 .stroke { stroke-width: 2.6; } :root:not([data-print]) .line.p4 .stroke { stroke-width: 3; }
+:root:not([data-print]) .line.p5 .stroke { stroke-width: 3.4; }
 .line.exhaust .stroke { stroke: var(--muted); }
 .line.pilot .stroke { stroke-dasharray: 6 4; }
 /* fili del circuito elettrico: sottili e in un colore diverso dalle linee pneumatiche */
@@ -269,6 +273,8 @@ button.link:hover { text-decoration: underline; }
 #legend line.lg.p1 { stroke: var(--p1); } #legend line.lg.p2 { stroke: var(--p2); }
 #legend line.lg.p3 { stroke: var(--p3); } #legend line.lg.p4 { stroke: var(--p4); }
 #legend line.lg.p5 { stroke: var(--p5); }
+#legend line.lg.p1 { stroke-width: 1.8; } #legend line.lg.p2 { stroke-width: 2.2; } #legend line.lg.p3 { stroke-width: 2.6; }
+#legend line.lg.p4 { stroke-width: 3; } #legend line.lg.p5 { stroke-width: 3.4; }
 #legend line.lg-exhaust { stroke: var(--muted); } #legend line.lg-pilot { stroke-dasharray: 5 3; stroke-width: 2; }
 #legend line.lg-wire { stroke: var(--wire); stroke-width: 1.4; } #legend line.lg-live { stroke: var(--live); stroke-width: 2; }
 #legend line.lg-selected { stroke: var(--sel); stroke-width: 4; }
