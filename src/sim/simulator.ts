@@ -57,6 +57,15 @@ export class Simulator {
   private readonly isFixed: Uint8Array;
   /** indice di ogni cilindro per sigla */
   private readonly cylIndex = new Map<string, number>();
+  /** stato che integra la massa passata da ogni misuratore di portata, per sigla */
+  private readonly meterIndex = new Map<string, number>();
+  /** per ogni orifizio il suo misuratore (posizione da `meterOffset`), o −1 */
+  private readonly meterOfOrifice: Int32Array;
+  private readonly meterOffset: number;
+  /** portata di ogni misuratore nello stadio di RK4 in corso [kg/s] */
+  private readonly bufMeter: Float64Array;
+  /** massa passata da ogni misuratore all'inizio dell'ultimo passo [kg] */
+  private readonly meterBefore: Float64Array;
   // memoria di lavoro del passo di integrazione, allocata una volta sola
   private readonly bufP: Float64Array;
   private readonly bufInflow: Float64Array;
@@ -95,7 +104,16 @@ export class Simulator {
     }
     this.cylOffset = this.freeNodes.length;
     this.airIndex = this.cylOffset + 2 * net.cylinders.length;
-    const len = this.airIndex + 1;
+    this.meterOffset = this.airIndex + 1;
+    this.meterOfOrifice = new Int32Array(net.orifices.length).fill(-1);
+    net.orifices.forEach((o, k) => {
+      if (o.meter === undefined) return;
+      this.meterOfOrifice[k] = this.meterIndex.size;
+      this.meterIndex.set(o.meter, this.meterIndex.size);
+    });
+    this.bufMeter = new Float64Array(this.meterIndex.size);
+    this.meterBefore = new Float64Array(this.meterIndex.size);
+    const len = this.meterOffset + this.meterIndex.size;
     this.y = new Float64Array(len);
     this.fixedP = new Float64Array(net.nodeCount);
     this.isFixed = new Uint8Array(net.nodeCount);
@@ -250,6 +268,31 @@ export class Simulator {
     return (out[this.airIndex]! / RHO_ANR) * 1000 * 60;
   }
 
+  /**
+   * Portata che attraversa il misuratore di portata `id` [Nl/min, ANR]: positiva da 1 verso 2,
+   * negativa nel verso opposto. `undefined` se `id` non è un misuratore della rete.
+   */
+  meterFlow(id: string): number | undefined {
+    const i = this.meterIndex.get(id);
+    if (i === undefined) return undefined;
+    if (this.t === 0) return 0;
+    // la massa passata nell'ultimo passo, non la portata istantanea: un nodo piccolo tra due orifizi
+    // grandi è rigido, e RK4 vi trova un equilibrio in cui le portate dei singoli stadi non sono
+    // zero ma la loro media pesata sì. La media pesata è quella che sposta davvero l'aria.
+    return ((this.y[this.meterOffset + i]! - this.meterBefore[i]!) / DT / RHO_ANR) * 1000 * 60;
+  }
+
+  /** Sigle dei misuratori di portata della rete. */
+  meters(): string[] {
+    return [...this.meterIndex.keys()];
+  }
+
+  /** Aria passata dal misuratore di portata `id` dall'inizio [Nl, ANR], con segno come {@link meterFlow}. */
+  meterVolume(id: string): number | undefined {
+    const i = this.meterIndex.get(id);
+    return i === undefined ? undefined : (this.y[this.meterOffset + i]! / RHO_ANR) * 1000;
+  }
+
   valvePosition(id: string): Position | undefined {
     const i = this.net.valves.findIndex((v) => v.id === id);
     return i < 0 ? undefined : this.positions[i];
@@ -368,6 +411,7 @@ export class Simulator {
     const net = this.net;
     const P = this.fillPressures(y, this.bufP);
     const inflow = this.bufInflow.fill(0);
+    const meter = this.bufMeter.fill(0);
     for (let k = 0; k < net.orifices.length; k++) {
       const o = net.orifices[k]!;
       if (o.valve !== undefined && !o.positions!.includes(this.positions[o.valve]!)) continue;
@@ -395,6 +439,8 @@ export class Simulator {
       }
       inflow[o.a]! -= m * (o.boost ?? 1);
       inflow[o.b]! += m;
+      const mi = this.meterOfOrifice[k]!;
+      if (mi >= 0) meter[mi] = m;
     }
     const V = this.bufV;
     for (let n = 0; n < V.length; n++) V[n] = net.baseVolume[n]!;
@@ -431,6 +477,7 @@ export class Simulator {
     }
     // consumo: aria che esce dalle alimentazioni (quella che vi rientra si sottrae)
     for (const n of this.supplyNodes) dy[this.airIndex]! -= inflow[n]!;
+    for (let i = 0; i < meter.length; i++) dy[this.meterOffset + i] = meter[i]!;
   }
 
   /** Un passo Runge-Kutta 4 a passo fisso, sul posto. */
@@ -448,6 +495,7 @@ export class Simulator {
   }
 
   private step(): void {
+    this.meterBefore.set(this.y.subarray(this.meterOffset));
     this.rk4(DT);
     this.t += DT;
     const y = this.y;

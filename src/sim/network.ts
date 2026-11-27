@@ -38,6 +38,8 @@ export interface Orifice {
   boost?: number;
   /** solo da a verso b (non ritorno) */
   oneWay?: boolean;
+  /** misuratore di portata: sigla del componente che legge la portata di questo orifizio (verso a → b) */
+  meter?: string;
   /** apertura 0..1 in funzione delle pressioni assolute dei nodi (valvole logiche, di sicurezza...) */
   gate?: (P: ArrayLike<number>) => number;
   /**
@@ -466,8 +468,10 @@ export function compileSim(doc: Pick<CircuitDoc, "components" | "connections">,
       case "lubricator":
       case "air_dryer":
       case "rotary_joint":
-      case "flow_meter":
         orifices.push(orifice("1", "2"));
+        break;
+      case "flow_meter":
+        orifices.push(orifice("1", "2", { meter: c.id }));
         break;
       case "air_motor":
         orifices.push(orifice("1", "2", c.motor_kind === "one_way" ? { oneWay: true } : {}));
