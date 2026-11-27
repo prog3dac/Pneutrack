@@ -90,6 +90,8 @@ dei problemi.
   foglio di ogni sigla.
 - **Versione**: il numero accanto al nome dell'app apre le novità di ogni versione
   ([CHANGELOG.md](../CHANGELOG.md)); dopo un aggiornamento si aprono da sole una volta.
+- **Manuale d'uso**: *File* → «Manuale d'uso…» apre il manuale (uso e convenzioni, come calcola la
+  simulazione, componenti e parametri), con i collegamenti tra le parti; funziona anche senza rete.
 - **Validazione**: avviene a ogni modifica. I problemi si aprono con il bollino di validazione nella barra
   in alto (clic su un problema per andare al componente), i componenti con errori sono bordati di rosso, le porte
   scollegate sono rosse e le linee in pressione sono blu (tratteggiate quelle di pilotaggio).

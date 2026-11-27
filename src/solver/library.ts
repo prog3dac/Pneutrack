@@ -1,4 +1,4 @@
-import { BAR, P_ATM } from "../solver/constants";
+import { BAR, P_ATM, SEAL_PRESSURE_FRICTION, VISCOUS_PER_PERIMETER } from "../solver/constants";
 import { cFromDm3 } from "../solver/flow";
 
 /** Elemento di flusso tra due nodi (orifizio ISO 6358). */
@@ -26,6 +26,8 @@ export interface CylinderSpec {
   load: number;
   frictionCoulomb: number;
   frictionViscous: number;
+  /** attrito delle guarnizioni che cresce con la pressione relativa delle camere [-] */
+  frictionPressure: number;
   x0: number;
 }
 
@@ -147,7 +149,6 @@ const defs: ComponentDef[] = [
       mass_kg: 1,
       load_N: 0,
       frictionCoulomb_N: 5,
-      frictionViscous_Ns_m: 20,
       x0_mm: 0,
     },
     build(id, p, n) {
@@ -167,7 +168,9 @@ const defs: ComponentDef[] = [
             mass: p.mass_kg!,
             load: p.load_N!,
             frictionCoulomb: p.frictionCoulomb_N!,
-            frictionViscous: p.frictionViscous_Ns_m!,
+            // se manca, dalla circonferenza del pistone come nello schema dell'editor
+            frictionViscous: p.frictionViscous_Ns_m ?? VISCOUS_PER_PERIMETER * Math.PI * (p.bore_mm! / 1000),
+            frictionPressure: p.frictionPressure ?? SEAL_PRESSURE_FRICTION,
             x0: p.x0_mm! / 1000,
           },
         ],

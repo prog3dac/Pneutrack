@@ -1,6 +1,6 @@
 {
   "name": "pneutrack",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "description": "Schemi e simulazione pneumatica",
   "type": "module",
   "private": true,
@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "e2e": "node test/e2e/editor.mjs",
     "e2e:pwa": "node test/e2e/pwa.mjs",
-    "demo": "tsx src/demo/run.ts"
+    "demo": "tsx src/demo/run.ts",
+    "manuale": "tsx tools/manuale.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

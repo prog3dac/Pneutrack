@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.35.0 · 2026-11-27
+
+- Ammortizzo dei cilindri più realistico: niente più rimbalzi e ripartenze a scatti entrando nell'ammortizzo. Lo spillo conico chiude il passaggio con continuità nei primi millimetri invece che di colpo, l'attrito delle guarnizioni cresce con la pressione nelle camere (3 % della forza di pressione) e l'attrito viscoso dipende dall'alesaggio (circa 100 N·s/m per il Ø32). Con la vite molto chiusa e una massa grande resta un piccolo rimbalzo, come in un cilindro reale regolato male.
+- Manuale d'uso in docs/manuale: convenzioni e unità, come si ricavano i dati dai cataloghi, il modello fisico con le formule di ogni componente e le costanti, e il riferimento di tutti i parametri dei componenti. Si consulta nell'app da *File* → «Manuale d'uso…» (anche senza rete), con i collegamenti tra le parti. I test controllano che resti aggiornato.
+
 ## 0.34.0 · 2026-11-26
 
 - I dati di un componente si cambiano in una finestra, come quelle dei configuratori: doppio clic sul simbolo (oppure *Invio* con il componente selezionato, o ✎ nella barra sopra la selezione). A sinistra simbolo, sigla, descrizione, codice e opzioni, con «Configura valvola…» e «Configura cilindro…»; a destra i parametri da catalogo e di simulazione; sotto porte e valori teorici.

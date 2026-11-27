@@ -1,4 +1,4 @@
-import { KAPPA, P_ATM, R_AIR, T_REF } from "./constants";
+import { KAPPA, P_ATM, R_AIR, SEAL_PRESSURE_FRICTION, T_REF, VISCOUS_PER_PERIMETER } from "./constants";
 import { cFromDm3, signedFlow } from "./flow";
 import { rk4Step } from "./rk4";
 
@@ -13,6 +13,7 @@ export interface CircuitParams {
   load: number; // forza resistente costante, positiva se si oppone all'estensione [N]
   frictionCoulomb: number; // [N]
   frictionViscous: number; // [N·s/m]
+  frictionPressure: number; // attrito delle guarnizioni: frazione della forza di pressione relativa [-]
   valveC: number; // conduttanza sonica per via valvola [dm³/(s·bar)]
   valveB: number; // rapporto critico valvola
   /** strozzatore sullo scarico di ogni camera: C [dm³/(s·bar)], Infinity = nessuno */
@@ -29,7 +30,8 @@ export const defaultParams: CircuitParams = {
   mass: 1,
   load: 0,
   frictionCoulomb: 5,
-  frictionViscous: 20,
+  frictionViscous: VISCOUS_PER_PERIMETER * Math.PI * 0.032,
+  frictionPressure: SEAL_PRESSURE_FRICTION,
   valveC: 1.5,
   valveB: 0.35,
   exhaustC: Infinity,
@@ -89,7 +91,8 @@ export function simulate(
     const dp2 = ((KAPPA * RT) / V2) * m2 - (KAPPA * p2 * dV2) / V2;
 
     const pressureForce = p1 * A1 - p2 * A2 - P_ATM * (A1 - A2);
-    const friction = p.frictionCoulomb * Math.tanh(v / 1e-3) + p.frictionViscous * v;
+    const seal = p.frictionPressure * (Math.max(0, p1 - P_ATM) * A1 + Math.max(0, p2 - P_ATM) * A2);
+    const friction = (p.frictionCoulomb + seal) * Math.tanh(v / 1e-3) + p.frictionViscous * v;
     const a = (pressureForce - p.load - friction) / p.mass;
     return [dp1, dp2, v, a];
   };
