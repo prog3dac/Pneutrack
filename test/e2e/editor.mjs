@@ -49,7 +49,16 @@ async function menuAct(act, menu = "#file-menu") {
 // finestra dei dati di un componente: doppio clic sul simbolo, OK per confermare
 const D = ".props-dialog";
 async function openProps(id) {
-  await page.dblclick(`[data-component="${id}"] .halo`, { force: true });
+  // un punto del simbolo non coperto da altri componenti (quelli incollati possono finirci sopra)
+  const at = await page.evaluate((id) => {
+    const h = document.querySelector(`[data-component="${id}"] .halo`).getBoundingClientRect();
+    for (const fy of [0.5, 0.3, 0.7, 0.15, 0.85]) for (const fx of [0.5, 0.3, 0.7, 0.15, 0.85]) {
+      const x = h.x + h.width * fx, y = h.y + h.height * fy;
+      if (document.elementFromPoint(x, y)?.closest("[data-component]")?.dataset.component === id) return { x, y };
+    }
+    return { x: h.x + h.width / 2, y: h.y + h.height / 2 };
+  }, id);
+  await page.mouse.dblclick(at.x, at.y);
   await page.waitForSelector(D);
 }
 async function okProps() {
