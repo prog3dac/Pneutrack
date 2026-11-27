@@ -385,9 +385,40 @@ const cylinderParams: ParamSpec[] = [
 /** Ammortizzo pneumatico regolabile (cilindri a doppio effetto). */
 const cushionParams: ParamSpec[] = [
   p("cushion_length", "Lunghezza ammortizzo", "length", { simDefault: "≈ 0,6 × alesaggio" }),
-  p("cushion_opening", "Apertura vite ammortizzo", "dimensionless",
+  p("cushion_opening_rod", "Apertura vite ammortizzo in uscita (testata)", "dimensionless",
+    { group: "sim", simDefault: "30 %", percent: true }),
+  p("cushion_opening_cap", "Apertura vite ammortizzo in rientro (fondello)", "dimensionless",
     { group: "sim", simDefault: "30 %", percent: true }),
 ];
+
+/** Parametro di prima della 0.36: una sola vite per i due ammortizzi. */
+const LEGACY_CUSHION_OPENING = "cushion_opening";
+
+/**
+ * Porta un componente scritto con una versione precedente al formato attuale (sul posto): la vite unica
+ * dell'ammortizzo `cushion_opening` diventa le due viti `cushion_opening_rod` e `cushion_opening_cap`,
+ * con lo stesso valore. Restituisce true se ha cambiato qualcosa.
+ */
+export function upgradeComponent(raw: ComponentData): boolean {
+  const params = raw.params;
+  if (!params || !(LEGACY_CUSHION_OPENING in params)) return false;
+  const v = params[LEGACY_CUSHION_OPENING]!;
+  delete params[LEGACY_CUSHION_OPENING];
+  if (v !== "" && v != null) {
+    params.cushion_opening_rod ??= v;
+    params.cushion_opening_cap ??= v;
+  }
+  return true;
+}
+
+/** Il parametro serve con l'ammortizzo scelto (le viti e la lunghezza solo dove c'è l'ammortizzo). */
+export function paramApplies(c: { cushioning?: string }, name: string): boolean {
+  const cu = c.cushioning ?? "none";
+  if (name === "cushion_length") return cu !== "none";
+  if (name === "cushion_opening_rod") return cu === "rod" || cu === "both";
+  if (name === "cushion_opening_cap") return cu === "cap" || cu === "both";
+  return true;
+}
 const cushionOption: OptionSpec = {
   name: "cushioning", label: "Ammortizzo", default: "none", choices: CUSHIONING_CHOICES,
 };
@@ -1405,7 +1436,9 @@ export function buildComponent(raw: ComponentData): Component {
     if (raw.cam_12) throw new ParameterError(`${id}: il rullo dello strozzatore è sul lato 14 (cam_14)`);
   }
 
-  const params = raw.params ?? {};
+  // file delle versioni precedenti: si leggono come prima, senza toccare l'originale
+  const params = { ...(raw.params ?? {}) };
+  upgradeComponent({ ...raw, params });
   const unknown = Object.keys(params).filter((k) => !def.params.some((s) => s.name === k)).sort();
   if (unknown.length) throw new ParameterError(`${id}: parametri sconosciuti [${unknown.map((u) => `'${u}'`).join(", ")}]`);
   for (const spec of def.params) {
