@@ -4470,6 +4470,8 @@ let saveError = "";
 let lastSavedAt: string | null = null;
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 let saving: Promise<void> | null = null; // un solo salvataggio alla volta
+/** stato della bozza appena aperta (esempio, file importato, schema nuovo): finché resta così non c'è lavoro da tenere */
+let draftBase: string | null = null;
 
 const isDirty = () => fileJson() !== savedSnapshot;
 const fileName = () =>
@@ -4549,6 +4551,7 @@ async function saveProject({ asNew = false, silent = false } = {}) {
 
 async function openProject(id: string) {
   if (project && isDirty()) await saveProject();
+  const kept = await keepDraft();
   try {
     const p = await store!.get(id);
     clearTimeout(autosaveTimer);
@@ -4563,20 +4566,33 @@ async function openProject(id: string) {
     remember(STORAGE_KEY, null);
     closeProjects();
     renderStatus();
-    toast(`Aperto «${p.name}»`);
+    toast(kept ? `Aperto «${p.name}». La bozza di prima è tra i progetti: «${kept}»` : `Aperto «${p.name}»`);
   } catch (err) {
     toast(`Impossibile aprire il progetto: ${(err as Error).message}`);
   }
 }
 
+/**
+ * Una bozza con lavoro non salvato non si perde aprendo un altro schema: diventa un progetto.
+ * Restituisce il nome del progetto creato ("" se non c'era niente da tenere).
+ */
+async function keepDraft(): Promise<string> {
+  if (project || !store || !allComponents().length || fileJson() === draftBase) return "";
+  if (!doc.name || doc.name === emptyCircuit().name) setProjectName(`Bozza del ${new Date().toLocaleString("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`);
+  await saveProject({ silent: true });
+  return project && saveState === "saved" ? doc.name : "";
+}
+
 async function newDocument(data: Partial<CircuitDoc> = emptyCircuit(), message = "Nuovo schema") {
   if (project && isDirty()) await saveProject();
+  const kept = await keepDraft();
   project = null;
   savedSnapshot = null;
   saveState = "idle";
   remember(SESSION_KEY, null);
   loadDoc(data);
-  toast(`${message} (Ctrl+Z per tornare indietro)`);
+  draftBase = fileJson();
+  toast(kept ? `${message}. La bozza di prima è tra i progetti: «${kept}»` : `${message} (Ctrl+Z per tornare indietro)`);
 }
 
 /**

@@ -289,6 +289,8 @@ await page.press(`${D} input[name="id"]`, "Enter");
 await page.waitForFunction((d) => /Y1/.test(document.querySelector(`${d} h2`)?.textContent ?? ""), D);
 await page.keyboard.press("Control+Enter");
 await page.waitForSelector(D, { state: "detached" });
+// la validazione dopo la rinomina ridisegna i simboli: si clicca solo a disegno fermo
+await settled();
 await page.click("#canvas", { position: { x: 40, y: 40 } });
 await page.click('[data-component="Y1"] .halo', { force: true });
 await page.keyboard.press("r");
@@ -296,9 +298,21 @@ s = await state();
 assert.equal(s.doc.connections[0].to === "Y1.1" || s.doc.connections[0].from === "Y1.1", true);
 assert.equal(s.doc.layout.Y1.rot, 1);
 
-// 8. esempio dal menu
+// 8. esempio dal menu: la bozza con il lavoro fatto finora non si perde, diventa un progetto
 await page.selectOption("#examples", "doppio_effetto_bistabile");
 await settled();
+assert.match(await page.textContent("#toast"), /La bozza di prima è tra i progetti: «Bozza del /);
+{ // il progetto della bozza c'è, con i componenti; poi lo si toglie per non contarlo nei passi dopo
+  const kept = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("pneutrack.project."))
+    .map((k) => [k, JSON.parse(localStorage.getItem(k))]).filter(([, p]) => p.name.startsWith("Bozza del ")));
+  assert.equal(kept.length, 1);
+  assert.deepEqual(kept[0][1].circuit.components.map((c) => c.id), ["P1", "Y1"]);
+  await page.evaluate((k) => localStorage.removeItem(k), kept[0][0]);
+}
+// un esempio non modificato non diventa un progetto: il secondo caricamento non salva niente
+await page.selectOption("#examples", "doppio_effetto_bistabile");
+await settled();
+assert.doesNotMatch(await page.textContent("#toast"), /Bozza/);
 s = await state();
 assert.equal(s.doc.components.length, 8);
 assert.equal(s.analysis.issues.length, 0);
