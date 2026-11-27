@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.36.0**.
+Aggiornato alla versione **0.37.0**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
@@ -132,6 +132,15 @@ del tipo (elencato in [componenti.md](componenti.md)).
 
 L'attrito che cresce con la pressione nelle camere e l'attrito viscoso non si inseriscono: il programma li
 calcola dall'alesaggio e dalle pressioni (vedi [calcoli.md](calcoli.md), §4.3).
+
+### Attuatori rotanti
+
+| Dato | Da dove si prende |
+|---|---|
+| `angle` | angolo di rotazione del codice d'ordine (90°, 180°...) |
+| `displacement` | volume per corsa (cm³) della scheda: l'aria di una camera per tutto l'angolo. Se il catalogo dà la coppia teorica M a una pressione p, `displacement` = M · θ / p (θ in radianti) |
+| `mass` | massa equivalente sul raggio primitivo di 10 mm: J / r², con J il momento d'inerzia del carico. Per esempio J = 0,001 kg·m² → 10 kg |
+| `load` | coppia resistente divisa per il raggio primitivo: M / 0,01 m |
 
 ### Tubi
 

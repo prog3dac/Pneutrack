@@ -75,7 +75,7 @@ percentuale (`"35 %"`) oppure come frazione (`0.35`); vanno da 0 a 100 %.
 | | `bellows_cylinder`, `diaphragm_cylinder`, `pneumatic_muscle` | Soffietto, cilindro a membrana, muscolo pneumatico (semplice effetto) | A | `bore`, `stroke`, `spring_force` |
 | | `rodless_cylinder` | Cilindro senza stelo | A, B | `bore`, `stroke`, `cushioning`?, `magnet`? |
 | | `gripper` | Pinza a griffe parallele (A chiude, B apre) | A, B (solo A a semplice effetto) | `bore`, `stroke` (per griffa), `gripper_kind` (`double`, `single`), `magnet`? |
-| | `rotary_actuator` | Attuatore rotante | A, B (solo A a semplice effetto) | `angle`, `rotary_kind` (`double`, `single`) (non ancora simulato) |
+| | `rotary_actuator` | Attuatore rotante | A, B (solo A a semplice effetto) | `angle`, `rotary_kind` (`double`, `single`); in simulazione `displacement`, `mass`, `load`, `friction`, `spring_force` |
 | | `air_motor` | Motore pneumatico | 1, 2 | `motor_kind` (`reversible`, `one_way`) |
 | Vuoto | `vacuum_ejector` | Generatore di vuoto (eiettore) | 1, 2 (vuoto), 3, 4 (soffio, con `blowoff: yes`) | `max_vacuum`, `suction_conductance`, `blowoff` |
 | | `vacuum_pump` | Pompa del vuoto | 1 | `vacuum` |
