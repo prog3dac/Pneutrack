@@ -3,6 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.39.0 · 2026-11-28
+
+- Nuova scheda **Sensori e finecorsa** nella finestra del cilindro: una tabella con gli elementi dello schema che il cilindro aziona (finecorsa elettrici, sensori di prossimità, valvole a rullo, a tastatore o a leva unidirezionale, strozzatori a rullo), la quota a cui intervengono (fine corsa in rientro, in uscita o una quota in mm dal fondello, con la percentuale della corsa), il verso della leva unidirezionale e il campo di rilevamento dei sensori. Un righello mostra le quote sulla corsa e una quota oltre la corsa si segna in rosso. *Applica* aggiorna cilindro ed elementi in un solo passo di annulla.
+- Nelle opzioni di sensori, finecorsa e valvole a rullo il menu del cilindro è sostituito da una riga che dice chi li aziona e dove («C1 a 80 mm dal fondello (40 %)»), con *Modifica nel cilindro…*; un elemento libero ha *Collega a un cilindro…*. Il pannello del cilindro dice quanti elementi aziona.
+- Finecorsa elettrici e valvole a rullo anche a metà corsa: nel file `C1@80 mm` (la camma preme il rullo entro ±2 mm dalla quota), `C1+@80 mm` / `C1-@80 mm` per la leva unidirezionale che scatta solo in uscita o in rientro. La sigla accanto al simbolo mostra la quota («C1@80»). I sensori di prossimità usano lo stesso riferimento; quelli salvati con il parametro *Posizione dal fondello* si aprono e funzionano come prima, e passano al nuovo riferimento quando li si modifica nella scheda.
+- Corretto: incollando un frammento con il cilindro, i finecorsa elettrici e i sensori restavano collegati al cilindro originale (le valvole a rullo no). Ora seguono la copia.
+- Gli schemi salvati con le versioni precedenti si aprono senza modifiche. Uno schema con le quote intermedie non si apre nelle versioni precedenti.
+
 ## 0.38.2 · 2026-11-28
 
 - Simbolo della non ritorno pilotata: la casella è centrata sulla linea, che ora sporge della stessa lunghezza sopra e sotto (prima sotto era molto più lunga). La sfera sta nella parte bassa della casella e il pilotaggio, come nel disegno della ISO 1219-3, sale in diagonale alla sfera ed esce tratteggiato verso la porta 21. Porte e simulazione non cambiano.

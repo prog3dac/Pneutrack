@@ -49,6 +49,8 @@ import { FIELD_HELP, optionHelp, paramHelp } from "./help";
 import { geometry, rotate, thumbnail, type Dir, type SymbolState } from "./symbols";
 import { openValveDialog } from "./valveDialog";
 import { openCylinderDialog } from "./cylinderDialog";
+import { camCylinder, renameCam } from "../model/cams";
+import { applyLinkChanges, linkedCylinder, linkSummary, linkTargets } from "../model/cylinderLinks";
 import { CONFIGURABLE_CYLINDERS } from "../model/cylinderConfig";
 import { sanitizeValve, valveTemplate } from "../model/valveConfig";
 import { labelSpot } from "./labels";
@@ -1407,29 +1409,59 @@ function elsewhere(id: string) {
 }
 
 function camField(comp: ComponentData, side: "14" | "12") {
-  const key = `cam_${side}` as const;
-  const sel = document.createElement("select");
-  sel.name = key;
-  const choices: [string, string][] = [["", "a mano (clic in simulazione)"]];
   const main = (comp[`actuation_${side}`] ?? "mechanical") as Actuation;
   const what = ACTUATION_SHORT[isMechanical(main) ? main : (comp[`aux_${side}`] ?? "mechanical") as Actuation];
-  for (const c of allComponents().filter((x) => x.type.endsWith("_cylinder"))) {
-    choices.push([`${c.id}+`, `${c.id} tutto fuori (${c.id}+)${elsewhere(c.id)}`], [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)${elsewhere(c.id)}`]);
+  return camLinkField(comp, `${comp.id}.${side}`, `${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`,
+    FIELD_HELP.cam!, "a mano (clic in simulazione)");
+}
+
+/**
+ * Collegamento a un cilindro nelle opzioni di un elemento azionato (valvola a rullo, finecorsa, sensore): si
+ * legge qui e si modifica nella scheda Sensori e finecorsa del cilindro.
+ */
+function camLinkField(comp: ComponentData, key: string, label: string, hint: string, none: string) {
+  const target = linkTargets([comp]).find((t) => t.key === key);
+  const box = document.createElement("div");
+  box.className = "cam-link";
+  const summary = document.createElement("div");
+  summary.className = "summary";
+  const cylId = target?.cam ? camCylinder(target.cam) : undefined;
+  const cyl = cylId ? anyById(cylId) : undefined;
+  const missing = !!cylId && (!cyl || !isCylinder(cyl.type));
+  if (target && cylId && !missing) {
+    let stroke: number | undefined;
+    try { stroke = cyl!.params?.stroke ? Quantity.parse(cyl!.params.stroke).si : undefined; } catch { stroke = undefined; }
+    summary.textContent = linkSummary(target, stroke) + elsewhere(cylId);
+    box.append(summary, button(`Modifica nel cilindro ${cylId}…`, () => configureCylinder(cylId, { tab: "links" }),
+      "Apre la scheda Sensori e finecorsa del cilindro", "", "link"));
+  } else {
+    summary.textContent = missing ? `${target!.cam}: il cilindro ${cylId} non c'è nello schema` : none;
+    box.append(summary);
+    if (missing) {
+      box.append(button("Scollega", () => mutate(() => applyLinkChanges(anyById, [{ key, cam: null }])), "", "", "link"));
+    }
+    const cyls = allComponents().filter((x) => x.type.endsWith("_cylinder"));
+    if (cyls.length) {
+      const sel = document.createElement("select");
+      sel.name = `link-${key}`;
+      sel.setAttribute("aria-label", "Collega a un cilindro");
+      const first = document.createElement("option");
+      first.value = ""; first.textContent = "Collega a un cilindro…";
+      sel.append(first);
+      for (const c of cyls) {
+        const o = document.createElement("option");
+        o.value = c.id; o.textContent = `${c.id}${c.label ? ` (${c.label})` : ""}${elsewhere(c.id)}`;
+        sel.append(o);
+      }
+      sel.addEventListener("change", () => {
+        if (sel.value) configureCylinder(sel.value, { tab: "links", addKey: key });
+        sel.value = "";
+      });
+      box.append(sel);
+    }
   }
-  const current = comp[key] ?? "";
-  if (current && !choices.some(([v]) => v === current)) choices.push([current, `${current} (cilindro mancante)`]);
-  for (const [value, label] of choices) {
-    const o = document.createElement("option");
-    o.value = value; o.textContent = label;
-    sel.append(o);
-  }
-  sel.value = current;
-  sel.addEventListener("change", () => mutate(() => {
-    const c = byId(comp.id)!;
-    if (sel.value) c[key] = sel.value; else delete c[key];
-  }));
-  const f = field(`${what[0]!.toUpperCase()}${what.slice(1)} ${side} azionato da`, sel, FIELD_HELP.cam);
-  if (issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
+  const f = fieldBox(label, box, hint);
+  if (missing || issuesFor(comp.id).some((i) => i.code === "INVALID_CAM")) f.classList.add("invalid");
   return f;
 }
 
@@ -1486,25 +1518,40 @@ function cylinderConfigButton(comp: ComponentData) {
     p.textContent = `profilo di forza: ${comp.load_profile}`;
     box.append(p);
   }
+  const n = linkTargets(allComponents()).filter((t) => linkedCylinder(t) === comp.id).length;
+  const p = document.createElement("p");
+  p.className = "help";
+  p.textContent = n ? `aziona ${n} ${n === 1 ? "elemento" : "elementi"} (sensori e finecorsa)` : "non aziona sensori o finecorsa";
+  box.append(p);
   box.append(button("Configura cilindro…", () => configureCylinder(comp.id),
     "Tipo (semplice effetto in spinta o trazione, doppio effetto, stelo passante, senza stelo), molla, ammortizzo, misure e profilo di forza",
     "", "wide"));
   return box;
 }
 
-/** Apre il configuratore sul cilindro: anche il cambio di tipo è un solo passo annullabile. */
-function configureCylinder(id: string) {
-  const comp = byId(id);
+/**
+ * Apre il configuratore sul cilindro: anche il cambio di tipo e i collegamenti di sensori e finecorsa sono un
+ * solo passo annullabile. Un cilindro su un altro foglio si apre solo sulla scheda Sensori e finecorsa.
+ */
+function configureCylinder(id: string, open: { tab?: "cylinder" | "links"; addKey?: string } = {}) {
+  const comp = anyById(id);
   if (!comp || sim) return;
+  // il resto della finestra sa configurare solo i cilindri del configuratore, e solo sul foglio aperto
+  const here = !!byId(id) && CONFIGURABLE_CYLINDERS.has(comp.type);
   openCylinderDialog({
     comp: structuredClone(comp),
-    onApply: (data) => {
+    targets: linkTargets(allComponents()),
+    tab: open.tab, addKey: open.addKey, linksOnly: !here,
+    onApply: (data, links) => {
       mutate(() => {
-        const c = byId(id);
-        if (!c) return;
-        for (const k of Object.keys(c) as (keyof ComponentData)[]) delete c[k];
-        Object.assign(c, data);
-        pruneConnections(id);
+        if (here) {
+          const c = byId(id);
+          if (!c) return;
+          for (const k of Object.keys(c) as (keyof ComponentData)[]) delete c[k];
+          Object.assign(c, data);
+          pruneConnections(id);
+        }
+        applyLinkChanges(anyById, links);
       });
     },
   });
@@ -1526,7 +1573,7 @@ function newConfiguredValve() {
 }
 
 /** Menu di un riferimento per sigla (bobina → solenoide, contatto → relè, finecorsa → cilindro). */
-function refField(comp: ComponentData, key: "drives" | "relay" | "cam", label: string, hint: string,
+function refField(comp: ComponentData, key: "drives" | "relay", label: string, hint: string,
                   choices: [string, string][], codes: string[]) {
   const sel = document.createElement("select");
   sel.name = key;
@@ -1549,9 +1596,6 @@ function refField(comp: ComponentData, key: "drives" | "relay" | "cam", label: s
 }
 
 function electricRefFields(comp: ComponentData): HTMLElement[] {
-  const cams = (): [string, string][] => allComponents().filter((x) => x.type.endsWith("_cylinder"))
-    .flatMap((c) => [[`${c.id}+`, `${c.id} tutto fuori (${c.id}+)${elsewhere(c.id)}`],
-                     [`${c.id}-`, `${c.id} tutto dentro (${c.id}-)${elsewhere(c.id)}`]] as [string, string][]);
   switch (comp.type) {
     case "valve_solenoid": {
       const sides: [string, string][] = allComponents().filter((x) => x.type === "directional_valve").flatMap((v) =>
@@ -1567,10 +1611,9 @@ function electricRefFields(comp: ComponentData): HTMLElement[] {
       return [refField(comp, "relay", "Azionato da", FIELD_HELP.relay!, relays, ["INVALID_REFERENCE", "UNLINKED_REFERENCE"])];
     }
     case "limit_switch":
-      return [refField(comp, "cam", "Azionato da", FIELD_HELP["switch-cam"]!, cams(),
-        ["INVALID_CAM", "UNLINKED_REFERENCE"])];
+      return [camLinkField(comp, comp.id, "Azionato da", FIELD_HELP["switch-cam"]!, "nessun cilindro (si aziona a mano in simulazione)")];
     case "proximity_sensor":
-      return [refField(comp, "cam", "Cilindro rilevato", FIELD_HELP["sensor-cam"]!, cams(), ["INVALID_CAM", "UNLINKED_REFERENCE"])];
+      return [camLinkField(comp, comp.id, "Cilindro rilevato", FIELD_HELP["sensor-cam"]!, "nessun cilindro")];
     default:
       return [];
   }
@@ -2184,6 +2227,10 @@ function renderComponentFields(panel: HTMLElement, title: HTMLElement, comp: Com
   }
   if (comp.type === "directional_valve") panel.append(valveConfigButton(comp));
   if (CONFIGURABLE_CYLINDERS.has(comp.type)) panel.append(cylinderConfigButton(comp));
+  else if (comp.type.endsWith("_cylinder")) {
+    panel.append(button("Sensori e finecorsa…", () => configureCylinder(comp.id, { tab: "links" }),
+      "Elementi dello schema azionati da questo cilindro e quota a cui intervengono", "", "wide"));
+  }
 
   for (const f of electricRefFields(comp)) panel.append(f);
 
@@ -2720,12 +2767,13 @@ function renameComponent(oldId: string, newId: string) {
     doc.connections = doc.connections.map((c) => ({ ...c, from: fix(c.from), to: fix(c.to) }));
     // i finecorsa seguono il cilindro rinominato, anche sugli altri fogli
     for (const c of allComponents()) {
+      const follow = (id: string) => (id === oldId ? newId : id);
       for (const key of ["cam_14", "cam_12"] as const) {
         const cam = c[key];
-        if (cam && cam.slice(0, -1) === oldId) c[key] = newId + cam.slice(-1);
+        if (cam) c[key] = renameCam(cam, follow);
       }
       // riferimenti per sigla del circuito elettrico
-      if (c.cam && c.cam.slice(0, -1) === oldId) c.cam = newId + c.cam.slice(-1);
+      if (c.cam) c.cam = renameCam(c.cam, follow);
       if (c.relay === oldId) c.relay = newId;
       if (c.drives && splitRef(c.drives)[0] === oldId) c.drives = `${newId}.${splitRef(c.drives)[1]}`;
     }

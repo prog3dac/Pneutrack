@@ -656,6 +656,44 @@ button.icon { border: 0; font-size: 16px; padding: 4px 8px; }
 .cc-axis { stroke: var(--border); stroke-width: 1; }
 .cc-line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .cc-dot { fill: var(--accent); }
+/* configuratore dei cilindri: schede e Sensori e finecorsa */
+.cc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 10px; }
+.cc-tab { border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; background: none; padding: 6px 12px;
+  color: var(--muted); margin-bottom: -1px; }
+.cc-tab.on { border-color: var(--border); background: var(--panel); color: var(--text); font-weight: 600; }
+.cc-tab:disabled { opacity: .5; }
+.cc-count { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 600; }
+.cc-links { margin-top: 10px; }
+.cc-strip { background: var(--sheet); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; }
+.cc-strip svg { width: 100%; height: auto; max-height: 90px; display: block; }
+.cc-strip text { font-size: 11px; fill: var(--muted); }
+.cc-strip .help { margin: 10px; }
+.cc-axis-line { stroke: var(--muted); stroke-width: 1.5; }
+.cc-dot-m { fill: var(--accent); }
+.cc-dot-m.end { fill: var(--ok); }
+.cc-dot-m.bad { fill: var(--error); }
+.cc-mark { stroke-width: 2; stroke: var(--accent); }
+.cc-mark.end { stroke: var(--ok); }
+.cc-mark.bad { stroke: var(--error); }
+.cc-strip text.cc-mark-t { fill: var(--accent); }
+.cc-strip text.cc-mark-t.end { fill: var(--ok); }
+.cc-strip text.cc-mark-t.bad { fill: var(--error); }
+.cc-ltable select { width: 100%; }
+.cc-ltable td { vertical-align: middle; }
+.cc-quota { display: flex; gap: 6px; align-items: center; }
+.cc-quota select { flex: 1 1 auto; min-width: 0; }
+.cc-num { width: 72px; }
+.cc-unit, .cc-pct, .cc-fixed { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.cc-unit { margin-left: 4px; }
+.cc-ltable tr.invalid td { background: var(--error-soft); }
+.cc-problem { color: var(--error); font-size: 12px; }
+.cc-lfoot { display: flex; gap: 10px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.cc-add { max-width: 340px; }
+/* opzioni di un elemento azionato da un cilindro */
+.cam-link { display: grid; gap: 4px; font-size: 12.5px; }
+.cam-link .summary { padding: 6px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--text); }
+.cam-link.invalid .summary { background: var(--error-soft); color: var(--error); }
 
 /* finestra dei dati di un componente (doppio clic) e dello schema */
 .props-dialog { width: min(820px, 100%); max-height: 90vh; }

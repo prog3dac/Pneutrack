@@ -12,7 +12,7 @@
  * di elettrovalvola comandano subito il solenoide.
  */
 import { nets } from "../model/circuit";
-import { ONEWAY_MIN_SPEED, ONEWAY_ZONE, ROLLER_ZONE } from "../solver/constants";
+import { camPosition, camPressed } from "../model/cams";
 import { isCylinder, simParam, type Cam, type Component, type ContactKind } from "../model/components";
 import { electricPorts, type Built } from "../model/validation";
 
@@ -135,7 +135,8 @@ export function compileElectric(built: Built, portNode: Record<string, number>):
     } else if (c.type === "proximity_sensor") {
       // uscita PNP: BN (+) e BK (uscita) uniti quando lo stelo è nel campo del sensore
       const stroke = c.cam ? strokeOf(c.cam.cylinder) : undefined;
-      const position = c.params.position?.si ?? (c.cam?.end === "+" ? stroke : 0);
+      // quota del riferimento ("C1@80 mm"), o il parametro posizione degli schemi precedenti, o il fine corsa
+      const position = c.cam?.at ?? c.params.position?.si ?? (c.cam && stroke !== undefined ? camPosition(c.cam, stroke) : 0);
       const nodes = nodesOf(c);
       const driver: ContactDriver = c.cam && stroke !== undefined
         ? { kind: "sensor", cylinder: c.cam.cylinder, position: position!, range: simParam(c, "range").si }
@@ -247,12 +248,8 @@ export class ElectricState {
     if (d.kind === "cam") {
       const cyl = inputs.cylinder(d.cam.cylinder);
       if (!cyl) return false;
-      const fromEnd = d.cam.end === "+" ? d.stroke - cyl.x : cyl.x;
-      if (d.oneway) {
-        const towards = d.cam.end === "+" ? cyl.v > ONEWAY_MIN_SPEED : cyl.v < -ONEWAY_MIN_SPEED;
-        return fromEnd <= Math.min(ONEWAY_ZONE, d.stroke / 2) && towards;
-      }
-      return fromEnd <= ROLLER_ZONE || (c.manual && this.manualState(c.id));
+      if (d.oneway) return camPressed(d.cam, "oneway", cyl.x, cyl.v, d.stroke);
+      return camPressed(d.cam, "roller", cyl.x, cyl.v, d.stroke) || (c.manual && this.manualState(c.id));
     }
     if (d.kind === "sensor") {
       const cyl = inputs.cylinder(d.cylinder);

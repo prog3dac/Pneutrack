@@ -164,6 +164,12 @@ apre fino a quando l'arrivo è morbido e senza ritorni.
   `src/solver/constants.ts`).
   **Leva ribaltabile** (`roller_oneway`): azionata negli ultimi 5 mm, solo mentre lo stelo va verso quel
   fine corsa a più di 1 mm/s.
+  **Quota intermedia** (`C1@80 mm`): una camma sullo stelo preme il rullo o il tastatore mentre |x − quota|
+  ≤ 2 mm (`ROLLER_ZONE`), in entrambi i versi. La leva ribaltabile scatta nello stesso tratto solo nel verso
+  indicato (`C1+@…` in uscita, `C1-@…` in rientro, a più di 1 mm/s); senza verso in entrambi. Il modello è
+  lo stesso per i finecorsa elettrici (`src/model/cams.ts`). A 2,5 m/s lo stelo percorre i 4 mm della camma
+  in 1,6 ms: la parte pneumatica la vede sempre (passo 20 µs), il circuito elettrico, che si aggiorna ogni
+  millisecondo, almeno una volta.
 - **Comando manuale ausiliario e secondo comando** (`aux_14`, `aux_12`): si azionano con un clic; un rullo
   come secondo comando può essere premuto da un cilindro.
 
@@ -262,8 +268,8 @@ cortocircuito e tutto resta senza tensione. Il circuito si aggiorna ogni **1 ms*
 | `relay_coil` | il relè attrae (e rilascia) dopo `pickup_time` (predefinito 10 ms) |
 | `timer_relay` | ritardato all'eccitazione (`on_delay`) o alla diseccitazione (`off_delay`) di `delay` |
 | `valve_solenoid` | comanda subito il solenoide della valvola indicata |
-| `limit_switch` | azionato negli ultimi 2 mm di corsa del cilindro; a leva ribaltabile negli ultimi 5 mm e solo andando verso il fine corsa |
-| `proximity_sensor` | chiuso quando |x − `position`| ≤ `range` (predefinito 3 mm); senza `position`, al fine corsa indicato |
+| `limit_switch` | azionato negli ultimi 2 mm di corsa del cilindro; a leva ribaltabile negli ultimi 5 mm e solo andando verso il fine corsa; a una quota intermedia (`C1@80 mm`) entro ±2 mm, la leva ribaltabile solo nel verso indicato |
+| `proximity_sensor` | chiuso quando |x − quota| ≤ `range` (predefinito 3 mm); la quota è quella del riferimento (`C1@80 mm`), o il parametro `position` degli schemi delle versioni precedenti, o il fine corsa indicato (`C1+`, `C1-`) |
 | `pressure_switch` | interviene quando la pressione relativa della porta 1 raggiunge `setpoint`, rilascia sotto `setpoint` − `hysteresis` (predefinita 0,5 bar); il vacuostato lavora sul grado di vuoto |
 | `pushbutton`, `relay_contact`, `signal_lamp`, `electric_supply`, `wire_reference` | contatti, carichi, sorgente e rimandi della rete logica |
 

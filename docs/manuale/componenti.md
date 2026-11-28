@@ -1228,7 +1228,7 @@ Nessun parametro.
 
 ### Finecorsa elettrico · `limit_switch`
 
-Microinterruttore a rullo azionato da un cilindro a fine corsa (cam: "C1+" stelo fuori, "C1-" dentro).
+Microinterruttore a rullo azionato da un cilindro (cam: "C1+" stelo tutto fuori, "C1-" tutto dentro, "C1@80 mm" camma a 80 mm dal fondello; con la leva unidirezionale "C1+@80 mm" scatta solo in uscita). Il collegamento si imposta nella scheda Sensori e finecorsa del cilindro.
 
 **Porte**: `13` morsetto elettrico, `14` morsetto elettrico.
 
@@ -1245,7 +1245,7 @@ Nessun parametro.
 
 ### Sensore di prossimità · `proximity_sensor`
 
-Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è nella posizione indicata (cam: "C1+", oppure il parametro posizione).
+Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è nella posizione indicata (cam: "C1+" o "C1-" a fine corsa, "C1@80 mm" a 80 mm dal fondello; negli schemi delle versioni precedenti anche il parametro posizione). Il collegamento si imposta nella scheda Sensori e finecorsa del cilindro.
 
 **Porte**: `BN` morsetto elettrico, `BU` morsetto elettrico, `BK` morsetto elettrico.
 
@@ -1255,7 +1255,7 @@ Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tens
 
 | Parametro | Descrizione | Grandezza (unità ammesse) | Tipo | Valore della palette | Se manca, in simulazione |
 |---|---|---|---|---|---|
-| `position` | Posizione dal fondello | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | — |
+| `position` | Posizione dal fondello (versioni precedenti) | lunghezza (m, cm, mm, in) | catalogo, facoltativo |  | — |
 | `range` | Campo di rilevamento (±) | lunghezza (m, cm, mm, in) | simulazione, facoltativo |  | 3 mm |
 
 <a id="pressure-switch"></a>
