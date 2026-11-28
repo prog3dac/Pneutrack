@@ -243,8 +243,13 @@ await page.press('#properties input[name="tube-scale"]', "Enter");
 s = await state();
 assert.deepEqual(s.doc.connections.map((c) => c.tube.length), ["1.5 m", "1.5 m"]);
 assert.match(await page.textContent("#properties .tube-info"), /2 tubi: 3 m in tutto/);
-await page.click("#canvas", { position: { x: 40, y: 40 } });
-for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
+await page.locator('#properties input[name="tube-scale"]').blur();
+await page.keyboard.press("Escape"); // niente selezionato (un clic sul vuoto potrebbe valere come doppio clic)
+// tre passi da annullare (scala, misura, lunghezza): uno alla volta, con il pulsante della barra
+for (const len of ["3 m", "3 m", "2 m"]) {
+  await page.click("#btn-undo");
+  await page.waitForFunction((len) => window.pneutrack.doc.connections[1].tube?.length === len, len);
+}
 await settled();
 s = await state();
 assert.deepEqual(s.doc.connections[1].tube, { outer_diameter: "6 mm", inner_diameter: "4 mm", length: "2 m" });
