@@ -493,11 +493,11 @@ const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
  * sull'asse della linea e larghezza ±8, dalla sommità (yTop) fino a poco sopra la sfera (yBottom). La molla sta dal
  * lato della sfera opposto alla sede e la spinge contro la sede.
  */
-const checkSpring = (x: number, yTop: number, yBottom: number, n: number) => {
+const checkSpring = (x: number, yTop: number, yBottom: number, n: number, half = 8) => {
   let d = "";
   for (let i = 0; i <= n; i++) {
     const y = +(yTop + ((yBottom - yTop) * i) / n).toFixed(2);
-    d += `${i ? " L" : "M"}${x + (i % 2 ? 8 : -8)},${y}`;
+    d += `${i ? " L" : "M"}${x + (i % 2 ? half : -half)},${y}`;
   }
   return path(d, "nofill");
 };
@@ -524,9 +524,11 @@ const pilotCheckGeometry = (): Geometry => ({
   // sfera nella sede a V aperta verso 2 e la molla (2002V1) sull'asse, sopra la sfera, come nel non ritorno con
   // molla X10700. Il pilotaggio tratteggiato (422V1) entra di fianco e sale in diagonale fino alla sfera, che
   // solleva dalla sede.
-  svg: rect(-15, -26.5, 30, 34.5, "box") + line(0, 30, 0, -30) +
-    path("M-9,-11.5 L0,-2.5 L9,-11.5", "nofill") + circle(0, -7, 4, "body") + checkSpring(0, -24.6, -12.6, 4) +
-    line(2.83, -4.17, 7, 0) + line(7, 0, 30, 0, "dash"),
+  // Proporzioni del disegno di riferimento: casella stretta (larga 0,8 volte l'altezza), molla lunga che occupa la
+  // parte alta della casella, sfera in basso, diagonale del pilotaggio verso l'angolo in basso a destra.
+  svg: rect(-12, -27, 24, 30, "box") + line(0, 30, 0, -30) +
+    path("M-8,-12.5 L0,-4 L8,-12.5", "nofill") + circle(0, -8, 3.5, "body") + checkSpring(0, -25, -13, 5, 6) +
+    line(2.47, -5.53, 8, 0) + line(8, 0, 30, 0, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {
