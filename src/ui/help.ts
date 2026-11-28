@@ -340,21 +340,17 @@ export const FIELD_HELP: Record<string, string> = {
     "Descrizione libera del componente, per esempio «Pulsante avanti» o «Cilindro di bloccaggio». Compare " +
     "accanto alla sigla sul disegno se nel menu Mostra sono attive le descrizioni.",
   cam:
-    "Cilindro che preme questo comando meccanico a fine corsa: «C1+» quando lo stelo di C1 è tutto fuori, " +
-    "«C1−» quando è tutto dentro. In simulazione la valvola commuta da sola quando il cilindro arriva in " +
-    "posizione. Lascia «a mano» per azionarla con un clic.",
-  drives:
-    "Valvola e lato (14 o 12) il cui solenoide è eccitato da questa bobina. Compaiono solo i lati con un comando " +
-    "elettrico. In simulazione il solenoide segue la bobina e non si comanda più con un clic.",
-  relay:
-    "Relè, temporizzatore o pressostato che commuta questo contatto. Un relè può avere quanti contatti servono, " +
-    "NA, NC o in scambio, sparsi in punti diversi dello schema.",
+    "Cilindro che preme questo comando meccanico: a fine corsa («C1+» stelo tutto fuori, «C1−» tutto dentro) o " +
+    "con una camma a una quota della corsa («C1@80 mm»). In simulazione la valvola commuta da sola quando il " +
+    "cilindro passa di lì. Il collegamento si imposta nella scheda Sensori e finecorsa del cilindro; senza " +
+    "cilindro la valvola si aziona con un clic.",
   "switch-cam":
-    "Cilindro che preme il rullo di questo finecorsa elettrico: «C1+» quando lo stelo è tutto fuori, «C1−» quando " +
-    "è tutto dentro. Senza cilindro il finecorsa si aziona a mano in simulazione.",
+    "Cilindro che preme il rullo di questo finecorsa elettrico, a fine corsa o a una quota della corsa. Si " +
+    "imposta nella scheda Sensori e finecorsa del cilindro. Senza cilindro il finecorsa si aziona a mano in " +
+    "simulazione.",
   "sensor-cam":
-    "Cilindro di cui il sensore rileva il pistone: «C1+» a fine corsa in uscita, «C1−» in rientro. Con il " +
-    "parametro Posizione dal fondello il sensore sta in un punto intermedio della corsa.",
+    "Cilindro di cui il sensore rileva il pistone, a fine corsa o a una quota dal fondello, con il suo campo " +
+    "di rilevamento. Si imposta nella scheda Sensori e finecorsa del cilindro.",
   "catalog-part":
     "Articolo reale da catalogo Festo o SMC. Scegliendolo si compilano insieme i dati della scheda tecnica " +
     "(portata nominale Qn o conduttanza C e b, pressioni, alesaggio, stelo, ammortizzo) e le opzioni del " +

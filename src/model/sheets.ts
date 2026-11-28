@@ -17,6 +17,7 @@
  */
 import { normalizeAnnotations, type AnnotationData } from "./annotations";
 import { normalizeBlocks, type BlockData } from "./blocks";
+import { renameCam } from "./cams";
 import { emptyCircuit, FORMAT, type CircuitDoc, type ConnectionData, type Placement } from "./circuit";
 import { parseSheet, type SheetData } from "./sheet";
 
@@ -220,7 +221,7 @@ export function duplicatePage(src: Page, id: string, name: string,
   }
   const fixId = (x: string) => rename.get(x) ?? x;
   const fixRef = (r: string) => { const i = r.lastIndexOf("."); return i > 0 ? `${fixId(r.slice(0, i))}${r.slice(i)}` : r; };
-  const fixCam = (cam: string) => fixId(cam.slice(0, -1)) + cam.slice(-1);
+  const fixCam = (cam: string) => renameCam(cam, fixId);
   for (const c of d.components) {
     c.id = fixId(c.id);
     for (const key of ["cam_14", "cam_12", "cam"] as const) {

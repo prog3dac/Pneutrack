@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.38.2**.
+Aggiornato alla versione **0.39.0**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
@@ -27,6 +27,20 @@ Altri documenti: la guida dell'interfaccia ([../interfaccia.md](../interfaccia.m
    divisi in *dati di catalogo* e *parametri di simulazione*. Un campo vuoto usa il valore predefinito
    indicato in [componenti.md](componenti.md). Il valore si scrive con l'unità (`6 bar`, `32 mm`,
    `400 Nl/min`); un'unità sbagliata (per esempio un alesaggio in bar) segna il campo in rosso.
+   **Sensori e finecorsa.** Nella finestra del cilindro (*Configura cilindro…*) la scheda *Sensori e
+   finecorsa* elenca in una tabella gli elementi dello schema che il cilindro aziona: finecorsa elettrici,
+   sensori di prossimità, valvole con comando meccanico (rullo, tastatore, leva unidirezionale, lato per
+   lato) e strozzatori a rullo. Per ogni elemento si sceglie la quota (fine corsa in rientro, fine corsa in
+   uscita o una quota in mm dal fondello, con la percentuale della corsa), il verso per la leva
+   unidirezionale a una quota intermedia e, per i sensori, il campo di rilevamento (±). Sopra la tabella un
+   righello mostra le quote sulla corsa; una quota oltre la corsa si segna in rosso. *+ Aggiungi elemento*
+   propone prima gli elementi liberi, poi quelli già su un altro cilindro (che passano a questo: un elemento
+   è azionato da un solo cilindro). *Applica* riporta tutto negli elementi in un solo passo di annulla.
+   Nelle opzioni dell'elemento il collegamento si legge («C1 a 80 mm dal fondello (40 %)») e si modifica con
+   *Modifica nel cilindro C1…*; un elemento non collegato ha *Collega a un cilindro…*, che apre la scheda
+   del cilindro scelto con la riga già aggiunta. I cilindri fuori dal configuratore (con bloccaggio, a
+   soffietto, a membrana) hanno il pulsante *Sensori e finecorsa…*, che apre solo questa scheda; lo stesso
+   vale per un cilindro che sta su un altro foglio.
 3. **Validazione.** Mentre si disegna, lo schema viene controllato. Gli **errori** (porta di lavoro non
    collegata, sorgenti a pressioni diverse sulla stessa linea, alimentazione che scarica direttamente,
    pressione oltre la `max_pressure` di un componente, finecorsa che indica un cilindro inesistente,
@@ -77,7 +91,10 @@ Le caselle di una valvola si chiamano come il lato che le comanda: casella **14*
 - L'**angolo di montaggio** `mounting_angle` è 0° in orizzontale, +90° con lo stelo che esce verso l'alto
   (il peso si oppone all'uscita), −90° verso il basso.
 - Il fine corsa in uscita di un cilindro si scrive `C1+`, quello in rientro `C1-` (per esempio nei rulli
-  `cam_14` e nei finecorsa elettrici).
+  `cam_14` e nei finecorsa elettrici). Una quota intermedia, misurata dal fondello, si scrive `C1@80 mm`
+  (un numero senza unità vale mm); per una leva unidirezionale il verso va prima della chiocciola:
+  `C1+@80 mm` scatta solo in uscita, `C1-@80 mm` solo in rientro. Le quote `C1+`/`C1-` seguono la corsa
+  quando cambia, le quote in mm restano dove sono.
 
 ### Unità ammesse
 

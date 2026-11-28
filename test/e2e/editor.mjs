@@ -948,6 +948,71 @@ assert.equal(await page.evaluate(() => window.pneutrack.sim.valvePosition("RB1")
 await page.click('[data-act="mode-draw"]');
 await page.waitForFunction(() => document.body.dataset.sim !== "on");
 
+// 11b. scheda «Sensori e finecorsa» del cilindro: collega dall'elemento, quote intermedie, oltre la corsa, scollega
+await page.evaluate(() => window.pneutrack.loadDoc({
+  name: "Sensori e finecorsa",
+  components: [
+    { id: "C1", type: "double_acting_cylinder", params: { bore: "32 mm", stroke: "100 mm" }, magnet: "yes" },
+    { id: "S1", type: "directional_valve", function: "3/2", actuation_14: "mechanical", actuation_12: "spring", cam_14: "C1-" },
+    { id: "B1", type: "proximity_sensor", cam: "C1+", params: { position: "80 mm" } },
+    { id: "S2", type: "limit_switch", contact: "no", switch_actuation: "roller_oneway" },
+  ],
+  connections: [],
+  layout: { C1: { x: 300, y: 0, rot: 0 }, S1: { x: 120, y: 160, rot: 0 }, B1: { x: 320, y: 180, rot: 0 }, S2: { x: 480, y: 180, rot: 0 } },
+}));
+await settled();
+{
+  const CD = ".vc-dialog";
+  const comp = (id) => page.evaluate((id) => window.pneutrack.doc.components.find((c) => c.id === id), id);
+  // dal finecorsa non collegato: «Collega a un cilindro…» apre la scheda del cilindro con la riga già aggiunta
+  await openProps("S2");
+  assert.match(await page.textContent(`${D} .cam-link`), /nessun cilindro/);
+  await page.selectOption(`${D} select[name="link-S2"]`, "C1");
+  await page.waitForSelector(`${CD} .cc-links:not([hidden]) tr[data-key="S2"]`);
+  assert.equal(await page.locator(`${CD} .cc-ltable tbody tr[data-key]`).count(), 3, "S1, B1 e la riga nuova");
+  await page.selectOption(`${CD} tr[data-key="S2"] .cc-quota select`, "at");
+  await page.fill(`${CD} tr[data-key="S2"] .cc-quota input`, "40");
+  await page.keyboard.press("Tab");
+  await page.selectOption(`${CD} tr[data-key="S2"] select[aria-label^="Verso"]`, "+");
+  await page.click(`${CD} .vc-footer .primary`);
+  await page.waitForSelector(CD, { state: "detached" });
+  // la finestra delle proprietà si ridisegna subito dopo
+  await page.waitForFunction((sel) => /C1 a 40 mm dal fondello \(40 %\), solo in uscita/.test(document.querySelector(sel)?.textContent ?? ""),
+    `${D} .cam-link`);
+  await okProps();
+  assert.equal((await comp("S2")).cam, "C1+@40 mm");
+  assert.equal(await page.locator('[data-component="S2"] .cam-label').textContent(), "C1+@40");
+
+  // dal cilindro: il sensore delle versioni precedenti mostra la sua quota, la quota oltre la corsa si segnala
+  await openProps("C1");
+  assert.match(await page.textContent(`${D} .valve-config`), /aziona 3 elementi/);
+  await page.click(`${D} button:has-text("Configura cilindro…")`);
+  await page.waitForSelector(CD);
+  await page.click(`${CD} .cc-tab[data-tab="links"]`);
+  assert.equal(await page.inputValue(`${CD} tr[data-key="B1"] .cc-quota input`), "80");
+  await page.selectOption(`${CD} tr[data-key="S1.14"] .cc-quota select`, "at");
+  await page.fill(`${CD} tr[data-key="S1.14"] .cc-quota input`, "120");
+  await page.keyboard.press("Tab");
+  assert.match(await page.textContent(`${CD} .cc-problem`), /S1\.14: la quota 120 mm è oltre la corsa/);
+  await page.fill(`${CD} tr[data-key="S1.14"] .cc-quota input`, "60");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.locator(`${CD} .cc-problem`).count(), 0);
+  await page.click(`${CD} tr[data-key="B1"] button[aria-label="Scollega B1"]`);
+  if (shots) await page.screenshot({ path: `${shots}/sensori-finecorsa.png` });
+  await page.click(`${CD} .vc-footer .primary`);
+  await page.waitForSelector(CD, { state: "detached" });
+  await okProps();
+  assert.equal((await comp("S1")).cam_14, "C1@60 mm");
+  const b1 = await comp("B1");
+  assert.equal(b1.cam, undefined, "B1 scollegato");
+  assert.equal(b1.params?.position, undefined, "la posizione delle versioni precedenti non resta orfana");
+  // un solo passo di annulla riporta cilindro ed elementi
+  await page.keyboard.press("Control+z");
+  await settled();
+  assert.equal((await comp("S1")).cam_14, "C1-");
+  assert.deepEqual([(await comp("B1")).cam, (await comp("B1")).params.position], ["C1+", "80 mm"]);
+}
+
 // 12. più fogli: schede, rimandi tra fogli, copia/incolla, annulla/ripeti, simulazione ed export
 await page.evaluate(() => window.pneutrack.loadDoc({
   name: "Due fogli",

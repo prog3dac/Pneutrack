@@ -39,6 +39,7 @@ import {
   buildComponent, hasPilotPort, internalPaths, isActuator, isCylinder, isElectric, isElectricType, ParameterError,
   sourcePressures, type Component, type PortSpec,
 } from "./components";
+import { fmtMm, formatCam, type Cam } from "./cams";
 import { parseTube, type Tube } from "./tubes";
 import { barFromPa, UnitError, type Quantity } from "./units";
 
@@ -299,7 +300,10 @@ export function analyze(data: Pick<CircuitDoc, "components" | "connections">): A
       const cyl = comps.get(cam.cylinder);
       if (!cyl || !isCylinder(cyl.type)) {
         issues.push(issue("error", "INVALID_CAM",
-          `${c.id}: il finecorsa ${cam.cylinder}${cam.end} non corrisponde a nessun cilindro dello schema`, c.id));
+          `${c.id}: il finecorsa ${formatCam(cam)} non corrisponde a nessun cilindro dello schema`, c.id));
+      } else {
+        const beyond = camBeyondStroke(c.id, cam, cyl);
+        if (beyond) issues.push(beyond);
       }
     }
     if (c.type === "sequence_valve" || (c.type === "pressure_switch" && c.switch_kind !== "vacuum")) {
@@ -383,18 +387,17 @@ function electricIssues(built: Built, connected: Set<string>): Issue[] {
         const cyl = comps.get(c.cam.cylinder);
         if (!cyl || !isCylinder(cyl.type)) {
           out.push(issue("error", "INVALID_CAM",
-            `${c.id}: ${c.cam.cylinder}${c.cam.end} non corrisponde a nessun cilindro dello schema`, c.id));
+            `${c.id}: ${formatCam(c.cam)} non corrisponde a nessun cilindro dello schema`, c.id));
+        } else {
+          // il sensore degli schemi precedenti: quota nel parametro posizione
+          const legacy = c.type === "proximity_sensor" && c.cam.at === undefined && c.params.position
+            ? { cylinder: c.cam.cylinder, at: c.params.position.si } : c.cam;
+          const beyond = camBeyondStroke(c.id, legacy, cyl);
+          if (beyond) out.push(beyond);
         }
       }
       if (c.type === "proximity_sensor" && c.params.position && !c.cam) {
         out.push(issue("error", "INVALID_CAM", `${c.id}: con la posizione va indicato anche il cilindro (cam)`, c.id));
-      }
-      if (c.type === "proximity_sensor" && c.params.position && c.cam) {
-        const cyl = comps.get(c.cam.cylinder);
-        const stroke = cyl && isCylinder(cyl.type) ? cyl.params.stroke : undefined;
-        if (stroke && c.params.position.si > stroke.si * (1 + 1e-9)) {
-          out.push(issue("error", "INVALID_CAM", `${c.id}: la posizione ${c.params.position} è oltre la corsa di ${cyl!.id} (${stroke})`, c.id));
-        }
       }
     }
     if (c.type === "relay_contact" || c.type === "pushbutton" || c.type === "limit_switch") {
@@ -434,4 +437,11 @@ function electricIssues(built: Built, connected: Set<string>): Issue[] {
     }
   }
   return out;
+}
+
+/** Errore se la quota del finecorsa è oltre la corsa del cilindro. */
+function camBeyondStroke(id: string, cam: Cam, cyl: Component): Issue | null {
+  const stroke = cyl.params.stroke;
+  if (cam.at === undefined || !stroke || cam.at <= stroke.si * (1 + 1e-9)) return null;
+  return issue("error", "INVALID_CAM", `${id}: la quota ${fmtMm(cam.at)} è oltre la corsa di ${cyl.id} (${stroke})`, id);
 }

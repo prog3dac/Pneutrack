@@ -9,6 +9,7 @@
  * si usa per duplicare e per la libreria dei blocchi riutilizzabili.
  */
 import type { CircuitDoc, ConnectionData, Placement } from "./circuit";
+import { renameCam } from "./cams";
 import type { ComponentData } from "./components";
 
 export interface BlockData {
@@ -122,10 +123,10 @@ export function insertFragment(doc: CircuitDoc, frag: Fragment, at: { x: number;
   for (const c of frag.components) {
     const copy = structuredClone(c);
     copy.id = rename.get(c.id)!;
-    // i finecorsa seguono il cilindro copiato, se è nel frammento
-    for (const key of ["cam_14", "cam_12"] as const) {
+    // i finecorsa (valvole a rullo, finecorsa elettrici, sensori) seguono il cilindro copiato, se è nel frammento
+    for (const key of ["cam_14", "cam_12", "cam"] as const) {
       const cam = copy[key];
-      if (cam && rename.has(cam.slice(0, -1))) copy[key] = rename.get(cam.slice(0, -1))! + cam.slice(-1);
+      if (cam) copy[key] = renameCam(cam, (id) => rename.get(id) ?? id);
     }
     doc.components.push(copy);
     const p = frag.layout[c.id] ?? { x: 0, y: 0, rot: 0 };

@@ -11,8 +11,9 @@
  * attrito di primo distacco, ammortizzo, peso, bloccaggio, arresto a fine corsa né consumo d'aria: quelli
  * esistono solo qui.
  */
-import { BAR, KAPPA, ONEWAY_MIN_SPEED, ONEWAY_ZONE, P_ATM, R_AIR, RHO_ANR, ROLLER_ZONE } from "../solver/constants";
+import { BAR, KAPPA, P_ATM, R_AIR, RHO_ANR } from "../solver/constants";
 import { signedFlow } from "../solver/flow";
+import { camPressed } from "../model/cams";
 import type { CylinderSpec, Position, SimNetwork, Tunable, ValveSpec } from "./network";
 import { ElectricState, type ElectricSnapshot } from "./electric";
 import { isElectric, isManual, profileForce, isMechanical, isPilot, isReturn, isThreePosition, type Actuation, type Cam } from "../model/components";
@@ -316,22 +317,12 @@ export class Simulator {
     return isMechanical(aux) && !!cam && this.camPressed(aux, cam);
   }
 
-  /** Rullo o tastatore premuto dal cilindro del finecorsa. */
+  /** Rullo o tastatore premuto dal cilindro del finecorsa (vedi {@link camPressed}). */
   private camPressed(act: Actuation, cam: Cam): boolean {
     const i = this.cylIndex.get(cam.cylinder);
     if (i === undefined) return false;
     const c = this.cylinder(cam.cylinder)!;
-    const stroke = this.net.cylinders[i]!.stroke;
-    if (act === "roller_oneway") {
-      // leva ribaltabile: azionata solo mentre lo stelo la supera andando verso il fine corsa
-      const tol = Math.min(0.5, ONEWAY_ZONE / stroke);
-      const inZone = cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
-      const towards = cam.end === "+" ? c.v > ONEWAY_MIN_SPEED : c.v < -ONEWAY_MIN_SPEED;
-      return inZone && towards;
-    }
-    // rullo e tastatore sono premuti negli ultimi 2 mm di corsa
-    const tol = ROLLER_ZONE / stroke;
-    return cam.end === "+" ? c.fraction >= 1 - tol : c.fraction <= tol;
+    return camPressed(cam, act === "roller_oneway" ? "oneway" : "roller", c.x, c.v, this.net.cylinders[i]!.stroke);
   }
 
   private mainActive(v: ValveSpec, side: "14" | "12", P: ArrayLike<number>): boolean {

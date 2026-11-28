@@ -7,6 +7,7 @@
  * il comportamento in sim/compile.ts.
  */
 import { Quantity, UnitError, type Dimension } from "./units";
+import { parseCam, type Cam } from "./cams";
 import { parseBoxes, waysOf, WAY_PORTS, type BoxItem, type BoxPosition } from "./valveBody";
 
 /** "electric": morsetto di un componente elettrico; le sue linee sono fili, non tubi. */
@@ -78,7 +79,7 @@ export interface ComponentData {
   function?: string;
   actuation_14?: string;
   actuation_12?: string;
-  /** rullo azionato da un cilindro: "C1+" a fine corsa in uscita, "C1-" in rientro */
+  /** rullo azionato da un cilindro: "C1+" a fine corsa in uscita, "C1-" in rientro, "C1@80 mm" a una quota (vedi cams.ts) */
   cam_14?: string;
   cam_12?: string;
   /** corpo personalizzato: caselle da sinistra (14) a destra (12), "1>4 2>3 x5 | 1>2 4>5 x3" (vedi valveBody.ts) */
@@ -146,7 +147,7 @@ export interface ComponentData {
   drives?: string;
   /** contatto: il relè, temporizzatore o pressostato che lo aziona, "K1" */
   relay?: string;
-  /** finecorsa elettrico o sensore: "C1+" (stelo fuori) o "C1-" (stelo dentro) */
+  /** finecorsa elettrico o sensore: "C1+" (stelo fuori), "C1-" (stelo dentro) o "C1@80 mm" (quota dal fondello) */
   cam?: string;
 }
 
@@ -213,11 +214,7 @@ export const CUSHIONING_CHOICES: [Cushioning, string][] = [
   ["rod", "Regolabile solo in uscita (testata)"],
 ];
 
-/** Finecorsa: il cilindro `cylinder` a fine corsa in uscita ("+") o in rientro ("-"). */
-export interface Cam {
-  cylinder: string;
-  end: "+" | "-";
-}
+export type { Cam } from "./cams";
 
 /** La pressione su `src` può arrivare su `dst`, al più `cap` (Pa). */
 export interface InternalPath {
@@ -411,8 +408,13 @@ export function upgradeComponent(raw: ComponentData): boolean {
   return true;
 }
 
-/** Il parametro serve con l'ammortizzo scelto (le viti e la lunghezza solo dove c'è l'ammortizzo). */
-export function paramApplies(c: { cushioning?: string }, name: string): boolean {
+/**
+ * Il parametro serve con le scelte del componente: le viti e la lunghezza dell'ammortizzo solo dove c'è
+ * l'ammortizzo; la posizione del sensore solo negli schemi delle versioni precedenti (ora la quota sta nel
+ * riferimento al cilindro, «C1@80 mm», e si imposta nella scheda Sensori e finecorsa del cilindro).
+ */
+export function paramApplies(c: { type?: string; cushioning?: string; params?: Record<string, string> }, name: string): boolean {
+  if (c.type === "proximity_sensor" && name === "position") return !!c.params?.position;
   const cu = c.cushioning ?? "none";
   if (name === "cushion_length") return cu !== "none";
   if (name === "cushion_opening_rod") return cu === "rod" || cu === "both";
@@ -1280,7 +1282,9 @@ const DEFS: TypeDef[] = [
   },
   {
     type: "limit_switch", label: "Finecorsa elettrico", category: ELECTRIC, domain: "electric",
-    doc: "Microinterruttore a rullo azionato da un cilindro a fine corsa (cam: \"C1+\" stelo fuori, \"C1-\" dentro).",
+    doc: "Microinterruttore a rullo azionato da un cilindro (cam: \"C1+\" stelo tutto fuori, \"C1-\" tutto dentro, " +
+      "\"C1@80 mm\" camma a 80 mm dal fondello; con la leva unidirezionale \"C1+@80 mm\" scatta solo in uscita). " +
+      "Il collegamento si imposta nella scheda Sensori e finecorsa del cilindro.",
     params: [], defaults: {},
     options: [contactOption, { name: "switch_actuation", label: "Azionamento", default: "roller", choices: [
       ["roller", "Rullo"], ["roller_oneway", "Rullo unidirezionale (leva ribaltabile)"]] }],
@@ -1295,8 +1299,10 @@ const DEFS: TypeDef[] = [
   {
     type: "proximity_sensor", label: "Sensore di prossimità", category: ELECTRIC, domain: "electric",
     doc: "Sensore a tre fili, uscita PNP: BN al +, BU al 0V, BK è l'uscita, che va a tensione quando lo stelo è " +
-      "nella posizione indicata (cam: \"C1+\", oppure il parametro posizione).",
-    params: [p("position", "Posizione dal fondello", "length"),
+      "nella posizione indicata (cam: \"C1+\" o \"C1-\" a fine corsa, \"C1@80 mm\" a 80 mm dal fondello; negli schemi " +
+      "delle versioni precedenti anche il parametro posizione). Il collegamento si imposta nella scheda Sensori e " +
+      "finecorsa del cilindro.",
+    params: [p("position", "Posizione dal fondello (versioni precedenti)", "length"),
              p("range", "Campo di rilevamento (±)", "length", { group: "sim", simDefault: "3 mm" })],
     options: [{ name: "sensor_kind", label: "Tipo", default: "reed", choices: [
       ["reed", "Magnetico (reed)"], ["inductive", "Induttivo"], ["capacitive", "Capacitivo"], ["optical", "Ottico"]] }],
@@ -1405,12 +1411,11 @@ export function buildComponent(raw: ComponentData): Component {
     for (const side of ["14", "12"] as const) {
       const raw_cam = raw[`cam_${side}`];
       if (raw_cam == null || raw_cam === "") continue;
-      const m = CAM_RE.exec(String(raw_cam));
-      if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
+      const cam = camOf(id, raw_cam);
       if (!isMechanical(comp[`actuation_${side}`]) && !isMechanical(comp[`aux_${side}`])) {
         throw new ParameterError(`${id}: il finecorsa ${raw_cam} richiede un comando meccanico sul lato ${side}`);
       }
-      comp[`cam_${side}`] = { cylinder: m[1]!, end: m[2] as "+" | "-" };
+      comp[`cam_${side}`] = cam;
     }
     if (raw.initial != null && raw.initial !== "") {
       if (raw.initial !== "14" && raw.initial !== "12") {
@@ -1434,9 +1439,7 @@ export function buildComponent(raw: ComponentData): Component {
     // il rullo è sul lato 14
     const raw_cam = raw.cam_14;
     if (raw_cam != null && raw_cam !== "") {
-      const m = CAM_RE.exec(String(raw_cam));
-      if (!m) throw new ParameterError(`${id}: finecorsa '${raw_cam}' non valido (atteso per esempio 'C1+' o 'C1-')`);
-      comp.cam_14 = { cylinder: m[1]!, end: m[2] as "+" | "-" };
+      comp.cam_14 = camOf(id, raw_cam);
     }
     if (raw.cam_12) throw new ParameterError(`${id}: il rullo dello strozzatore è sul lato 14 (cam_14)`);
   }
@@ -1548,7 +1551,14 @@ const CHOICE_OPTIONS = ["contact", "operation", "timer_mode", "switch_actuation"
   "override", "magnet", "gripper_kind", "coupling", "coupling_state", "check_spring", "rotary_kind", "motor_kind",
   "filter_kind", "frl_style", "lub_drain", "switch_kind", "indicator_kind", "blowoff",
   "gauge_fitted", "single_kind", "spring_return", "rodless_kind"] as const;
-const CAM_RE = /^([A-Za-z0-9_-]+)([+-])$/;
+/** Riferimento del finecorsa letto dal file (vedi {@link parseCam}). */
+function camOf(id: string, raw: unknown): Cam {
+  const cam = parseCam(String(raw));
+  if (!cam) {
+    throw new ParameterError(`${id}: finecorsa '${raw}' non valido (atteso per esempio 'C1+', 'C1-' o 'C1@80 mm')`);
+  }
+  return cam;
+}
 
 /** Opzioni e riferimenti per sigla dei componenti elettrici (la loro esistenza la controlla la validazione). */
 function buildElectric(def: TypeDef, raw: ComponentData, comp: Component): void {
@@ -1577,9 +1587,7 @@ function buildElectric(def: TypeDef, raw: ComponentData, comp: Component): void 
       if (!m) throw new ParameterError(`${id}: solenoide '${text}' non valido (atteso valvola e lato, per esempio 'V1.14')`);
       comp.drives = { valve: m[1]!, side: m[2] as "14" | "12" };
     } else if (field === "cam") {
-      const m = CAM_RE.exec(text);
-      if (!m) throw new ParameterError(`${id}: finecorsa '${text}' non valido (atteso per esempio 'C1+' o 'C1-')`);
-      comp.cam = { cylinder: m[1]!, end: m[2] as "+" | "-" };
+      comp.cam = camOf(id, text);
     } else {
       if (!/^[A-Za-z0-9_-]+$/.test(text)) throw new ParameterError(`${id}: sigla del relè '${text}' non valida`);
       comp.relay = text;

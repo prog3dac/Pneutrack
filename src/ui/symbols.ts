@@ -5,6 +5,7 @@
 // Le porte coincidono con quelle del modello (numerazione ISO 5599).
 // `state` (facoltativo) è lo stato di simulazione: posizione della valvola, corsa del cilindro.
 import { isElectric, isMechanical, isPilot, restPosition, type Actuation, type ComponentData } from "../model/components";
+import { camLabel } from "../model/cams";
 import { boxIndex, valveBoxes, waysOf, type Ways } from "../model/valveBody";
 import { Quantity } from "../model/units";
 import type { Position } from "../sim/network";
@@ -327,8 +328,8 @@ function valveGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const mech = (a: string | undefined) => !!a && isMechanical(a as Actuation);
   // con il rullo come secondo comando la sigla va sopra il secondo comando
   const camY = (main: string, aux?: string) => (mech(main) ? -16 : mech(aux) ? AUX_Y - 12 : -16);
-  if (comp.cam_14 && (mech(a14) || mech(comp.aux_14))) moving += text(x0 - 15, camY(a14, comp.aux_14), comp.cam_14, "cam-label");
-  if (comp.cam_12 && (mech(a12) || mech(comp.aux_12))) moving += text(-x0 + 15, camY(a12, comp.aux_12), comp.cam_12, "cam-label");
+  if (comp.cam_14 && (mech(a14) || mech(comp.aux_14))) moving += text(x0 - 15, camY(a14, comp.aux_14), camLabel(comp.cam_14), "cam-label");
+  if (comp.cam_12 && (mech(a12) || mech(comp.aux_12))) moving += text(-x0 + 15, camY(a12, comp.aux_12), camLabel(comp.cam_12), "cam-label");
   // bobine del circuito elettrico che eccitano i solenoidi
   if (state?.coil14) moving += text(x0 - 15, -16, state.coil14, "cam-label coil-label");
   if (state?.coil12) moving += text(-x0 + 15, -16, state.coil12, "cam-label coil-label");
@@ -923,7 +924,7 @@ function rollerThrottleGeometry(comp: ComponentData, state?: SymbolState): Geome
   const roller = `<g${state?.active14 ? ` class="active"` : ""} data-side="14">` +
     line(-9, 0, -20, 0) + circle(-25, 0, 5, "nofill") + "</g>";
   const svg = line(0, -30, 0, 30) + throttle + roller + zigzag(9, 0, 24, 0, 5, 4) +
-    (comp.cam_14 ? text(-25, -10, comp.cam_14, "cam-label") : "");
+    (comp.cam_14 ? text(-25, -10, camLabel(comp.cam_14), "cam-label") : "");
   return { w: 70, h: 60, ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up } }, svg };
 }
 
@@ -1154,7 +1155,7 @@ function contactGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const kind = comp.contact ?? "no";
   const on = !!state?.actuated;
   const cls = on ? "blade active" : "blade";
-  const label = comp.type === "relay_contact" ? comp.relay : comp.type === "limit_switch" ? comp.cam : undefined;
+  const label = comp.type === "relay_contact" ? comp.relay : comp.type === "limit_switch" && comp.cam ? camLabel(comp.cam) : undefined;
   let svg = "", ports: Record<string, PortGeom>;
   if (kind === "co") {
     svg += line(-10, -E, -10, -12) + line(10, -E, 10, -12) + line(10, -12, 4, -12) + line(0, E, 0, 12);
@@ -1212,7 +1213,7 @@ function proximityGeometry(comp: ComponentData, state?: SymbolState): Geometry {
   const svg = line(0, -E, 0, -16) + line(0, 16, 0, E) + line(14, 0, 30, 0) +
     rect(-14, -16, 28, 32, `body coil${on}`) + diamond(0, 0, 9) + line(-4, 0, 4, 0) +
     (comp.sensor_kind === "reed" || !comp.sensor_kind ? "" : line(-4, 4, 4, 4)) +
-    sideText(-14, -20, comp.cam ?? "") ;
+    sideText(-14, -20, comp.cam ? camLabel(comp.cam) : "");
   return { w: 64, h: 2 * E, ports: { BN: eTop(), BU: eBottom(), BK: { x: 30, y: 0, dir: right } }, svg };
 }
 
