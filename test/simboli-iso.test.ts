@@ -233,3 +233,75 @@ describe("regole quotate della ISO 1219-1 (M = 10)", () => {
     }
   });
 });
+
+describe("non ritorno pilotata (ISO 1219-1 X10720, disegno di ISO 1219-3 allegato A)", () => {
+  /** Vertici dello zig-zag della molla: il path con più di 4 punti alternati a ±8. */
+  const springPoints = (svg: string) => {
+    const d = [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]!)
+      .find((p) => (p.match(/L/g) ?? []).length >= 4);
+    expect(d, "molla a zig-zag").toBeDefined();
+    return [...d!.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({ x: +m[1]!, y: +m[2]! }));
+  };
+  const g = geometry({ id: "NRP1", type: "pilot_check_valve" });
+  const ball = /<circle cx="0" cy="(-?[\d.]+)" r="([\d.]+)"/.exec(g.svg)!;
+  const ballY = +ball[1]!, ballR = +ball[2]!;
+  const box = /<rect x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)" class="box"/.exec(g.svg)!;
+  const [bx, by, bw, bh] = box.slice(1).map(Number) as [number, number, number, number];
+
+  it("la molla sta sull'asse della linea, sopra la sfera, come nel non ritorno con molla", () => {
+    const pts = springPoints(g.svg);
+    expect(pts.length).toBeGreaterThanOrEqual(5);
+    const half = pts[1]!.x;
+    expect(half).toBeGreaterThan(3);
+    for (const [i, p] of pts.entries()) expect(p.x).toBe(i % 2 ? half : -half); // centrata sull'asse x = 0, alternata
+    expect(half * 2).toBeLessThan(bw * 0.6); // più stretta della casella, come nel disegno della norma
+    expect(Math.max(...pts.map((p) => p.y))).toBeLessThan(ballY - ballR); // tutta sopra la sfera (lato di 2)
+    expect(Math.min(...pts.map((p) => p.y))).toBeGreaterThan(by); // dentro il corpo
+    // la molla occupa la parte alta della casella: almeno un terzo della sua altezza
+    expect(Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y))).toBeGreaterThan(bh / 3);
+  });
+
+  it("la sede è sotto la sfera, dalla parte di 1: passa libero da 1 a 2", () => {
+    const seat = /<path d="M-[89],(-?[\d.]+) L0,(-?[\d.]+) L[89],/.exec(g.svg)!;
+    expect(+seat[2]!).toBeGreaterThan(ballY); // vertice della V sotto la sfera
+    expect(+seat[1]!).toBeLessThan(ballY); // bracci aperti verso 2
+  });
+
+  it("il pilotaggio tratteggiato arriva da 21 fino alla sfera; corpo e porte non cambiano", () => {
+    expect(g.svg).toMatch(/<line x1="8.95" y1="0" x2="30" y2="0" class="dash"/);
+    const diag = /<line x1="([\d.]+)" y1="(-?[\d.]+)" x2="8.95" y2="0"/.exec(g.svg)!;
+    expect(Math.hypot(+diag[1]!, +diag[2]! - ballY)).toBeCloseTo(ballR, 1); // tocca la sfera
+    expect(bx).toBeLessThan(-8); expect(bx + bw).toBeGreaterThan(8); expect(by + bh).toBeGreaterThan(0);
+    expect(g.ports).toEqual({ 1: { x: 0, y: 30, dir: [0, 1] }, 2: { x: 0, y: -30, dir: [0, -1] }, 21: { x: 30, y: 0, dir: [1, 0] } });
+  });
+});
+
+describe("sfera dei non ritorno tangente ai due bracci della sede", () => {
+  /** Distanza del punto (px, py) dalla retta per (x1, y1) e (x2, y2). */
+  const dist = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) =>
+    Math.abs((x2 - x1) * (y1 - py) - (x1 - px) * (y2 - y1)) / Math.hypot(x2 - x1, y2 - y1);
+  const cases: [string, ComponentData][] = [
+    ["non ritorno (X10690)", { id: "NR1", type: "check_valve" }],
+    ["non ritorno con molla (X10700)", { id: "NR1", type: "check_valve", check_spring: "yes" }],
+    ["non ritorno pilotata (X10720)", { id: "NRP1", type: "pilot_check_valve" }],
+    ["doppia non ritorno pilotata (X10730)", { id: "NRD1", type: "double_pilot_check" }],
+    ["strozzatore unidirezionale (X10640)", { id: "SU1", type: "one_way_flow_control" }],
+    ["innesto rapido con non ritorno", { id: "IR1", type: "quick_coupling", coupling: "check_both" }],
+  ];
+  for (const [name, comp] of cases) {
+    it(name, () => {
+      const svg = geometry(comp).svg;
+      const balls = [...svg.matchAll(/<circle cx="(-?[\d.]+)" cy="(-?[\d.]+)" r="([\d.]+)" class="body"/g)]
+        .map((m) => ({ x: +m[1]!, y: +m[2]!, r: +m[3]! }));
+      const vees = [...svg.matchAll(/<path d="M(-?[\d.]+),(-?[\d.]+) L(-?[\d.]+),(-?[\d.]+) L(-?[\d.]+),(-?[\d.]+)" class="nofill"/g)]
+        .map((m) => m.slice(1, 7).map(Number) as [number, number, number, number, number, number]);
+      expect(balls.length).toBeGreaterThan(0);
+      for (const b of balls) {
+        // la sede è la V più vicina alla sfera
+        const v = vees.map((p) => ({ p, d: Math.hypot(p[2] - b.x, p[3] - b.y) })).sort((a, c) => a.d - c.d)[0]!.p;
+        expect(dist(b.x, b.y, v[0], v[1], v[2], v[3])).toBeCloseTo(b.r, 1);
+        expect(dist(b.x, b.y, v[2], v[3], v[4], v[5])).toBeCloseTo(b.r, 1);
+      }
+    });
+  }
+});
