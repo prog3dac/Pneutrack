@@ -233,3 +233,43 @@ describe("regole quotate della ISO 1219-1 (M = 10)", () => {
     }
   });
 });
+
+describe("non ritorno pilotata (ISO 1219-1 X10720, disegno di ISO 1219-3 allegato A)", () => {
+  /** Vertici dello zig-zag della molla: il path con più di 4 punti alternati a ±8. */
+  const springPoints = (svg: string) => {
+    const d = [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]!)
+      .find((p) => (p.match(/L/g) ?? []).length >= 3 && /M-8,/.test(p));
+    expect(d, "molla a zig-zag").toBeDefined();
+    return [...d!.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => ({ x: +m[1]!, y: +m[2]! }));
+  };
+  const g = geometry({ id: "NRP1", type: "pilot_check_valve" });
+  const ball = /<circle cx="0" cy="(-?[\d.]+)" r="([\d.]+)"/.exec(g.svg)!;
+  const ballY = +ball[1]!, ballR = +ball[2]!;
+  const box = /<rect x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)" class="box"/.exec(g.svg)!;
+  const [bx, by, bw, bh] = box.slice(1).map(Number) as [number, number, number, number];
+
+  it("la molla sta sull'asse della linea, sopra la sfera, come nel non ritorno con molla", () => {
+    const pts = springPoints(g.svg);
+    expect(pts.length).toBeGreaterThanOrEqual(5);
+    for (const [i, p] of pts.entries()) expect(p.x).toBe(i % 2 ? 8 : -8); // centrata sull'asse x = 0, alternata
+    expect(Math.max(...pts.map((p) => p.y))).toBeLessThan(ballY - ballR); // tutta sopra la sfera (lato di 2)
+    expect(Math.min(...pts.map((p) => p.y))).toBeGreaterThan(by); // dentro il corpo
+    // stessa larghezza della molla del non ritorno X10700
+    const plain = springPoints(geometry({ id: "NR1", type: "check_valve", check_spring: "yes" }).svg);
+    expect(Math.max(...plain.map((p) => p.x))).toBe(8);
+  });
+
+  it("la sede è sotto la sfera, dalla parte di 1: passa libero da 1 a 2", () => {
+    const seat = /<path d="M-9,(-?[\d.]+) L0,(-?[\d.]+) L9,/.exec(g.svg)!;
+    expect(+seat[2]!).toBeGreaterThan(ballY); // vertice della V sotto la sfera
+    expect(+seat[1]!).toBeLessThan(ballY); // bracci aperti verso 2
+  });
+
+  it("il pilotaggio tratteggiato arriva da 21 fino alla sfera; corpo e porte non cambiano", () => {
+    expect(g.svg).toMatch(/<line x1="7" y1="0" x2="30" y2="0" class="dash"/);
+    const diag = /<line x1="([\d.]+)" y1="(-?[\d.]+)" x2="7" y2="0"/.exec(g.svg)!;
+    expect(Math.hypot(+diag[1]!, +diag[2]! - ballY)).toBeCloseTo(ballR, 1); // tocca la sfera
+    expect(bx).toBeLessThan(-8); expect(bx + bw).toBeGreaterThan(8); expect(by + bh).toBeGreaterThan(0);
+    expect(g.ports).toEqual({ 1: { x: 0, y: 30, dir: [0, 1] }, 2: { x: 0, y: -30, dir: [0, -1] }, 21: { x: 30, y: 0, dir: [1, 0] } });
+  });
+});

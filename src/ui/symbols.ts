@@ -489,6 +489,20 @@ const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
   path(`M${x - 10},${y - 5 * dir} L${x},${y + 8 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
 
 /**
+ * Molla di un non ritorno (ISO 1219-1, 2002V1 in X10700 e X10720): zig-zag a tratti quasi orizzontali, centrato
+ * sull'asse della linea e larghezza ±8, dalla sommità (yTop) fino a poco sopra la sfera (yBottom). La molla sta dal
+ * lato della sfera opposto alla sede e la spinge contro la sede.
+ */
+const checkSpring = (x: number, yTop: number, yBottom: number, n: number) => {
+  let d = "";
+  for (let i = 0; i <= n; i++) {
+    const y = +(yTop + ((yBottom - yTop) * i) / n).toFixed(2);
+    d += `${i ? " L" : "M"}${x + (i % 2 ? 8 : -8)},${y}`;
+  }
+  return path(d, "nofill");
+};
+
+/**
  * Non ritorno (X10690); con la molla (X10700) la molla sta sull'asse della linea, sopra la sfera, e la preme
  * sulla sede.
  */
@@ -499,16 +513,20 @@ const checkGeometry = (spring = false): Geometry => ({
     // X10700: la linea attraversa tutto il simbolo; la sfera poggia nella sede a V aperta verso l'alto e la
     // molla, a tratti quasi orizzontali attorno alla linea, la preme dall'alto
     ? line(0, 30, 0, -30) + path("M-9,1.5 L0,10.5 L9,1.5", "nofill") + circle(0, 5, 4, "body") +
-      path("M-8,-19.6 L8,-16 L-8,-12.4 L8,-8.8 L-8,-5.2 L8,-1.6", "nofill")
+      checkSpring(0, -19.6, -1.6, 5)
     : line(0, 30, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -30),
 });
 
 const pilotCheckGeometry = (): Geometry => ({
   w: 64, h: 60,
   ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up }, 21: { x: 30, y: 0, dir: right } },
-  // ISO 1219-1 X10720: corpo (101V1), sede e sfera, molla (2002V1) sulla sfera, pilotaggio tratteggiato (422V1)
-  svg: rect(-14, -14, 28, 30, "box") + line(0, 30, 0, 6) + checkElement(0, -2) + zigzag(-3.5, -5.5, -11, -12, 4, 2.5) +
-    line(0, -7, 0, -30) + line(30, 0, 6, 0, "dash"),
+  // ISO 1219-1 X10720 (disegno come in ISO 1219-3, allegato A): corpo (101V1) attraversato dalla linea; dentro, la
+  // sfera nella sede a V aperta verso 2 e la molla (2002V1) sull'asse, sopra la sfera, come nel non ritorno con
+  // molla X10700. Il pilotaggio tratteggiato (422V1) entra di fianco e sale in diagonale fino alla sfera, che
+  // solleva dalla sede.
+  svg: rect(-15, -26.5, 30, 34.5, "box") + line(0, 30, 0, -30) +
+    path("M-9,-11.5 L0,-2.5 L9,-11.5", "nofill") + circle(0, -7, 4, "body") + checkSpring(0, -24.6, -12.6, 4) +
+    line(2.83, -4.17, 7, 0) + line(7, 0, 30, 0, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {

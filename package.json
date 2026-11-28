@@ -1,6 +1,6 @@
 {
   "name": "pneutrack",
-  "version": "0.37.1",
+  "version": "0.37.2",
   "description": "Schemi e simulazione pneumatica",
   "type": "module",
   "private": true,

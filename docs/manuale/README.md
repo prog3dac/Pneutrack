@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.37.1**.
+Aggiornato alla versione **0.37.2**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale

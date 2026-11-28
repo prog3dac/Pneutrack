@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.37.2 · 2026-11-28
+
+- Simbolo della non ritorno pilotata (NRP) corretto secondo la ISO 1219-1 (X10720), con il disegno degli esempi della ISO 1219-3: la molla è uno zig-zag centrato sull'asse della linea, sopra la sfera, come nella non ritorno con molla; prima era un piccolo ricciolo in alto a sinistra. Il pilotaggio tratteggiato ora entra nel corpo e arriva in diagonale alla sfera, che solleva dalla sede. Porte, dimensioni e simulazione non cambiano: gli schemi salvati si aprono come prima.
+
 ## 0.37.1 · 2026-11-27
 
 - Misuratore di portata: in simulazione mostra la portata che lo attraversa, in Nl/min accanto alla sigla e tra i *Valori* del pannello, con l'aria passata dall'inizio (con il segno − quando l'aria va da 2 verso 1, per esempio nello scarico del rientro). Prima la portata era calcolata ma non compariva da nessuna parte. A cilindro fermo segna zero.
