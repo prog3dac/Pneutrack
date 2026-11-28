@@ -53,6 +53,13 @@ dei problemi.
   personalizzata) e la lunghezza. Il pannello mostra volume e conduttanza stimata; lo spessore
   della linea segue il diametro. *Usa questo tubo per tutte le linee* lo applica a tutte le linee
   di potenza; le nuove linee ricevono l'ultimo tubo scelto. Una linea senza misura è ideale.
+- **Più tubi insieme**: `Maiusc`+clic su una linea la aggiunge o la toglie dalla selezione; un riquadro
+  trascinato sul vuoto che non prende componenti seleziona le linee che attraversa (con `Maiusc` si
+  aggiungono). Anche «Seleziona le linee con questo tubo» (dal pannello di una linea) e «Seleziona le
+  linee tra questi componenti» (da più componenti selezionati). Il pannello mostra i campi comuni, con
+  «valori diversi» dove non coincidono: la misura cambia i diametri di tutte e tiene le lunghezze,
+  *Lunghezza* dà a tutte la stessa, «Scala le lunghezze» (120 % o ×1,2) le moltiplica ciascuna dalla sua.
+  Le linee ideali restano tali finché non si sceglie una misura. `Canc` elimina le linee selezionate.
 - **Colonna di destra**: compare solo quando serve, cioè in Simula e, in Disegno, quando sono
   selezionati testi o forme, una linea, un blocco o più elementi insieme. Con un componente
   selezionato, o niente, il foglio usa tutta la larghezza.

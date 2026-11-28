@@ -141,3 +141,24 @@ export function straightenBends(a: PortPoint, b: RouteEnd, bends: Pt[] = [], max
   }
   return out;
 }
+
+/** Il percorso tocca il rettangolo (un tratto lo attraversa o vi cade dentro)? */
+export function polylineCrossesBox(pts: Pt[], box: { x: number; y: number; w: number; h: number }): boolean {
+  const x0 = box.x, x1 = box.x + box.w, y0 = box.y, y1 = box.y + box.h;
+  const inside = ([x, y]: Pt) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [ax, ay] = pts[i]!, [bx, by] = pts[i + 1]!;
+    if (inside(pts[i]!) || inside(pts[i + 1]!)) return true;
+    // Liang-Barsky: ritaglio del tratto sul rettangolo
+    const dx = bx - ax, dy = by - ay;
+    let t0 = 0, t1 = 1, ok = true;
+    for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]] as const) {
+      if (p === 0) { if (q < 0) { ok = false; break; } continue; }
+      const r = q / p;
+      if (p < 0) { if (r > t1) { ok = false; break; } if (r > t0) t0 = r; }
+      else { if (r < t0) { ok = false; break; } if (r < t1) t1 = r; }
+    }
+    if (ok && t0 <= t1) return true;
+  }
+  return false;
+}

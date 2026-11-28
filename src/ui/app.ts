@@ -26,7 +26,7 @@ import {
   type Actuation, type ComponentData, type ParamSpec, type TypeDef,
   paramApplies, upgradeComponent,
 } from "../model/components";
-import { parseTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData } from "../model/tubes";
+import { commonTubeField, editTube, parseScale, parseTube, sameTube, TUBE_SIZES, tubeConductance, tubeLabel, tubeVolume, type Tube, type TubeData, type TubeEdit } from "../model/tubes";
 import { fmtG, Quantity, type Dimension } from "../model/units";
 import { analyze, type Analysis } from "../model/validation";
 import { compileSim, type Tunable, type TunableKind, type ValveSpec } from "../sim/network";
@@ -54,7 +54,7 @@ import { sanitizeValve, valveTemplate } from "../model/valveConfig";
 import { labelSpot } from "./labels";
 import { initPwa } from "./pwa";
 import { designationPrefix, paletteCategories, paletteItems } from "./palette";
-import { EXIT, routePoints, simplifyPolyline, straightenBends, type PortPoint, type RouteEnd } from "../model/route";
+import { EXIT, polylineCrossesBox, routePoints, simplifyPolyline, straightenBends, type PortPoint, type RouteEnd } from "../model/route";
 
 const GRID = 10;
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -86,6 +86,8 @@ type Selection =
   | { kind: "component"; id: string }
   /** `quiet`: linea appena disegnata, evidenziata ma senza aprire la colonna di destra */
   | { kind: "connection"; index: number; quiet?: boolean }
+  /** più linee (Maiusc+clic o riquadro che le attraversa), per cambiarne i tubi in blocco */
+  | { kind: "lines"; indices: number[] }
   /** più componenti (e annotazioni) scelti con Maiusc+clic o con un riquadro (trascinando sul vuoto) */
   | { kind: "multi"; ids: string[]; anns?: string[] }
   /** testo o forma disegnata sullo schema */
@@ -188,6 +190,7 @@ function redo() {
 function fixSelection() {
   if (selection?.kind === "component" && !byId(selection.id)) selection = null;
   if (selection?.kind === "connection" && !doc.connections[selection.index]) selection = null;
+  if (selection?.kind === "lines") selection = linesSelection(selection.indices.filter((i) => doc.connections[i]));
   if (selection?.kind === "block") {
     const id = selection.id;
     if (!doc.blocks?.some((b) => b.id === id)) selection = null;
@@ -218,6 +221,19 @@ const compPos = (id: string): APt | null => { const l = byId(id) && doc.layout[i
 /** Ingombri misurati nell'ultimo disegno (il testo si misura solo nel browser). */
 const annMeasured = new Map<string, Box>();
 const annBoxOf = (a: AnnotationData): Box => annMeasured.get(a.id) ?? annBox(a, compPos);
+
+/** Linee selezionate (indici dei collegamenti). */
+function selectedLines(): number[] {
+  if (selection?.kind === "connection") return [selection.index];
+  if (selection?.kind === "lines") return selection.indices;
+  return [];
+}
+/** Selezione per un insieme di linee. */
+function linesSelection(indices: number[]): Selection {
+  const u = [...new Set(indices)].sort((a, b) => a - b);
+  if (u.length > 1) return { kind: "lines", indices: u };
+  return u.length ? { kind: "connection", index: u[0]! } : null;
+}
 
 /** Componenti selezionati (uno, più o quelli del blocco). */
 function selectedIds(): string[] {
@@ -274,6 +290,15 @@ function aim(p: PortPoint, toward: Pt): PortPoint {
   return { ...p, dir: Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)] };
 }
 
+/** Linee il cui percorso attraversa il rettangolo. */
+function linesCrossing(box: { x: number; y: number; w: number; h: number }): number[] {
+  const out: number[] = [];
+  doc.connections.forEach((c, i) => {
+    const ends = connEnds(c);
+    if (ends && polylineCrossesBox(routePoints(ends.a, ends.b, c.points).pts, box)) out.push(i);
+  });
+  return out;
+}
 /** Capi di una linea; sui punti di connessione la linea esce verso la piega più vicina. */
 function connEnds(c: ConnectionData): { a: PortPoint; b: PortPoint } | null {
   const [ca, pa] = splitRef(c.from), [cb, pb] = splitRef(c.to);
@@ -423,7 +448,8 @@ function render() {
   lines.replaceChildren(); comps.replaceChildren(); ports.replaceChildren(); labels.replaceChildren();
   linesTop.replaceChildren();
   // con una linea selezionata le altre si attenuano e la selezionata passa sopra ai simboli
-  lines.classList.toggle("dimmed", selection?.kind === "connection");
+  const selLines = new Set(selectedLines());
+  lines.classList.toggle("dimmed", selLines.size > 0);
   const P = sim ? sim.s.pressures() : null;
   const livePressure = (ref: string) => {
     if (!sim || !P) return null;
@@ -449,12 +475,12 @@ function render() {
     const bar = live !== null ? live : pr && !exhaust ? pr.bar : 0;
     const pressurized = bar > 0.2;
     const cls = ["line", pressurized ? `pressurized ${pressureBand(bar)}` : "", pilot ? "pilot" : "", exhaust ? "exhaust" : "", wire ? "wire" : "", liveWire ? "live" : "",
-                 selection?.kind === "connection" && selection.index === index ? "selected" : ""]
+                 selLines.has(index) ? "selected" : ""]
       .filter(Boolean).join(" ");
     const { pts: path, bendAt } = routePoints(a, b, c.points);
     const pts = ptsAttr(path);
     const tube = tubeOf(c);
-    const selected = selection?.kind === "connection" && selection.index === index;
+    const selected = selLines.has(index);
     const g = el("g", { class: cls, "data-connection": index });
     g.append(el("polyline", { points: pts, class: "hit" }));
     const stroke = el("polyline", { points: pts, class: "stroke" });
@@ -478,7 +504,7 @@ function render() {
       t.textContent = tubeLabel(tube);
       labels.append(t);
     }
-    if (selected && !sim) {
+    if (selected && !sim && selection?.kind === "connection") {
       bendAt.forEach((at, k) => {
         const [x, y] = path[at]!;
         const h = el("circle", { cx: x, cy: y, r: 5, class: "bend-handle", "data-bend": k, "data-connection": index });
@@ -1978,6 +2004,13 @@ function renderProperties() {
     const merge = button("Unisci in un blocco", mergeSelection, "Ctrl+G", "merge");
     merge.disabled = !selection.ids.length;
     actions.append(merge);
+    const inner = new Set(selection.ids);
+    const between = doc.connections.map((c, i) => [c, i] as const)
+      .filter(([c]) => inner.has(splitRef(c.from)[0]) && inner.has(splitRef(c.to)[0])).map(([, i]) => i);
+    const pick = button("Seleziona le linee tra questi componenti", () => select(linesSelection(between)),
+      "Per cambiare in blocco i tubi delle linee che collegano i componenti selezionati", "select-lines");
+    pick.disabled = !between.length;
+    actions.append(pick);
     panel.append(actions);
     const alignHead = document.createElement("h4");
     alignHead.textContent = "Allinea";
@@ -1994,6 +2027,8 @@ function renderProperties() {
     help.textContent = "Trascina uno dei componenti per spostarli tutti. Maiusc+clic aggiunge o toglie un componente, " +
       "trascinando sul vuoto si seleziona con un riquadro. Ctrl+C / Ctrl+X / Ctrl+V copia, taglia e incolla.";
     panel.append(help);
+  } else if (selection?.kind === "lines") {
+    renderLinesPanel(panel, title, selection.indices.filter((i) => doc.connections[i]));
   } else if (selection?.kind === "connection" && doc.connections[selection.index]) {
     const c = doc.connections[selection.index]!;
     const wire = isWire(c);
@@ -2008,6 +2043,14 @@ function renderProperties() {
     if (!wire) renderTubeFields(panel, selection.index);
     const actions = document.createElement("div");
     actions.className = "actions";
+    if (!wire) {
+      const same = doc.connections.map((x, i) => [x, i] as const)
+        .filter(([x]) => !isWire(x) && sameTube(x.tube, c.tube)).map(([, i]) => i);
+      const b = button(c.tube ? "Seleziona le linee con questo tubo" : "Seleziona le linee senza tubo",
+        () => select(linesSelection(same)), "Per cambiarle tutte insieme (Maiusc+clic aggiunge o toglie una linea)", "select-same-lines");
+      b.disabled = same.length < 2;
+      actions.append(b);
+    }
     if (c.points?.length) {
       const straight = document.createElement("button");
       straight.textContent = "Raddrizza linea";
@@ -2324,7 +2367,7 @@ function sideNeeded() {
   const k = selection?.kind;
   // una linea appena disegnata non apre la colonna: il foglio non si restringe mentre si collega
   if (k === "connection") return !selection!.quiet;
-  return k === "annotation" || k === "block" || k === "multi";
+  return k === "annotation" || k === "block" || k === "multi" || k === "lines";
 }
 function updateSide() {
   const app = $("#app");
@@ -2423,6 +2466,135 @@ function renderTubeFields(panel: HTMLElement, index: number) {
     });
     panel.append(all);
   }
+}
+/** Più linee insieme: misura, diametri e lunghezza dei tubi cambiano su tutte. */
+function renderLinesPanel(panel: HTMLElement, title: HTMLElement, indices: number[]) {
+  const pneu = indices.filter((i) => !isWire(doc.connections[i]!));
+  const wires = indices.length - pneu.length;
+  title.textContent = `${indices.length} linee selezionate`;
+  const list = document.createElement("p");
+  list.className = "help";
+  list.textContent = indices.slice(0, 12).map((i) => `${doc.connections[i]!.from} — ${doc.connections[i]!.to}`).join(" · ") +
+    (indices.length > 12 ? ` · e altre ${indices.length - 12}` : "");
+  panel.append(list);
+  if (wires) {
+    const w = document.createElement("p");
+    w.className = "help";
+    w.textContent = wires === 1 ? "1 filo elettrico: non ha tubo e resta com'è." : `${wires} fili elettrici: non hanno tubo e restano come sono.`;
+    panel.append(w);
+  }
+
+  if (pneu.length) {
+    heading(panel, pneu.length === indices.length ? "Tubo (tutte le linee)" : `Tubo (${pneu.length} linee pneumatiche)`);
+    const tubes = pneu.map((i) => doc.connections[i]!.tube);
+    const withTube = tubes.filter(Boolean).length;
+    const apply = (edit: TubeEdit) => mutate(() => {
+      for (const i of pneu) {
+        const c = doc.connections[i]!;
+        const t = editTube(c.tube, edit);
+        if (t) c.tube = t; else delete c.tube;
+      }
+      const first = pneu.map((i) => doc.connections[i]!.tube).find(Boolean);
+      if (first && edit.kind !== "scale") lastTube = { ...first };
+    });
+
+    const size = document.createElement("select");
+    size.name = "tube-size";
+    const states = new Set(tubes.map((t) => { const k = presetOf(t); return !t ? "" : k >= 0 ? String(k) : "custom"; }));
+    const options: [string, string][] = [["", "Non specificato (linea ideale)"],
+      ...TUBE_SIZES.map((z, i): [string, string] => [String(i), z.label]), ["custom", "Personalizzato"]];
+    if (states.size > 1) options.unshift(["mixed", "— misure diverse —"]);
+    for (const [value, text] of options) {
+      const o = document.createElement("option");
+      o.value = value; o.textContent = text;
+      if (value === "mixed") o.disabled = true;
+      size.append(o);
+    }
+    size.value = states.size > 1 ? "mixed" : [...states][0]!;
+    size.addEventListener("change", () => {
+      const length = lastTube?.length || "1 m";
+      if (size.value === "") apply({ kind: "none" });
+      else if (size.value === "custom") apply({ kind: "custom", length });
+      else {
+        const z = TUBE_SIZES[Number(size.value)]!;
+        apply({ kind: "size", outer: z.outer, inner: z.inner, length });
+      }
+    });
+    panel.append(field("Misura", size, FIELD_HELP["tube-size"]));
+
+    if (withTube) {
+      const input = (name: keyof TubeData, label: string, unit: string, placeholder: string) => {
+        const common = commonTubeField(tubes, name);
+        const inp = document.createElement("input");
+        inp.name = `tube-${name}`;
+        inp.value = common ?? "";
+        inp.placeholder = common === null ? "valori diversi" : placeholder;
+        inp.spellcheck = false;
+        inp.addEventListener("change", () => {
+          const v = inp.value.trim();
+          if (!v && common === null) return; // campo misto lasciato vuoto: niente da cambiare
+          apply({ kind: "field", name, value: v && /^[-+]?[\d.,]+$/.test(v) ? `${v} ${unit}` : v });
+        });
+        const f = field(label, inp, FIELD_HELP[`tube-${name}`]);
+        if (common === null) f.classList.add("mixed");
+        const bad = analysis.issues.some((i) => i.code === "INVALID_TUBE" && pneu.some((k) => {
+          const c = doc.connections[k]!;
+          return i.ports.includes(c.from) && i.ports.includes(c.to);
+        }) && (i.message.includes(`'${name}'`) || i.message.includes(`.${name}:`)));
+        if (bad) f.classList.add("invalid");
+        return f;
+      };
+      panel.append(input("outer_diameter", "Ø esterno", "mm", "facoltativo, es. 6 mm"));
+      panel.append(input("inner_diameter", "Ø interno *", "mm", "es. 4 mm"));
+      panel.append(input("length", "Lunghezza *", "m", "es. 1.5 m"));
+
+      const scale = document.createElement("input");
+      scale.name = "tube-scale";
+      scale.placeholder = "es. 120 % oppure ×1,2";
+      scale.spellcheck = false;
+      scale.addEventListener("change", () => {
+        const v = scale.value.trim();
+        if (!v) return;
+        const k = parseScale(v);
+        if (k === null) { toast("Scrivi una percentuale (120 %) o un fattore (×1,2)."); scale.value = ""; return; }
+        apply({ kind: "scale", factor: k });
+      });
+      panel.append(field("Scala le lunghezze", scale, FIELD_HELP["tube-scale"]));
+
+      if (withTube < pneu.length) {
+        const note = document.createElement("p");
+        note.className = "help";
+        const n = pneu.length - withTube;
+        note.textContent = `${n === 1 ? "1 linea è ideale" : `${n} linee sono ideali`} (senza tubo): diametri e lunghezza ` +
+          "cambiano solo le linee con il tubo. Scegli una misura per darlo a tutte.";
+        panel.append(note);
+      }
+
+      const valid = pneu.map((i) => tubeOf(doc.connections[i]!)).filter((t): t is Tube => !!t);
+      if (valid.length) {
+        const info = document.createElement("p");
+        info.className = "tube-info";
+        const len = valid.reduce((a, t) => a + t.length, 0), vol = valid.reduce((a, t) => a + tubeVolume(t), 0) * 1e6;
+        info.textContent = `${valid.length === 1 ? "1 tubo" : `${valid.length} tubi`}: ` +
+          `${String(Math.round(len * 100) / 100).replace(".", ",")} m in tutto · volume ${vol.toFixed(vol < 10 ? 1 : 0).replace(".", ",")} cm³`;
+        panel.append(info);
+      }
+    }
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const del = document.createElement("button");
+  del.className = "danger"; del.textContent = "Elimina linee";
+  del.addEventListener("click", deleteSelection);
+  actions.append(del);
+  panel.append(actions);
+  const help = document.createElement("p");
+  help.className = "help";
+  help.textContent = "Maiusc+clic su una linea la aggiunge o la toglie. Trascinando sul vuoto un riquadro che non " +
+    "contiene componenti si scelgono le linee che attraversa (con Maiusc si aggiungono). Un campo con «valori diversi» " +
+    "lasciato vuoto non cambia niente; un valore scritto vale per tutte. «Scala le lunghezze» moltiplica la lunghezza di ognuna.";
+  panel.append(help);
 }
 const MIXED_MSG = "Un filo elettrico non si collega a una porta pneumatica";
 const isElectricRef = (ref: string) => { const [cid, p] = splitRef(ref); return portKind(cid, p) === "electric"; };
@@ -2588,8 +2760,9 @@ function deleteSelection() {
   if (!sel || sim) return;
   const anns = new Set(selectedAnns());
   mutate(() => {
-    if (sel.kind === "connection") {
-      doc.connections.splice(sel.index, 1);
+    if (sel.kind === "connection" || sel.kind === "lines") {
+      const drop = new Set(selectedLines());
+      doc.connections = doc.connections.filter((_, i) => !drop.has(i));
       return;
     }
     if (anns.size) {
@@ -3920,7 +4093,7 @@ type Drag =
   | { mode: "group"; ids: string[]; sx: number; sy: number; start: Record<string, [number, number]>;
       points: Map<number, Pt[]>; before: string; moved: boolean; clicked?: string;
       anns: AnnotationData[]; last: [number, number] }
-  | { mode: "marquee"; sx: number; sy: number; add: string[]; addAnns: string[] }
+  | { mode: "marquee"; sx: number; sy: number; add: string[]; addAnns: string[]; addLines: number[] }
   /** maniglia di un'annotazione: angolo o lato, punto di una linea (v), metà di un tratto (m), punta del richiamo */
   | { mode: "annh"; id: string; handle: string; sx: number; sy: number; start: AnnotationData; before: string; moved: boolean }
   | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
@@ -4059,7 +4232,14 @@ svg.addEventListener("pointerdown", (e) => {
     openPropsDialog({ kind: "schema" });
   } else if (!sim && e.button === 0 && !line && !spaceHeld) {
     // trascinando sul vuoto: riquadro di selezione (con Maiusc si aggiunge alla selezione)
-    drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [], addAnns: e.shiftKey ? selectedAnns() : [] };
+    drag = { mode: "marquee", sx: w.x, sy: w.y, add: e.shiftKey ? selectedIds() : [], addAnns: e.shiftKey ? selectedAnns() : [],
+             addLines: e.shiftKey ? selectedLines() : [] };
+  } else if (!sim && line && e.button === 0 && e.shiftKey) {
+    // Maiusc+clic su una linea: la aggiunge o la toglie dalle linee selezionate
+    const index = Number(line.dataset.connection);
+    const cur = selectedLines();
+    select(linesSelection(cur.includes(index) ? cur.filter((i) => i !== index) : [...cur, index]));
+    drag = null;
   } else if (!sim && line && e.button === 0) {
     const index = Number(line.dataset.connection);
     if (selection?.kind !== "connection" || selection.index !== index || selection.quiet) select({ kind: "connection", index });
@@ -4170,7 +4350,9 @@ svg.addEventListener("pointerup", (e) => {
     const ids = [...new Set([...d.add, ...inside])];
     const area = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
     const anns = [...new Set([...d.addAnns, ...(doc.annotations ?? []).filter((a) => contains(area, annBoxOf(a))).map((a) => a.id)])];
-    select(selectionOf(ids, anns));
+    // un riquadro che non prende componenti né annotazioni seleziona le linee che attraversa
+    if (!ids.length && !anns.length) select(linesSelection([...d.addLines, ...linesCrossing(area)]));
+    else select(selectionOf(ids, anns));
     return;
   }
   if (d.mode === "annh") {
