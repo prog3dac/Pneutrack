@@ -483,10 +483,10 @@ const gaugeGeometry = (): Geometry => ({
 /**
  * Sfera e sede di un non ritorno (ISO 1219): la sfera è appoggiata dentro la sede a V.
  * dir = 1: passa dal basso verso l'alto (vertice della sede in basso); dir = -1: dall'alto verso il basso.
- * (x, y) è il centro della sfera; il vertice della sede è a y + 8·dir.
+ * (x, y) è il centro della sfera; il vertice della sede è a y + 8,33·dir, così la sfera è tangente ai due bracci.
  */
 const checkElement = (x: number, y: number, dir: 1 | -1 = 1) =>
-  path(`M${x - 10},${y - 5 * dir} L${x},${y + 8 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
+  path(`M${x - 10},${y - 5 * dir} L${x},${y + 8.33 * dir} L${x + 10},${y - 5 * dir}`, "nofill") + circle(x, y, 5, "body");
 
 /**
  * Molla di un non ritorno (ISO 1219-1, 2002V1 in X10700 e X10720): zig-zag a tratti quasi orizzontali, centrato
@@ -512,7 +512,7 @@ const checkGeometry = (spring = false): Geometry => ({
   svg: spring
     // X10700: la linea attraversa tutto il simbolo; la sfera poggia nella sede a V aperta verso l'alto e la
     // molla, a tratti quasi orizzontali attorno alla linea, la preme dall'alto
-    ? line(0, 30, 0, -30) + path("M-9,1.5 L0,10.5 L9,1.5", "nofill") + circle(0, 5, 4, "body") +
+    ? line(0, 30, 0, -30) + path("M-9,1.5 L0,10.5 L9,1.5", "nofill") + circle(0, 4.84, 4, "body") +
       checkSpring(0, -19.6, -1.6, 5)
     : line(0, 30, 0, 6) + checkElement(0, -2) + line(0, -7, 0, -30),
 });
@@ -527,8 +527,8 @@ const pilotCheckGeometry = (): Geometry => ({
   // Proporzioni del disegno di riferimento: casella stretta (larga 0,8 volte l'altezza), molla lunga che occupa la
   // parte alta della casella, sfera in basso, diagonale del pilotaggio verso l'angolo in basso a destra.
   svg: rect(-12, -27, 24, 30, "box") + line(0, 30, 0, -30) +
-    path("M-8,-12.5 L0,-4 L8,-12.5", "nofill") + circle(0, -8, 3.5, "body") + checkSpring(0, -25, -13, 5, 6) +
-    line(2.47, -5.53, 8, 0) + line(8, 0, 30, 0, "dash"),
+    path("M-8,-12 L0,-4 L8,-12", "nofill") + circle(0, -8.95, 3.5, "body") + checkSpring(0, -25, -14, 5, 6) +
+    line(2.47, -6.47, 8.95, 0) + line(8.95, 0, 30, 0, "dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {
@@ -536,8 +536,8 @@ function logicGeometry(kind: "or" | "and"): Geometry {
   if (kind === "or") {
     // ISO 1219-1 X10740: due sedi (2162V1) e la sfera (2163V1); l'uscita si innesta sulla via interna con il punto
     // di connessione dentro il simbolo (501V2)
-    inner = line(-8.5, 0, 11, 0) + line(0, 0, 0, -9) + circle(0, 0, 2, "fill") +
-      path("M-11,-7 L-18,0 L-11,7", "nofill") + path("M11,-7 L18,0 L11,7", "nofill") + circle(-12.5, 0, 4, "body");
+    inner = line(-8.34, 0, 11, 0) + line(0, 0, 0, -9) + circle(0, 0, 2, "fill") +
+      path("M-11,-7 L-18,0 L-11,7", "nofill") + path("M11,-7 L18,0 L11,7", "nofill") + circle(-12.34, 0, 4, "body");
   } else {
     inner = line(-16, -7, -16, 7) + line(16, -7, 16, 7) + rect(-12, -4, 24, 8, "body") +
       line(-16, 0, -12, 0) + line(12, 0, 16, 0);
@@ -554,8 +554,8 @@ const quickExhaustGeometry = (): Geometry => ({
   ports: { 1: { x: -30, y: 0, dir: left }, 2: { x: 0, y: -30, dir: up }, 3: { x: 0, y: 30, dir: down } },
   svg: rect(-18, -12, 36, 24, "box") + line(-30, 0, -18, 0) + line(0, -12, 0, -30) + line(0, 12, 0, 30) +
     // ISO 1219-1 X10750: vie interne riunite nel punto di connessione (501V2)
-    line(-8.5, 0, 0, 0) + line(0, 0, 0, -12) + line(0, 0, 0, 5) + circle(0, 0, 2, "fill") +
-    path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.5, 0, 4, "body") + path("M-6,5 L0,12 L6,5", "nofill"),
+    line(-8.34, 0, 0, 0) + line(0, 0, 0, -12) + line(0, 0, 0, 5) + circle(0, 0, 2, "fill") +
+    path("M-11,-7 L-18,0 L-11,7", "nofill") + circle(-12.34, 0, 4, "body") + path("M-6,5 L0,12 L6,5", "nofill"),
 });
 
 // --- regolazione -------------------------------------------------------------------
@@ -873,7 +873,7 @@ function couplingGeometry(comp: ComponentData): Geometry {
     const t = s * tip;
     let svg = path(`M-6,${t + s * 7} L0,${t} L6,${t + s * 7}`, "nofill") + line(0, t, 0, s * face);
     if (withCheck) {
-      const ball = t + s * 4.5;
+      const ball = t + s * 4.61; // sfera tangente ai due lati della punta
       svg += line(0, 30 * s, 0, ball + s * 3) + circle(0, ball, 3, "body");
     } else {
       svg += line(0, 30 * s, 0, t);

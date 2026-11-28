@@ -5,7 +5,7 @@ La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
 ## 0.37.2 · 2026-11-28
 
-- Simbolo della non ritorno pilotata (NRP) corretto secondo la ISO 1219-1 (X10720), con il disegno degli esempi della ISO 1219-3: la molla è uno zig-zag centrato sull'asse della linea che occupa la parte alta del corpo, sopra la sfera; prima era un piccolo ricciolo in alto a sinistra. Il pilotaggio tratteggiato ora entra nel corpo e arriva in diagonale alla sfera, che solleva dalla sede. Porte, dimensioni e simulazione non cambiano: gli schemi salvati si aprono come prima.
+- Simbolo della non ritorno pilotata (NRP) corretto secondo la ISO 1219-1 (X10720), con il disegno degli esempi della ISO 1219-3: la molla è uno zig-zag centrato sull'asse della linea che occupa la parte alta del corpo, sopra la sfera; prima era un piccolo ricciolo in alto a sinistra. Il pilotaggio tratteggiato ora entra nel corpo e arriva in diagonale alla sfera, che solleva dalla sede. In tutti i simboli con non ritorno (non ritorno, con molla, pilotata, doppia pilotata, strozzatore unidirezionale, innesto rapido, OR e scarico rapido) la sfera è tangente ai due lati della sede. Porte, dimensioni e simulazione non cambiano: gli schemi salvati si aprono come prima.
 
 ## 0.37.1 · 2026-11-27
 
