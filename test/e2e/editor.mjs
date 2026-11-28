@@ -220,6 +220,55 @@ await settled();
 s = await state();
 assert.equal(s.analysis.errors, 0);
 
+// 2c. più linee insieme: Maiusc+clic e riquadro, misura, lunghezza e scala in blocco
+await page.mouse.click(...(await lineMid(1)));
+await page.keyboard.down("Shift");
+await page.mouse.click(...(await lineMid(0)));
+await page.keyboard.up("Shift");
+assert.equal(await page.textContent("#properties h2"), "2 linee selezionate");
+assert.equal(await page.locator(".line.selected").count(), 2);
+assert.equal(await page.inputValue('#properties select[name="tube-size"]'), "mixed");
+await page.fill('#properties input[name="tube-length"]', "3");
+await page.press('#properties input[name="tube-length"]', "Enter");
+s = await state();
+assert.equal(s.doc.connections[1].tube.length, "3 m");
+assert.equal(s.doc.connections[0].tube, undefined, "la linea ideale resta ideale");
+await page.selectOption('#properties select[name="tube-size"]', { label: "Ø8 × 5" });
+s = await state();
+assert.deepEqual(s.doc.connections.map((c) => c.tube), [
+  { outer_diameter: "8 mm", inner_diameter: "5 mm", length: "3 m" },
+  { outer_diameter: "8 mm", inner_diameter: "5 mm", length: "3 m" }]);
+await page.fill('#properties input[name="tube-scale"]', "50 %");
+await page.press('#properties input[name="tube-scale"]', "Enter");
+s = await state();
+assert.deepEqual(s.doc.connections.map((c) => c.tube.length), ["1.5 m", "1.5 m"]);
+assert.match(await page.textContent("#properties .tube-info"), /2 tubi: 3 m in tutto/);
+await page.click("#canvas", { position: { x: 40, y: 40 } });
+for (let i = 0; i < 3; i++) await page.keyboard.press("Control+z");
+await settled();
+s = await state();
+assert.deepEqual(s.doc.connections[1].tube, { outer_diameter: "6 mm", inner_diameter: "4 mm", length: "2 m" });
+assert.equal(s.doc.connections[0].tube, undefined);
+// un riquadro sul vuoto che attraversa le linee le seleziona
+{
+  const [ax, ay] = await lineMid(1), [bx, by] = await lineMid(0);
+  const box = async (x, y, shift) => {
+    await page.waitForTimeout(500); // due clic ravvicinati sul vuoto aprono la finestra dello schema
+    if (shift) await page.keyboard.down("Shift");
+    await page.mouse.move(x - 12, y - 12);
+    await page.mouse.down();
+    await page.mouse.move(x + 12, y + 12, { steps: 4 });
+    await page.mouse.up();
+    if (shift) await page.keyboard.up("Shift");
+  };
+  await box(ax, ay, false);
+  assert.deepEqual(await page.evaluate(() => window.pneutrack.selection), { kind: "connection", index: 1 });
+  await box(bx, by, true);
+  assert.deepEqual(await page.evaluate(() => window.pneutrack.selection), { kind: "lines", indices: [0, 1] });
+  if (shots) await page.screenshot({ path: `${shots}/linee-multiple.png` });
+  await page.click("#canvas", { position: { x: 40, y: 40 } });
+}
+
 // 3. sovrapressione: cilindro da 4 bar
 await openProps("C1");
 await page.fill(`${D} input[name="param-max_pressure"]`, "4");

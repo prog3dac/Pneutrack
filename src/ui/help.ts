@@ -396,6 +396,9 @@ export const FIELD_HELP: Record<string, string> = {
   "tube-length":
     "Lunghezza del tubo tra le due porte, in metri. Determina il volume d'aria da riempire a ogni ciclo e la " +
     "perdita di carico.",
+  "tube-scale":
+    "Con più linee selezionate moltiplica la lunghezza di ogni tubo, ciascuna dalla sua: 120 % (o ×1,2) le allunga " +
+    "di un quinto, 50 % le dimezza. Per dare a tutte la stessa lunghezza scrivila nel campo «Lunghezza».",
 };
 
 /** Descrizione di un parametro di un componente, con unità e valore predefinito. */

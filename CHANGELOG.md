@@ -3,6 +3,11 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.38.0 · 2026-11-28
+
+- Tubi di più linee cambiati insieme. Si selezionano più linee con *Maiusc*+clic, con un riquadro trascinato sul vuoto che le attraversa (senza prendere componenti), con «Seleziona le linee con questo tubo» dal pannello di una linea, o con «Seleziona le linee tra questi componenti» da una selezione di componenti. Il pannello mostra misura, diametri e lunghezza comuni («valori diversi» dove non lo sono) e la lunghezza e il volume totali.
+- La misura cambia i diametri di tutte tenendo la lunghezza di ognuna; *Lunghezza* dà a tutte la stessa lunghezza; il nuovo campo «Scala le lunghezze» le moltiplica tutte per lo stesso fattore (120 % o ×1,2), ciascuna dalla sua. Le linee senza tubo restano ideali finché non si sceglie una misura, i fili elettrici non cambiano. *Canc* elimina tutte le linee selezionate.
+
 ## 0.37.1 · 2026-11-27
 
 - Misuratore di portata: in simulazione mostra la portata che lo attraversa, in Nl/min accanto alla sigla e tra i *Valori* del pannello, con l'aria passata dall'inizio (con il segno − quando l'aria va da 2 verso 1, per esempio nello scarico del rientro). Prima la portata era calcolata ma non compariva da nessuna parte. A cilindro fermo segna zero.

@@ -1,6 +1,6 @@
 # Manuale d'uso di Pneutrack
 
-Aggiornato alla versione **0.37.1**.
+Aggiornato alla versione **0.38.0**.
 
 Questo manuale descrive i dati che si inseriscono nei componenti, come sono legati tra loro e le
 regole con cui Pneutrack li usa per calcolare la simulazione. Nell'app si apre da *File* → «Manuale
@@ -20,7 +20,9 @@ Altri documenti: la guida dell'interfaccia ([../interfaccia.md](../interfaccia.m
 
 1. **Disegno.** Si trascinano i componenti dalla palette sul foglio e si collegano le porte con le linee.
    Una linea senza tubo è un *collegamento ideale*: le porte che unisce sono alla stessa pressione. Una linea
-   con il tubo (diametro interno e lunghezza) ha un suo volume e una perdita di carico.
+   con il tubo (diametro interno e lunghezza) ha un suo volume e una perdita di carico. I tubi di più linee
+   si cambiano insieme: *Maiusc*+clic sulle linee, oppure un riquadro trascinato sul vuoto che le attraversa
+   senza prendere componenti (vedi «Tubi» al §3).
 2. **Dati.** Doppio clic sul simbolo (o *Invio*) apre la finestra del componente: a destra i parametri,
    divisi in *dati di catalogo* e *parametri di simulazione*. Un campo vuoto usa il valore predefinito
    indicato in [componenti.md](componenti.md). Il valore si scrive con l'unità (`6 bar`, `32 mm`,
@@ -147,6 +149,21 @@ calcola dall'alesaggio e dalle pressioni (vedi [calcoli.md](calcoli.md), §4.3).
 
 Diametro interno e lunghezza della linea: dalla misura commerciale (Ø6×4 vuol dire esterno 6 mm, interno
 4 mm) e dal percorso reale. Il programma ne ricava volume e conduttanza (vedi [calcoli.md](calcoli.md), §3).
+
+Con più linee selezionate il pannello mostra i campi del tubo comuni a tutte: un campo con valori diversi
+resta vuoto con la scritta «valori diversi» (la misura mostra «misure diverse») e, lasciato vuoto, non cambia
+niente. Le regole della modifica in blocco:
+
+| Campo | Effetto sulle linee selezionate |
+|---|---|
+| Misura | stessi diametri per tutte; ogni linea tiene la sua lunghezza, quelle senza tubo prendono la lunghezza dell'ultimo tubo scelto (1 m se non ce n'è uno). «Non specificato» le rende tutte ideali |
+| Ø esterno, Ø interno | lo stesso valore su tutte le linee che hanno il tubo |
+| Lunghezza | **la stessa lunghezza** su tutte le linee che hanno il tubo |
+| Scala le lunghezze | ogni lunghezza moltiplicata per lo stesso fattore, ciascuna dalla sua (120 % o ×1,2 allunga di un quinto), arrotondata al millimetro |
+
+Le linee ideali restano ideali finché non si sceglie una misura; i fili elettrici selezionati insieme non
+cambiano. Il pannello riporta la lunghezza e il volume totali dei tubi selezionati. Ogni modifica è un solo
+passo di *Ctrl+Z*.
 
 ### Riduttori, valvole di pressione, pressostati
 
