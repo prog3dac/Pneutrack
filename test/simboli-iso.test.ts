@@ -261,6 +261,10 @@ describe("non ritorno pilotata (ISO 1219-1 X10720, disegno di ISO 1219-3 allegat
     expect(Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y))).toBeGreaterThan(bh / 3);
   });
 
+  it("la casella è centrata sull'asse: la linea sporge uguale sopra e sotto", () => {
+    expect(by - g.ports[2]!.y).toBe(g.ports[1]!.y - (by + bh));
+  });
+
   it("la sede è sotto la sfera, dalla parte di 1: passa libero da 1 a 2", () => {
     const seat = /<path d="M-[89],(-?[\d.]+) L0,(-?[\d.]+) L[89],/.exec(g.svg)!;
     expect(+seat[2]!).toBeGreaterThan(ballY); // vertice della V sotto la sfera
@@ -268,8 +272,8 @@ describe("non ritorno pilotata (ISO 1219-1 X10720, disegno di ISO 1219-3 allegat
   });
 
   it("il pilotaggio tratteggiato arriva da 21 fino alla sfera; corpo e porte non cambiano", () => {
-    expect(g.svg).toMatch(/<line x1="8.95" y1="0" x2="30" y2="0" class="dash"/);
-    const diag = /<line x1="([\d.]+)" y1="(-?[\d.]+)" x2="8.95" y2="0"/.exec(g.svg)!;
+    expect(g.svg).toMatch(/<path d="M8.5,12.55 H20 V0 H30" class="nofill dash"/); // tratteggiato fino a 21
+    const diag = /<line x1="([\d.]+)" y1="(-?[\d.]+)" x2="8.5" y2="12.55"/.exec(g.svg)!;
     expect(Math.hypot(+diag[1]!, +diag[2]! - ballY)).toBeCloseTo(ballR, 1); // tocca la sfera
     expect(bx).toBeLessThan(-8); expect(bx + bw).toBeGreaterThan(8); expect(by + bh).toBeGreaterThan(0);
     expect(g.ports).toEqual({ 1: { x: 0, y: 30, dir: [0, 1] }, 2: { x: 0, y: -30, dir: [0, -1] }, 21: { x: 30, y: 0, dir: [1, 0] } });

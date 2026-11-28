@@ -521,14 +521,14 @@ const pilotCheckGeometry = (): Geometry => ({
   w: 64, h: 60,
   ports: { 1: { x: 0, y: 30, dir: down }, 2: { x: 0, y: -30, dir: up }, 21: { x: 30, y: 0, dir: right } },
   // ISO 1219-1 X10720 (disegno come in ISO 1219-3, allegato A): corpo (101V1) attraversato dalla linea; dentro, la
-  // sfera nella sede a V aperta verso 2 e la molla (2002V1) sull'asse, sopra la sfera, come nel non ritorno con
-  // molla X10700. Il pilotaggio tratteggiato (422V1) entra di fianco e sale in diagonale fino alla sfera, che
-  // solleva dalla sede.
-  // Proporzioni del disegno di riferimento: casella stretta (larga 0,8 volte l'altezza), molla lunga che occupa la
-  // parte alta della casella, sfera in basso, diagonale del pilotaggio verso l'angolo in basso a destra.
-  svg: rect(-12, -27, 24, 30, "box") + line(0, 30, 0, -30) +
-    path("M-8,-12 L0,-4 L8,-12", "nofill") + circle(0, -8.95, 3.5, "body") + checkSpring(0, -25, -14, 5, 6) +
-    line(2.47, -6.47, 8.95, 0) + line(8.95, 0, 30, 0, "dash"),
+  // sfera nella sede a V aperta verso 2, tangente ai due bracci, e la molla (2002V1) sull'asse, sopra la sfera, come
+  // nel non ritorno con molla X10700. Il pilotaggio (422V1) sale in diagonale fino alla sfera, che solleva dalla
+  // sede, ed esce dal corpo tratteggiato verso la porta 21.
+  // Proporzioni del disegno di riferimento: casella stretta (larga 0,8 volte l'altezza) centrata sull'asse, così la
+  // linea sporge di 1,5M sopra e sotto; molla lunga nella parte alta, sfera in basso.
+  svg: rect(-12, -15, 24, 30, "box") + line(0, 30, 0, -30) +
+    path("M-8,1 L0,9 L8,1", "nofill") + circle(0, 4.05, 3.5, "body") + checkSpring(0, -13, -1, 5, 6) +
+    line(2.47, 6.52, 8.5, 12.55) + path("M8.5,12.55 H20 V0 H30", "nofill dash"),
 });
 
 function logicGeometry(kind: "or" | "and"): Geometry {

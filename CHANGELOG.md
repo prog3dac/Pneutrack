@@ -3,6 +3,10 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
+## 0.38.2 · 2026-11-28
+
+- Simbolo della non ritorno pilotata: la casella è centrata sulla linea, che ora sporge della stessa lunghezza sopra e sotto (prima sotto era molto più lunga). La sfera sta nella parte bassa della casella e il pilotaggio, come nel disegno della ISO 1219-3, sale in diagonale alla sfera ed esce tratteggiato verso la porta 21. Porte e simulazione non cambiano.
+
 ## 0.38.1 · 2026-11-28
 
 - Simbolo della non ritorno pilotata (NRP) corretto secondo la ISO 1219-1 (X10720), con il disegno degli esempi della ISO 1219-3: la molla è uno zig-zag centrato sull'asse della linea che occupa la parte alta del corpo, sopra la sfera; prima era un piccolo ricciolo in alto a sinistra. Il pilotaggio tratteggiato ora entra nel corpo e arriva in diagonale alla sfera, che solleva dalla sede. In tutti i simboli con non ritorno (non ritorno, con molla, pilotata, doppia pilotata, strozzatore unidirezionale, innesto rapido, OR e scarico rapido) la sfera è tangente ai due lati della sede. Porte, dimensioni e simulazione non cambiano: gli schemi salvati si aprono come prima.
