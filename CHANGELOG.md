@@ -3,9 +3,14 @@
 Ogni versione pubblicata su https://prog3dac.github.io/Pneutrack/ ha un numero `maggiore.minore.correzione`.
 La versione in uso compare accanto al nome dell'app; un clic apre queste note.
 
-## 0.37.2 · 2026-11-28
+## 0.38.1 · 2026-11-28
 
 - Simbolo della non ritorno pilotata (NRP) corretto secondo la ISO 1219-1 (X10720), con il disegno degli esempi della ISO 1219-3: la molla è uno zig-zag centrato sull'asse della linea che occupa la parte alta del corpo, sopra la sfera; prima era un piccolo ricciolo in alto a sinistra. Il pilotaggio tratteggiato ora entra nel corpo e arriva in diagonale alla sfera, che solleva dalla sede. In tutti i simboli con non ritorno (non ritorno, con molla, pilotata, doppia pilotata, strozzatore unidirezionale, innesto rapido, OR e scarico rapido) la sfera è tangente ai due lati della sede. Porte, dimensioni e simulazione non cambiano: gli schemi salvati si aprono come prima.
+
+## 0.38.0 · 2026-11-28
+
+- Tubi di più linee cambiati insieme. Si selezionano più linee con *Maiusc*+clic, con un riquadro trascinato sul vuoto che le attraversa (senza prendere componenti), con «Seleziona le linee con questo tubo» dal pannello di una linea, o con «Seleziona le linee tra questi componenti» da una selezione di componenti. Il pannello mostra misura, diametri e lunghezza comuni («valori diversi» dove non lo sono) e la lunghezza e il volume totali.
+- La misura cambia i diametri di tutte tenendo la lunghezza di ognuna; *Lunghezza* dà a tutte la stessa lunghezza; il nuovo campo «Scala le lunghezze» le moltiplica tutte per lo stesso fattore (120 % o ×1,2), ciascuna dalla sua. Le linee senza tubo restano ideali finché non si sceglie una misura, i fili elettrici non cambiano. *Canc* elimina tutte le linee selezionate.
 
 ## 0.37.1 · 2026-11-27
 

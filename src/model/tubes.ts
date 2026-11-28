@@ -93,3 +93,79 @@ export function tubeLabel(t: Tube): string {
   const len = t.length >= 1 ? `${String(Math.round(t.length * 100) / 100).replace(".", ",")} m` : `${Math.round(t.length * 1000)} mm`;
   return `${t.outer ? `Ø${mm(t.outer)}×${mm(t.inner)}` : `Ø int. ${mm(t.inner)}`} · ${len}`;
 }
+
+// --- più linee insieme -------------------------------------------------------------
+
+const sameQuantity = (a?: string, b?: string) => {
+  if (!a || !b) return !a && !b;
+  try { return Quantity.parse(a).equals(Quantity.parse(b)); } catch { return a.trim() === b.trim(); }
+};
+
+/**
+ * Valore di un campo comune a più tubi (le linee senza tubo non contano): il testo del primo se tutti
+ * hanno lo stesso valore, `null` se sono diversi, `undefined` se nessuna linea ha un tubo.
+ */
+export function commonTubeField(tubes: (TubeData | undefined)[], name: keyof TubeData): string | null | undefined {
+  const present = tubes.filter((t): t is TubeData => !!t);
+  if (!present.length) return undefined;
+  const first = present[0]![name];
+  return present.every((t) => sameQuantity(t[name], first)) ? (first ?? "") : null;
+}
+
+/** Lunghezza moltiplicata per `factor`, in metri arrotondati al millimetro (es. "1.2 m"). */
+export function scaleLength(text: string, factor: number): string {
+  const q = Quantity.coerce(text);
+  if (q.dimension !== "length") throw new ParameterError(`lunghezza non valida (${text})`);
+  const m = Math.max(0.001, Math.round(q.si * factor * 1000) / 1000);
+  return `${m} m`;
+}
+
+/** Modifica applicata in blocco ai tubi di più linee. */
+export type TubeEdit =
+  /** misura commerciale o diametri dati: chi ha già un tubo tiene la sua lunghezza */
+  | { kind: "size"; outer: string; inner: string; length: string }
+  /** «Personalizzato»: chi ha un tubo lo tiene, le linee ideali ricevono un Ø6×4 */
+  | { kind: "custom"; length: string }
+  /** linea ideale, senza tubo */
+  | { kind: "none" }
+  /** un campo uguale per tutti (`value` vuoto lo toglie); le linee ideali restano ideali */
+  | { kind: "field"; name: keyof TubeData; value: string }
+  /** lunghezze moltiplicate per `factor`, ognuna dalla sua */
+  | { kind: "scale"; factor: number };
+
+/** Il tubo di una linea dopo la modifica in blocco (`undefined`: linea ideale). */
+export function editTube(tube: TubeData | undefined, edit: TubeEdit): TubeData | undefined {
+  switch (edit.kind) {
+    case "none": return undefined;
+    case "size": return { outer_diameter: edit.outer, inner_diameter: edit.inner, length: tube?.length || edit.length };
+    case "custom": return tube ? { ...tube } : { outer_diameter: "6 mm", inner_diameter: "4 mm", length: edit.length };
+    case "field": {
+      if (!tube) return undefined;
+      const t: TubeData = { ...tube };
+      if (edit.value) t[edit.name] = edit.value; else delete t[edit.name];
+      return t;
+    }
+    case "scale": {
+      if (!tube?.length) return tube && { ...tube };
+      try { return { ...tube, length: scaleLength(tube.length, edit.factor) }; } catch { return { ...tube }; }
+    }
+  }
+}
+
+/** Due linee hanno lo stesso tubo (o sono entrambe ideali)? */
+export function sameTube(a: TubeData | undefined, b: TubeData | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  return FIELDS.every((f) => sameQuantity(a[f], b[f]));
+}
+
+/**
+ * Fattore di scala scritto dall'utente: "120", "120 %" o "120%" (percentuale), "x1.2" o "×1,2" (fattore).
+ * `null` se non è un numero positivo.
+ */
+export function parseScale(text: string): number | null {
+  const t = text.trim().replace(",", ".");
+  const m = /^(?:[x×*]\s*([\d.]+)|([\d.]+)\s*%?)$/i.exec(t);
+  if (!m) return null;
+  const v = m[1] !== undefined ? Number(m[1]) : Number(m[2]) / 100;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
